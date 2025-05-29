@@ -1,12 +1,5 @@
 //
 //  GameView.swift
-//  Lappeleken
-//
-//  Created by Ivar Hovland on 08/05/2025.
-//
-
-//
-//  GameView.swift
 //  Lucky Football Slip
 //
 //  Created by Ivar Hovland on 08/05/2025.
@@ -20,6 +13,8 @@ struct GameView: View {
     @State private var selectedEventType: Bet.EventType? = nil
     @State private var showingEventSheet = false
     @State private var showingSubstitutionSheet = false
+    @State private var showingAutoSavePrompt = false // This was missing
+    @State private var autoSaveGameName = ""
     
     var body: some View {
         TabView {
@@ -61,6 +56,72 @@ struct GameView: View {
         .sheet(isPresented: $showingSubstitutionSheet) {
             SubstitutionView(gameSession: gameSession)
         }
+        .sheet(isPresented: $showingAutoSavePrompt) {
+            autoSaveGamePrompt
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("StartGame"))) { _ in
+            // Show auto-save prompt when game starts
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                if AppPurchaseManager.shared.currentTier == .free {
+                    showingAutoSavePrompt = true
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ShowInterstitialAfterEvent"))) { notification in
+            // Handle interstitial ad after events
+            if let userInfo = notification.object as? [String: Any],
+               let eventCount = userInfo["eventCount"] as? Int {
+                showInterstitialForEvent(eventCount: eventCount)
+            }
+        }
+    }
+    
+    private var autoSaveGamePrompt: some View {
+        NavigationView {
+            VStack(spacing: 20) {
+                Image(systemName: "square.and.arrow.down")
+                    .font(.system(size: 50))
+                    .foregroundColor(AppDesignSystem.Colors.primary)
+                
+                Text("Save Your Game?")
+                    .font(AppDesignSystem.Typography.headingFont)
+                
+                Text("Give your game a name so you don't lose your progress. You can always save it later from the game summary.")
+                    .font(AppDesignSystem.Typography.bodyFont)
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+                
+                TextField("Game name (optional)", text: $autoSaveGameName)
+                    .padding()
+                    .background(Color.white)
+                    .cornerRadius(AppDesignSystem.Layout.cornerRadius)
+                    .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
+                
+                HStack(spacing: 16) {
+                    Button("Skip") {
+                        showingAutoSavePrompt = false
+                        autoSaveGameName = ""
+                    }
+                    .buttonStyle(SecondaryButtonStyle())
+                    
+                    Button("Save & Continue") {
+                        let finalGameName = autoSaveGameName.isEmpty ?
+                            "Game \(Date().formatted(date: .abbreviated, time: .shortened))" :
+                            autoSaveGameName
+                        
+                        GameHistoryManager.shared.saveGameSession(gameSession, name: finalGameName)
+                        
+                        showingAutoSavePrompt = false
+                        autoSaveGameName = ""
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                }
+            }
+            .padding()
+            .navigationTitle("Quick Save")
+            .navigationBarTitleDisplayMode(.inline)
+        }
     }
     
     // MARK: - Tab Views
@@ -101,6 +162,7 @@ struct GameView: View {
             .padding()
         }
         .background(AppDesignSystem.Colors.background.ignoresSafeArea())
+        .withBannerAd(placement: .bottom)
     }
     
     private var playersView: some View {
@@ -181,6 +243,7 @@ struct GameView: View {
             .padding()
         }
         .background(AppDesignSystem.Colors.background.ignoresSafeArea())
+        .withBannerAd(placement: .bottom)
         .id("players-view-\(gameSession.events.count)-\(gameSession.substitutions.count)")
     }
     
@@ -216,6 +279,7 @@ struct GameView: View {
             .padding()
         }
         .background(AppDesignSystem.Colors.background.ignoresSafeArea())
+        .withBannerAd(placement: .bottom)
     }
     
     // MARK: - Record Event Sheet
@@ -266,7 +330,9 @@ struct GameView: View {
                     if let player = selectedPlayer, let eventType = selectedEventType {
                         Section {
                             Button("Record \(eventType.rawValue) for \(player.name)") {
-                                gameSession.recordEvent(player: player, eventType: eventType)
+                                Task { @MainActor in
+                                    gameSession.recordEvent(player: player, eventType: eventType)
+                                }
                                 showingEventSheet = false
                                 selectedPlayer = nil
                                 selectedEventType = nil
@@ -316,5 +382,23 @@ struct GameView: View {
         }
         .foregroundColor(AppDesignSystem.Colors.primaryText)
         .opacity(isSubstituted ? 0.8 : 1.0)
+    }
+    
+    private func showInterstitialForEvent(eventCount: Int) {
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let rootViewController = windowScene.windows.first?.rootViewController else {
+            return
+        }
+        
+        print("🎯 Showing interstitial ad after \(eventCount) events")
+        
+        AdManager.shared.showInterstitialAd(from: rootViewController) { success in
+            if success {
+                print("✅ Interstitial ad shown successfully after \(eventCount) events")
+                AdManager.shared.trackAdImpression(type: "interstitial_event")
+            } else {
+                print("❌ Failed to show interstitial ad after events")
+            }
+        }
     }
 }

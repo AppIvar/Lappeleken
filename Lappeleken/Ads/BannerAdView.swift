@@ -58,8 +58,9 @@ struct BannerAdView: UIViewRepresentable {
     
     class Coordinator: NSObject, BannerViewDelegate {
         private var retryCount = 0
-        private let maxRetries = 3
+        private let maxRetries = 2 // Reduce to 2 retries
         private var bannerView: BannerView?
+        private var retryTimer: Timer?
         
         func loadAd(bannerView: BannerView) {
             self.bannerView = bannerView
@@ -72,23 +73,50 @@ struct BannerAdView: UIViewRepresentable {
         func bannerViewDidReceiveAd(_ bannerView: BannerView) {
             print("✅ Banner ad loaded successfully")
             retryCount = 0
+            retryTimer?.invalidate()
             AdManager.shared.trackAdImpression(type: "banner")
         }
         
         func bannerView(_ bannerView: BannerView, didFailToReceiveAdWithError error: Error) {
             print("❌ Banner ad failed to load: \(error.localizedDescription)")
             
+            // Check if it's a network error and we haven't exceeded retries
             if shouldRetry(error: error) && retryCount < maxRetries {
                 retryCount += 1
-                print("🔄 Retrying banner ad load in 5 seconds (attempt \(retryCount + 1)/\(maxRetries))")
+                print("🔄 Retrying banner ad load in 3 seconds (attempt \(retryCount + 1)/\(maxRetries + 1))")
                 
-                DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
-                    self.loadAd(bannerView: bannerView)
+                // Use timer instead of DispatchQueue for better control
+                retryTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: false) { [weak self] _ in
+                    self?.loadAd(bannerView: bannerView)
                 }
             } else {
                 print("⚠️ Banner ad loading failed permanently after \(retryCount + 1) attempts")
+                // Don't show error to user - just fail silently for ads
             }
         }
+        
+        private func shouldRetry(error: Error) -> Bool {
+            let nsError = error as NSError
+            
+            // More specific retry logic
+            switch nsError.code {
+            case -1005: // Network connection lost
+                return true
+            case -1017: // Cannot parse response
+                return false // Don't retry parse errors
+            case -1001: // Request timeout
+                return true
+            case 2: // No ad to show (AdMob)
+                return false // Don't retry no-fill errors
+            default:
+                return false
+            }
+        }
+        
+        deinit {
+            retryTimer?.invalidate()
+        }
+    
         
         func bannerViewDidRecordImpression(_ bannerView: BannerView) {
             print("📊 Banner ad recorded impression")
@@ -96,12 +124,6 @@ struct BannerAdView: UIViewRepresentable {
         
         func bannerViewDidRecordClick(_ bannerView: BannerView) {
             print("🖱️ Banner ad was clicked")
-        }
-        
-        private func shouldRetry(error: Error) -> Bool {
-            let nsError = error as NSError
-            let retryableErrors = [-1009, -1001, -1017, 2]
-            return retryableErrors.contains(nsError.code)
         }
     }
 }

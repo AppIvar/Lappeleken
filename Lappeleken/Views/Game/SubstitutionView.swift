@@ -159,5 +159,16 @@ struct SubstitutionView: View {
                 presentationMode.wrappedValue.dismiss()
             })
         }
+        
+        if AppPurchaseManager.shared.currentTier == .free {
+            VStack(spacing: 0) {
+                Divider()
+                    .background(Color.gray.opacity(0.3))
+                
+                BannerAdView()
+                    .frame(height: 50)
+                    .background(Color.gray.opacity(0.05))
+            }
+        }
     }
 }

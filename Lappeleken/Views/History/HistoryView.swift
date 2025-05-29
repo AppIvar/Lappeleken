@@ -101,8 +101,8 @@ struct HistoryView: View {
         
         // Simulate loading delay for better UX
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            // Try to load from GameHistoryManager
-            self.savedGames = GameHistoryManager.shared.getSavedGames()
+            // Try to load from GameHistoryManager using the correct method name
+            self.savedGames = GameHistoryManager.shared.getSavedGameSessions()
             self.isLoading = false
             
             print("📚 Loaded \(self.savedGames.count) saved games")
@@ -112,7 +112,7 @@ struct HistoryView: View {
     private func deleteGames(at offsets: IndexSet) {
         for index in offsets {
             let gameToDelete = savedGames[index]
-            GameHistoryManager.shared.deleteGame(gameToDelete.id)
+            GameHistoryManager.shared.deleteGameSession(gameToDelete.id)
         }
         savedGames.remove(atOffsets: offsets)
     }
@@ -207,36 +207,18 @@ struct SavedGameSession: Identifiable, Codable {
 // MARK: - GameHistoryManager Extension
 
 extension GameHistoryManager {
-    func getSavedGames() -> [SavedGameSession] {
-        // For now, return mock data
-        // In a real implementation, this would load from Core Data or UserDefaults
-        
-        // Check if we have any saved games in UserDefaults
-        if let data = UserDefaults.standard.data(forKey: "savedGames"),
-           let games = try? JSONDecoder().decode([SavedGameSession].self, from: data) {
-            return games.sorted { $0.dateSaved > $1.dateSaved }
-        }
-        
-        return []
+    func getAllSavedGames() -> [SavedGameSession] {
+        // This method calls the existing getSavedGameSessions() to avoid conflicts
+        return getSavedGameSessions()
     }
     
-    func deleteGame(_ gameId: UUID) {
-        var savedGames = getSavedGames()
-        savedGames.removeAll { $0.id == gameId }
-        
-        if let encoded = try? JSONEncoder().encode(savedGames) {
-            UserDefaults.standard.set(encoded, forKey: "savedGames")
-        }
+    func deleteSavedGameSession(_ gameId: UUID) {
+        // This method calls the existing deleteGameSession to avoid conflicts
+        deleteGameSession(gameId)
     }
     
-    func saveGameSession(_ gameSession: GameSession, name: String) {
-        let savedGame = SavedGameSession(from: gameSession, name: name)
-        var savedGames = getSavedGames()
-        savedGames.append(savedGame)
-        
-        if let encoded = try? JSONEncoder().encode(savedGames) {
-            UserDefaults.standard.set(encoded, forKey: "savedGames")
-            print("✅ Game saved: \(name)")
-        }
+    func saveNewGameSession(_ gameSession: GameSession, name: String) {
+        // This method calls the existing saveGameSession to avoid conflicts
+        saveGameSession(gameSession, name: name)
     }
 }

@@ -77,9 +77,18 @@ struct NewGameSetupView: View {
                     
                     if currentStep < steps.count - 1 {
                         Button("Next") {
-                            if currentStep == 0 && gameSession.participants.isEmpty {
-                                // Don't proceed if no participants added
-                                return
+                            if currentStep == 0 {
+                                // Add any pending participant name
+                                let trimmedName = participantName.trimmingCharacters(in: .whitespacesAndNewlines)
+                                if !trimmedName.isEmpty {
+                                    gameSession.addParticipant(trimmedName)
+                                    participantName = ""
+                                }
+                                
+                                if gameSession.participants.isEmpty {
+                                    // Don't proceed if no participants added
+                                    return
+                                }
                             }
                             
                             if currentStep == 1 {
@@ -172,15 +181,19 @@ struct NewGameSetupView: View {
                     .background(Color.white)
                     .cornerRadius(AppDesignSystem.Layout.cornerRadius)
                     .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
+                    .onSubmit {
+                        // Allow pressing return to add participant
+                        addParticipantIfValid()
+                    }
+                    .submitLabel(.done)
                 
                 Button(action: {
-                    if !participantName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                        gameSession.addParticipant(participantName)
-                        participantName = ""
-                    }
+                    addParticipantIfValid()
                 }) {
                     Image(systemName: "plus.circle.fill")
                         .font(.title2)
+                        .foregroundColor(participantName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?
+                                       AppDesignSystem.Colors.secondaryText : AppDesignSystem.Colors.primary)
                 }
                 .disabled(participantName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
@@ -268,6 +281,17 @@ struct NewGameSetupView: View {
                     }
                 }
             }
+        }
+    }
+    
+    private func addParticipantIfValid() {
+        let trimmedName = participantName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedName.isEmpty {
+            gameSession.addParticipant(trimmedName)
+            participantName = ""
+            
+            // Add haptic feedback
+            HapticManager.shared.playSuccess()
         }
     }
     

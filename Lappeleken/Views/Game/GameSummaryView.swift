@@ -60,15 +60,22 @@ struct GameSummaryView: View {
             .background(AppDesignSystem.Colors.background.ignoresSafeArea())
             .navigationTitle("Game Results")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Close") {
-                        presentationMode.wrappedValue.dismiss()
-                    }
-                }
-            }
+            .navigationBarItems(trailing: Button("Close") {
+                presentationMode.wrappedValue.dismiss()
+            })
             .sheet(isPresented: $showingSaveDialog) {
                 saveGameSheet
+                
+                if AppPurchaseManager.shared.currentTier == .free {
+                    VStack(spacing: 0) {
+                        Divider()
+                            .background(Color.gray.opacity(0.3))
+                        
+                        BannerAdView()
+                            .frame(height: 50)
+                            .background(Color.gray.opacity(0.05))
+                    }
+                }
             }
         }
     }
@@ -283,13 +290,9 @@ struct GameSummaryView: View {
             .padding()
             .navigationTitle("Export Options")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Cancel") {
-                        showingExportSheet = false
-                    }
-                }
-            }
+            .navigationBarItems(trailing: Button("Cancel") {
+                showingExportSheet = false
+            })
         }
     }
     
@@ -470,10 +473,15 @@ struct GameSummaryView: View {
                     .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
                 
                 Button("Save") {
-                    let finalGameName = gameName.isEmpty ? "Game \(Date())" : gameName
-                    gameSession.saveGame(name: finalGameName)
+                    let finalGameName = gameName.isEmpty ? "Game \(Date().formatted(date: .abbreviated, time: .shortened))" : gameName
+                    
+                    // Use the fixed save method
+                    GameHistoryManager.shared.saveGameSession(gameSession, name: finalGameName)
+                    
                     showingSaveDialog = false
                     gameName = ""
+                    
+                    print("✅ Game save dialog completed")
                 }
                 .buttonStyle(PrimaryButtonStyle())
                 .padding(.top)
@@ -481,13 +489,9 @@ struct GameSummaryView: View {
             .padding()
             .navigationTitle("Save Game")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Cancel") {
-                        showingSaveDialog = false
-                    }
-                }
-            }
+            .navigationBarItems(trailing: Button("Cancel") {
+                showingSaveDialog = false
+            })
         }
     }
     

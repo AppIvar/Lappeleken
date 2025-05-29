@@ -5,6 +5,8 @@
 //  Created by Ivar Hovland on 09/05/2025.
 //
 
+// Replace the existing AssignPlayersView with this improved version:
+
 import SwiftUI
 
 struct AssignPlayersView: View {
@@ -36,32 +38,7 @@ struct AssignPlayersView: View {
                             .padding(.horizontal, 30)
                         
                         Button("Assign Players") {
-                            // Debug check
-                            print("AssignPlayersView - Before assignment:")
-                            print("Participants: \(gameSession.participants.count)")
-                            print("Selected players: \(gameSession.selectedPlayers.count)")
-                            
-                            // Check if we can assign
-                            if gameSession.participants.isEmpty || gameSession.selectedPlayers.isEmpty {
-                                // Cannot assign, show error and start game anyway
-                                print("ERROR: Cannot assign players, starting game without assignment")
-                                NotificationCenter.default.post(name: Notification.Name("StartGame"), object: nil)
-                                presentationMode.wrappedValue.dismiss()
-                            } else {
-                                // We can assign
-                                // First perform the assignment
-                                gameSession.assignPlayersRandomly()
-                                
-                                // Then start animation
-                                withAnimation(.easeInOut(duration: 0.5)) {
-                                    assignmentComplete = true
-                                    
-                                    // Start showing participants one by one
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                        animateNextParticipant()
-                                    }
-                                }
-                            }
+                            performPlayerAssignment()
                         }
                         .buttonStyle(PrimaryButtonStyle())
                         .padding(.horizontal, 40)
@@ -124,12 +101,7 @@ struct AssignPlayersView: View {
                         
                         if currentParticipantIndex >= gameSession.participants.count - 1 {
                             Button("Start Game") {
-                                
-                                gameSession.objectWillChange.send()
-                                
-                                NotificationCenter.default.post(name: Notification.Name("StartGame"), object: nil)
-                                
-                                presentationMode.wrappedValue.dismiss()
+                                handleStartGame()
                             }
                             .buttonStyle(PrimaryButtonStyle())
                             .padding(.vertical, 20)
@@ -150,10 +122,67 @@ struct AssignPlayersView: View {
                 }
             )
             .navigationTitle("Player Assignment")
-            .navigationBarItems(trailing: Button("Cancel") {
-                presentationMode.wrappedValue.dismiss()
-            })
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Cancel") {
+                        presentationMode.wrappedValue.dismiss()
+                    }
+                }
+            }
         }
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func performPlayerAssignment() {
+        // Debug check
+        print("AssignPlayersView - Before assignment:")
+        print("Participants: \(gameSession.participants.count)")
+        print("Selected players: \(gameSession.selectedPlayers.count)")
+        
+        // Check if we can assign
+        guard !gameSession.participants.isEmpty && !gameSession.selectedPlayers.isEmpty else {
+            print("ERROR: Cannot assign players, starting game without assignment")
+            startGameDirectly()
+            return
+        }
+        
+        // Perform the assignment
+        gameSession.assignPlayersRandomly()
+        
+        // Start animation
+        withAnimation(.easeInOut(duration: 0.5)) {
+            assignmentComplete = true
+            
+            // Start showing participants one by one
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                animateNextParticipant()
+            }
+        }
+    }
+    
+    private func handleStartGame() {
+        // Check if we should show interstitial before starting game
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let rootViewController = windowScene.windows.first?.rootViewController else {
+            startGameDirectly()
+            return
+        }
+        
+        // Use the new enhanced ad manager method
+        AdManager.shared.showInterstitialForGameFlow(.playerAssignment, from: rootViewController) { success in
+            DispatchQueue.main.async {
+                self.startGameDirectly()
+            }
+        }
+    }
+    
+    private func startGameDirectly() {
+        gameSession.objectWillChange.send()
+        
+        NotificationCenter.default.post(name: Notification.Name("StartGame"), object: nil)
+        
+        presentationMode.wrappedValue.dismiss()
     }
     
     // Function to animate through participants one by one
@@ -190,4 +219,3 @@ struct AssignPlayersView: View {
         }
     }
 }
-

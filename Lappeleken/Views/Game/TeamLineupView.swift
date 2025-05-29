@@ -60,6 +60,17 @@ struct TeamLineupView: View {
         .background(AppDesignSystem.Colors.cardBackground)
         .cornerRadius(AppDesignSystem.Layout.cornerRadius)
         .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
+        
+        if AppPurchaseManager.shared.currentTier == .free {
+            VStack(spacing: 0) {
+                Divider()
+                    .background(Color.gray.opacity(0.3))
+                
+                BannerAdView()
+                    .frame(height: 50)
+                    .background(Color.gray.opacity(0.05))
+            }
+        }
     }
 }
 

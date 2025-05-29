@@ -32,6 +32,8 @@ class GameHistoryManager: ObservableObject {
         }
     }
     
+    // MARK: - Main Save/Load Methods (for legacy SavedGame struct)
+    
     func saveGame(_ gameSession: GameSession, name: String) {
         let encoder = JSONEncoder()
         
@@ -51,7 +53,7 @@ class GameHistoryManager: ObservableObject {
             // Add to the list
             savedGames.append(savedGame)
             
-            // Save to persisten storage
+            // Save to persistent storage
             saveToStorage()
             
             print("Game saved successfully: \(name)")
@@ -80,6 +82,56 @@ class GameHistoryManager: ObservableObject {
         savedGames.removeAll { $0.id == id }
         saveToStorage()
     }
+    
+    // MARK: - SavedGameSession Methods (for HistoryView)
+    
+    func getSavedGameSessions() -> [SavedGameSession] {
+        // Load from the correct key
+        if let data = UserDefaults.standard.data(forKey: "savedGameSessions"),
+           let games = try? JSONDecoder().decode([SavedGameSession].self, from: data) {
+            print("📚 Loaded \(games.count) saved games from storage")
+            return games.sorted { $0.dateSaved > $1.dateSaved }
+        }
+        
+        print("📚 No saved games found in storage")
+        return []
+    }
+
+    func saveGameSession(_ gameSession: GameSession, name: String) {
+        print("🎮 Saving game session: \(name)")
+        
+        let savedGame = SavedGameSession(from: gameSession, name: name)
+        var savedGames = getSavedGameSessions()
+        savedGames.append(savedGame)
+        
+        if let encoded = try? JSONEncoder().encode(savedGames) {
+            UserDefaults.standard.set(encoded, forKey: "savedGameSessions")
+            print("✅ Game session saved: \(name)")
+            
+            // Notify observers
+            DispatchQueue.main.async {
+                self.objectWillChange.send()
+            }
+        } else {
+            print("❌ Failed to save game session")
+        }
+    }
+    
+    func deleteGameSession(_ gameId: UUID) {
+        var savedGames = getSavedGameSessions()
+        savedGames.removeAll { $0.id == gameId }
+        
+        if let encoded = try? JSONEncoder().encode(savedGames) {
+            UserDefaults.standard.set(encoded, forKey: "savedGameSessions")
+            
+            // Update the published property
+            DispatchQueue.main.async {
+                self.objectWillChange.send()
+            }
+        }
+    }
+    
+    // MARK: - Private Methods
     
     private func saveToStorage() {
         let encoder = JSONEncoder()

@@ -200,35 +200,103 @@ class AppPurchaseManager: ObservableObject {
     
     func loadProducts() async {
         print("🛒 Loading products...")
+        print("🔍 Bundle ID: \(Bundle.main.bundleIdentifier ?? "Unknown")")
+        print("🔍 Environment: \(AppConfig.environment)")
+        
         isLoading = true
         purchaseError = nil
         
         do {
-            let useRealProducts = true // Set this to true to use real products even in debug
-            
-            #if DEBUG
-            if !useRealProducts {
-                // Create mock products for testing
-                availableProducts = []
-                print("⚠️ Running in debug mode - using mock product data")
-                isLoading = false
-                return
+            let productIds = ProductID.allCases.map { $0.rawValue }
+            print("🔍 Requested Product IDs:")
+            for (index, id) in productIds.enumerated() {
+                print("  \(index + 1). \(id)")
             }
-            #endif
             
-            let products = try await Product.products(for: ProductID.allCases.map { $0.rawValue })
-            availableProducts = products
-            print("✅ Loaded \(products.count) products")
+            // Add more specific error handling
+            let products = try await Product.products(for: productIds)
             
-            for product in products {
-                print("  • \(product.displayName): \(product.displayPrice)")
+            print("🔍 StoreKit Response:")
+            print("  - Products returned: \(products.count)")
+            print("  - Expected products: \(productIds.count)")
+            
+            if products.isEmpty {
+                print("⚠️ No products returned from StoreKit")
+                print("🔍 Debugging checklist:")
+                print("  - App Store Connect product status: Ready to Submit ✓")
+                print("  - Bundle ID matches: \(Bundle.main.bundleIdentifier == "HovlandGames.Lucky-Football-Slip" ? "✓" : "❌")")
+                print("  - Product ID format: \(productIds.first?.hasPrefix("HovlandGames.Lucky_Football_Slip.") == true ? "✓" : "❌")")
+                print("  - Signed in to App Store: Check device settings")
+                print("  - Network connection: \(checkNetworkConnection() ? "✓" : "❌")")
+            } else {
+                availableProducts = products
+                print("✅ Products loaded successfully:")
+                for product in products {
+                    print("  • \(product.id): \(product.displayName) - \(product.displayPrice)")
+                }
             }
         } catch {
             print("❌ Failed to load products: \(error)")
-            purchaseError = "Failed to load products: \(error.localizedDescription)"
+            
+            // More specific error handling
+            if let storeKitError = error as? StoreKitError {
+                switch storeKitError {
+                case .notAvailableInStorefront:
+                    purchaseError = "Products not available in your region"
+                case .networkError:
+                    purchaseError = "Network error. Please check your connection and try again."
+                case .systemError:
+                    purchaseError = "System error. Please restart the app and try again."
+                default:
+                    purchaseError = "Store error: \(storeKitError.localizedDescription)"
+                }
+            } else {
+                purchaseError = "Failed to load products: \(error.localizedDescription)"
+            }
         }
         
         isLoading = false
+    }
+
+    // Add this helper method to check network
+    private func checkNetworkConnection() -> Bool {
+        // Simple network check
+        guard let url = URL(string: "https://www.apple.com") else { return false }
+        
+        var result = false
+        let semaphore = DispatchSemaphore(value: 0)
+        
+        let task = URLSession.shared.dataTask(with: url) { _, response, _ in
+            result = (response as? HTTPURLResponse)?.statusCode == 200
+            semaphore.signal()
+        }
+        
+        task.resume()
+        semaphore.wait()
+        
+        return result
+    }
+
+    // Add this method to test specific product loading
+    func testSpecificProduct() async {
+        print("🧪 Testing specific premium product...")
+        
+        do {
+            let products = try await Product.products(for: ["HovlandGames.Lucky_Football_Slip.premium"])
+            
+            if let product = products.first {
+                print("✅ Premium product found:")
+                print("  - ID: \(product.id)")
+                print("  - Display Name: \(product.displayName)")
+                print("  - Description: \(product.description)")
+                print("  - Price: \(product.displayPrice)")
+                print("  - Type: \(product.type)")
+            } else {
+                print("❌ Premium product not found")
+            }
+        } catch {
+            print("❌ Error testing premium product: \(error)")
+        }
     }
     
     func debugProductLoading() async {

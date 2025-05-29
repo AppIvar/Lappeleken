@@ -33,22 +33,9 @@
 		485B34C42DCDDEBA004F3267 /* Lucky Football SlipUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Lucky Football SlipUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
-/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
-		485B36052DDF13C7004F3267 /* Exceptions for "Lucky Football Slip" folder in "Lucky Football Slip" target */ = {
-			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
-			membershipExceptions = (
-				"Lucky-Football-Slip-Info.plist",
-			);
-			target = 485B34AA2DCDDEB7004F3267 /* Lucky Football Slip */;
-		};
-/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
-
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		485B34AD2DCDDEB7004F3267 /* Lucky Football Slip */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
-			exceptions = (
-				485B36052DDF13C7004F3267 /* Exceptions for "Lucky Football Slip" folder in "Lucky Football Slip" target */,
-			);
 			path = "Lucky Football Slip";
 			sourceTree = "<group>";
 		};
@@ -425,7 +412,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = C444WC2JJY;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -454,7 +441,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = C444WC2JJY;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;

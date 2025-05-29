@@ -343,22 +343,20 @@ class GameSession: ObservableObject, Codable {
     func saveGame(name: String) {
         print("🎮 Starting to save game: \(name)")
         
-        // Primary save using GameHistoryManager
-        do {
-            GameHistoryManager.shared.saveGameSession(self, name: name)
-            print("✅ Game saved successfully via GameHistoryManager: \(name)")
-        } catch {
-            print("❌ Error saving game via GameHistoryManager: \(error)")
-        }
+        // Use the SavedGameSession method from HistoryView
+        let savedGame = SavedGameSession(from: self, name: name)
+        var savedGames = GameHistoryManager.shared.getSavedGameSessions() // Changed method name
+        savedGames.append(savedGame)
         
-        // Secondary save using dataService (async)
-        Task {
-            do {
-                try await dataService.saveGame(gameSession: self, name: name)
-                print("✅ Game also saved via dataService: \(name)")
-            } catch {
-                print("⚠️ Warning: Could not save via dataService (but primary save succeeded): \(error)")
-            }
+        // Save to UserDefaults using the working method
+        if let encoded = try? JSONEncoder().encode(savedGames) {
+            UserDefaults.standard.set(encoded, forKey: "savedGameSessions") // Use different key to avoid conflicts
+            print("✅ Game saved successfully: \(name)")
+            
+            // Update the published property
+            GameHistoryManager.shared.objectWillChange.send()
+        } else {
+            print("❌ Failed to encode and save game")
         }
     }
 
@@ -399,7 +397,7 @@ class GameSession: ObservableObject, Codable {
     }
     
     // Record an event
-    func recordEvent(player: Player, eventType: Bet.EventType) {
+    @MainActor func recordEvent(player: Player, eventType: Bet.EventType) {
         let event = GameEvent(player: player, eventType: eventType, timestamp: Date())
         events.append(event)
         
@@ -468,8 +466,30 @@ class GameSession: ObservableObject, Codable {
         // Debug: print event recorded
         print("Event recorded: \(eventType.rawValue) for \(player.name)")
         
+        // NEW: Check if we should show interstitial ad after every 3rd event
+        checkAndShowInterstitialAfterEvent()
+        
         // Notify observers of the changes
         objectWillChange.send()
+    }
+    
+    @MainActor
+    private func checkAndShowInterstitialAfterEvent() {
+        guard AppPurchaseManager.shared.currentTier == .free else { return }
+        
+        let currentEventCount = events.count
+        print("📊 Total events recorded: \(currentEventCount)")
+        
+        if currentEventCount > 0 && currentEventCount % 3 == 0 {
+            print("🎯 Showing interstitial ad after \(currentEventCount) events")
+            
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                NotificationCenter.default.post(
+                    name: Notification.Name("ShowInterstitialAfterEvent"),
+                    object: ["eventCount": currentEventCount]
+                )
+            }
+        }
     }
     
     func loadFromService() async {
@@ -527,8 +547,10 @@ class GameSession: ObservableObject, Codable {
             
             substitutePlayer(playerOff: playerOff, playerOn: playerOn)
         } else {
-            // For other events
-            recordEvent(player: player, eventType: eventType)
+            // For other events - ensure we're on MainActor
+            Task { @MainActor in
+                recordEvent(player: player, eventType: eventType)
+            }
         }
     }
     

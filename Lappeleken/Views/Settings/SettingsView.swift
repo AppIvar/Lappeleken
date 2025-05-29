@@ -82,6 +82,7 @@ struct SettingsView: View {
                 MatchSelectionView(gameSession: gameSession)
             }
         }
+        .withBannerAd(placement: .bottom)
     }
     
     // MARK: - View Components
@@ -396,3 +397,5 @@ struct LiveModeInfoView: View {
         }
     }
 }
+
+

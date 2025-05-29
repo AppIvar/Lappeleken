@@ -45,7 +45,7 @@ struct HomeView: View {
             }
             .padding()
         }
-        .showBannerAdForFreeUsers() // Add banner ad at bottom for free users
+
         .sheet(isPresented: $showingNewGameSheet) {
             NewGameSetupView(gameSession: gameSession)
         }
@@ -59,6 +59,18 @@ struct HomeView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenHistoryAfterAd"))) { _ in
             showingHistoryView = true
+            
+        }
+        
+        if AppPurchaseManager.shared.currentTier == .free {
+            VStack(spacing: 0) {
+                Divider()
+                    .background(Color.gray.opacity(0.3))
+                
+                BannerAdView()
+                    .frame(height: 50)
+                    .background(Color.gray.opacity(0.05))
+            }
         }
     }
     

@@ -35,6 +35,17 @@ struct HowToPlayView: View {
         }
         .background(AppDesignSystem.Colors.background.ignoresSafeArea())
         .navigationTitle("How to Play")
+        
+        if AppPurchaseManager.shared.currentTier == .free {
+            VStack(spacing: 0) {
+                Divider()
+                    .background(Color.gray.opacity(0.3))
+                
+                BannerAdView()
+                    .frame(height: 50)
+                    .background(Color.gray.opacity(0.05))
+            }
+        }
     }
     
     private func instructionStep(number: String, title: String, description: String) -> some View {

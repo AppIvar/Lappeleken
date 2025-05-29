@@ -98,6 +98,17 @@ struct TimelineView: View {
                 }
             }
             .padding(.bottom, 30)
+            
+            if AppPurchaseManager.shared.currentTier == .free {
+                VStack(spacing: 0) {
+                    Divider()
+                        .background(Color.gray.opacity(0.3))
+                    
+                    BannerAdView()
+                        .frame(height: 50)
+                        .background(Color.gray.opacity(0.05))
+                }
+            }
         }
     }
     
