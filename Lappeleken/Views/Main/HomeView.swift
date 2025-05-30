@@ -197,7 +197,7 @@ struct HomeView: View {
             showingHistoryView = true
         }
     }
-    
+
     private func showInterstitialThenOpenHistory() {
         guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
               let rootViewController = windowScene.windows.first?.rootViewController else {
@@ -207,13 +207,9 @@ struct HomeView: View {
         }
         
         AdManager.shared.showInterstitialAd(from: rootViewController) { success in
-            DispatchQueue.main.async {
-                // We can't use self here, but we can use a different approach
-                // Post a notification to handle the history opening
-                NotificationCenter.default.post(
-                    name: Notification.Name("OpenHistoryAfterAd"),
-                    object: nil
-                )
+            // IMPORTANT: Add delay before showing next view
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.showingHistoryView = true
             }
         }
     }

@@ -278,6 +278,13 @@ class AdManager: NSObject, ObservableObject {
         return false
     }
     
+    func shouldShowInterstitialForContinueGame() -> Bool {
+        guard AppPurchaseManager.shared.currentTier == .free else { return false }
+        
+        // Show ad when continuing a saved game, but with cooldown to avoid annoyance
+        return shouldShowInterstitialWithCooldown(for: "continue_game", cooldownMinutes: 3)
+    }
+    
     private func recordInterstitialShown(for key: String, withContext context: String = "") {
         UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "lastInterstitial_\(key)")
         

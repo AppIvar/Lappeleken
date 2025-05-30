@@ -32,8 +32,6 @@ class GameHistoryManager: ObservableObject {
         }
     }
     
-    // MARK: - Main Save/Load Methods (for legacy SavedGame struct)
-    
     func saveGame(_ gameSession: GameSession, name: String) {
         let encoder = JSONEncoder()
         
@@ -53,7 +51,7 @@ class GameHistoryManager: ObservableObject {
             // Add to the list
             savedGames.append(savedGame)
             
-            // Save to persistent storage
+            // Save to persisten storage
             saveToStorage()
             
             print("Game saved successfully: \(name)")
@@ -83,18 +81,44 @@ class GameHistoryManager: ObservableObject {
         saveToStorage()
     }
     
-    // MARK: - SavedGameSession Methods (for HistoryView)
+    // MARK: - New Methods for SavedGameSession compatibility
     
     func getSavedGameSessions() -> [SavedGameSession] {
-        // Load from the correct key
+        // Load from the correct key for SavedGameSession format
         if let data = UserDefaults.standard.data(forKey: "savedGameSessions"),
            let games = try? JSONDecoder().decode([SavedGameSession].self, from: data) {
             print("📚 Loaded \(games.count) saved games from storage")
             return games.sorted { $0.dateSaved > $1.dateSaved }
         }
         
+        // Fallback: try to load old format and convert
+        if let data = UserDefaults.standard.data(forKey: "savedGames"),
+           let oldGames = try? JSONDecoder().decode([SavedGame].self, from: data) {
+            print("📚 Converting \(oldGames.count) old format games")
+            return convertOldGamesToNew(oldGames)
+        }
+        
         print("📚 No saved games found in storage")
         return []
+    }
+    
+    // Convert old SavedGame format to new SavedGameSession format
+    private func convertOldGamesToNew(_ oldGames: [SavedGame]) -> [SavedGameSession] {
+        var newGames: [SavedGameSession] = []
+        
+        for oldGame in oldGames {
+            if let gameSession = try? JSONDecoder().decode(GameSession.self, from: oldGame.gameData) {
+                let newGame = SavedGameSession(from: gameSession, name: oldGame.name)
+                newGames.append(newGame)
+            }
+        }
+        
+        // Save in new format
+        if let encoded = try? JSONEncoder().encode(newGames) {
+            UserDefaults.standard.set(encoded, forKey: "savedGameSessions")
+        }
+        
+        return newGames.sorted { $0.dateSaved > $1.dateSaved }
     }
 
     func saveGameSession(_ gameSession: GameSession, name: String) {
@@ -117,6 +141,8 @@ class GameHistoryManager: ObservableObject {
         }
     }
     
+    // MARK: - Delete method with correct signature
+    
     func deleteGameSession(_ gameId: UUID) {
         var savedGames = getSavedGameSessions()
         savedGames.removeAll { $0.id == gameId }
@@ -124,14 +150,14 @@ class GameHistoryManager: ObservableObject {
         if let encoded = try? JSONEncoder().encode(savedGames) {
             UserDefaults.standard.set(encoded, forKey: "savedGameSessions")
             
-            // Update the published property
+            // Notify observers
             DispatchQueue.main.async {
                 self.objectWillChange.send()
             }
         }
+        
+        print("🗑️ Deleted game with ID: \(gameId)")
     }
-    
-    // MARK: - Private Methods
     
     private func saveToStorage() {
         let encoder = JSONEncoder()
@@ -156,5 +182,25 @@ class GameHistoryManager: ObservableObject {
         } catch {
             print("Failed to load saved games: \(error.localizedDescription)")
         }
+    }
+}
+
+// MARK: - SavedGameSession Model (moved here for consistency)
+
+struct SavedGameSession: Identifiable, Codable {
+    let id: UUID
+    let name: String
+    let dateSaved: Date
+    let participants: [Participant]
+    let events: [GameEvent]
+    let selectedPlayers: [Player]
+    
+    init(from gameSession: GameSession, name: String) {
+        self.id = UUID()
+        self.name = name
+        self.dateSaved = Date()
+        self.participants = gameSession.participants
+        self.events = gameSession.events
+        self.selectedPlayers = gameSession.selectedPlayers
     }
 }

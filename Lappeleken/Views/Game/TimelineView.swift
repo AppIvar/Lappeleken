@@ -5,7 +5,6 @@
 //  Created by Ivar Hovland on 16/05/2025.
 //
 
-// Create TimelineView.swift
 import SwiftUI
 
 struct TimelineView: View {
@@ -21,9 +20,34 @@ struct TimelineView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                Text("Match Timeline")
-                    .font(AppDesignSystem.Typography.headingFont)
-                    .padding()
+                // Header with undo button
+                HStack {
+                    Text("Match Timeline")
+                        .font(AppDesignSystem.Typography.headingFont)
+                    
+                    Spacer()
+                    
+                    // Undo button in timeline
+                    if gameSession.canUndoLastEvent {
+                        Button(action: {
+                            showUndoConfirmation()
+                        }) {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.uturn.backward.circle.fill")
+                                    .font(.system(size: 16))
+                                Text("Undo Last")
+                                    .font(.caption.weight(.medium))
+                            }
+                            .foregroundColor(AppDesignSystem.Colors.error)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(AppDesignSystem.Colors.error.opacity(0.1))
+                            .cornerRadius(16)
+                        }
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.bottom, 8)
                 
                 if gameSession.events.isEmpty {
                     VStack {
@@ -41,6 +65,7 @@ struct TimelineView: View {
                     
                     ForEach(timelineItems.indices, id: \.self) { index in
                         let item = timelineItems[index]
+                        let isLastEvent = index == timelineItems.count - 1
                         
                         VStack(spacing: 0) {
                             // Timeline connector from previous item
@@ -58,6 +83,12 @@ struct TimelineView: View {
                                     Circle()
                                         .fill(item.color)
                                         .frame(width: 16, height: 16)
+                                        .overlay(
+                                            // Highlight last event
+                                            Circle()
+                                                .stroke(isLastEvent ? AppDesignSystem.Colors.primary : Color.clear, lineWidth: 2)
+                                                .frame(width: 20, height: 20)
+                                        )
                                     
                                     if index < timelineItems.count - 1 {
                                         Rectangle()
@@ -76,9 +107,22 @@ struct TimelineView: View {
                                         
                                         Spacer()
                                         
-                                        Text(item.label)
-                                            .font(AppDesignSystem.Typography.bodyFont.bold())
-                                            .foregroundColor(item.color)
+                                        HStack(spacing: 8) {
+                                            Text(item.label)
+                                                .font(AppDesignSystem.Typography.bodyFont.bold())
+                                                .foregroundColor(item.color)
+                                            
+                                            // Show "LATEST" badge on last event
+                                            if isLastEvent {
+                                                Text("LATEST")
+                                                    .font(.system(size: 10, weight: .bold))
+                                                    .foregroundColor(.white)
+                                                    .padding(.horizontal, 6)
+                                                    .padding(.vertical, 2)
+                                                    .background(AppDesignSystem.Colors.primary)
+                                                    .cornerRadius(8)
+                                            }
+                                        }
                                     }
                                     
                                     Text(item.description)
@@ -88,9 +132,22 @@ struct TimelineView: View {
                                     Text(item.detail)
                                         .font(AppDesignSystem.Typography.captionFont)
                                         .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                                    
+                                    // Show points impact for bets
+                                    if let pointsImpact = item.pointsImpact {
+                                        Text(pointsImpact)
+                                            .font(AppDesignSystem.Typography.captionFont.bold())
+                                            .foregroundColor(item.pointsImpact?.contains("+") == true ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.error)
+                                            .padding(.top, 2)
+                                    }
                                 }
                                 .padding(.vertical, 8)
                                 .padding(.trailing, 16)
+                                .background(
+                                    // Subtle highlight for last event
+                                    isLastEvent ? AppDesignSystem.Colors.primary.opacity(0.05) : Color.clear
+                                )
+                                .cornerRadius(8)
                             }
                             .padding(.leading, 16)
                         }
@@ -110,15 +167,32 @@ struct TimelineView: View {
                 }
             }
         }
+        .alert("Undo Last Event", isPresented: $showingUndoConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Undo", role: .destructive) {
+                gameSession.undoLastEvent()
+            }
+        } message: {
+            if let lastEvent = gameSession.events.last {
+                Text("This will undo '\(lastEvent.eventType.rawValue)' for \(lastEvent.player.name) and reverse all balance changes.")
+            }
+        }
     }
     
-    // Timeline item model
+    @State private var showingUndoConfirmation = false
+    
+    private func showUndoConfirmation() {
+        showingUndoConfirmation = true
+    }
+    
+    // Enhanced Timeline item model
     private struct TimelineItem {
         let timestamp: Date
         let label: String
         let description: String
         let detail: String
         let color: Color
+        let pointsImpact: String? // NEW: Show points won/lost
     }
     
     // Helper function to get participant name for a player
@@ -148,13 +222,16 @@ struct TimelineView: View {
                 color = AppDesignSystem.Colors.primary
             }
             
-            // Fixed version of the previously problematic code
+            // Calculate points impact
+            let pointsImpact = calculatePointsImpact(for: event)
+            
             items.append(TimelineItem(
                 timestamp: event.timestamp,
                 label: event.eventType.rawValue,
                 description: "\(event.player.name) (\(event.player.team.name))",
                 detail: "Recorded by \(getParticipantName(for: event.player))",
-                color: color
+                color: color,
+                pointsImpact: pointsImpact
             ))
         }
         
@@ -165,11 +242,29 @@ struct TimelineView: View {
                 label: "Substitution",
                 description: "\(sub.from.name) ➝ \(sub.to.name)",
                 detail: "\(sub.team.name)",
-                color: AppDesignSystem.Colors.secondary
+                color: AppDesignSystem.Colors.secondary,
+                pointsImpact: nil
             ))
         }
         
         // Sort by timestamp
         return items.sorted(by: { $0.timestamp < $1.timestamp })
+    }
+    
+    // Calculate points impact for an event
+    private func calculatePointsImpact(for event: GameEvent) -> String? {
+        guard let bet = gameSession.bets.first(where: { $0.eventType == event.eventType }) else {
+            return nil
+        }
+        
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencySymbol = UserDefaults.standard.string(forKey: "currencySymbol") ?? "€"
+        
+        if bet.amount >= 0 {
+            return "+\(formatter.string(from: NSNumber(value: bet.amount)) ?? "€0")"
+        } else {
+            return "\(formatter.string(from: NSNumber(value: bet.amount)) ?? "€0")"
+        }
     }
 }

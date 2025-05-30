@@ -29,9 +29,11 @@ class GameSession: ObservableObject, Codable {
     @Published var isLiveMode: Bool = false
     @Published var matchLineups: [String: Lineup] = [:]
     @Published var matchEvents: [MatchEvent] = []
+    @Published var canUndoLastEvent: Bool = false
     private var dataService: GameDataService
     private var matchMonitoringTask: Task<Void, Never>?
     private var matchService: MatchService?
+    private var lastEventBackup: (event: GameEvent, participantBalances: [UUID: Double])? = nil
     
     // Default initializer
     init() {
@@ -466,11 +468,128 @@ class GameSession: ObservableObject, Codable {
         // Debug: print event recorded
         print("Event recorded: \(eventType.rawValue) for \(player.name)")
         
+        canUndoLastEvent = true
+        
         // NEW: Check if we should show interstitial ad after every 3rd event
         checkAndShowInterstitialAfterEvent()
         
         // Notify observers of the changes
         objectWillChange.send()
+    }
+    
+    @MainActor func undoLastEvent() {
+        guard !events.isEmpty else { return }
+        
+        let lastEvent = events.removeLast()
+        
+        // Reverse the balance changes
+        reversePayments(for: lastEvent)
+        
+        // Reverse player stats
+        reversePlayerStats(for: lastEvent)
+        
+        // Update the UI
+        objectWillChange.send()
+        canUndoLastEvent = !events.isEmpty
+        
+        print("🔄 Undid event: \(lastEvent.eventType.rawValue) for \(lastEvent.player.name)")
+    }
+    
+    private func reversePayments(for event: GameEvent) {
+        // Find the bet for this event type
+        guard let bet = bets.first(where: { $0.eventType == event.eventType }) else { return }
+        
+        // Find participants who have the player (include both active and substituted players)
+        let participantsWithPlayer = participants.filter { participant in
+            participant.selectedPlayers.contains { $0.id == event.player.id } ||
+            participant.substitutedPlayers.contains { $0.id == event.player.id }
+        }
+        
+        // Find participants who don't have the player
+        let participantsWithoutPlayer = participants.filter { participant in
+            !participant.selectedPlayers.contains { $0.id == event.player.id } &&
+            !participant.substitutedPlayers.contains { $0.id == event.player.id }
+        }
+        
+        if participantsWithPlayer.isEmpty || participantsWithoutPlayer.isEmpty {
+            return
+        }
+        
+        // Reverse the payment logic (opposite of calculatePayments)
+        if bet.amount >= 0 {
+            // Reverse: participants WITHOUT player paid those WITH player
+            let totalAmount = Double(participantsWithoutPlayer.count) * bet.amount
+            let amountPerWinner = totalAmount / Double(participantsWithPlayer.count)
+            
+            for i in 0..<participants.count {
+                let hasPlayer = participants[i].selectedPlayers.contains { $0.id == event.player.id } ||
+                participants[i].substitutedPlayers.contains { $0.id == event.player.id }
+                
+                if hasPlayer {
+                    participants[i].balance -= amountPerWinner // Reverse: subtract instead of add
+                } else {
+                    participants[i].balance += bet.amount // Reverse: add instead of subtract
+                }
+            }
+        } else {
+            // Reverse: participants WITH player paid those WITHOUT player
+            let payAmount = abs(bet.amount)
+            
+            for i in 0..<participants.count {
+                let hasPlayer = participants[i].selectedPlayers.contains { $0.id == event.player.id } ||
+                participants[i].substitutedPlayers.contains { $0.id == event.player.id }
+                
+                if hasPlayer {
+                    participants[i].balance += payAmount * Double(participantsWithoutPlayer.count) // Reverse
+                } else {
+                    participants[i].balance -= payAmount * Double(participantsWithPlayer.count) // Reverse
+                }
+            }
+        }
+    }
+
+    private func reversePlayerStats(for event: GameEvent) {
+        // Helper function to reverse player stats
+        func reversePlayerStats(_ playerToUpdate: inout Player) {
+            switch event.eventType {
+            case .goal:
+                playerToUpdate.goals = max(0, playerToUpdate.goals - 1)
+            case .assist:
+                playerToUpdate.assists = max(0, playerToUpdate.assists - 1)
+            case .yellowCard:
+                playerToUpdate.yellowCards = max(0, playerToUpdate.yellowCards - 1)
+            case .redCard:
+                playerToUpdate.redCards = max(0, playerToUpdate.redCards - 1)
+            case .ownGoal, .penalty, .penaltyMissed, .cleanSheet, .custom:
+                // These events don't update player stats
+                break
+            }
+        }
+        
+        // Find and update the player in all locations (same as recordEvent but reverse)
+        if let index = availablePlayers.firstIndex(where: { $0.id == event.player.id }) {
+            var updatedPlayer = availablePlayers[index]
+            reversePlayerStats(&updatedPlayer)
+            availablePlayers[index] = updatedPlayer
+            
+            // Update in selectedPlayers
+            if let selectedIndex = selectedPlayers.firstIndex(where: { $0.id == event.player.id }) {
+                selectedPlayers[selectedIndex] = updatedPlayer
+            }
+            
+            // Update in participants
+            for i in 0..<participants.count {
+                // Check active players
+                if let activeIndex = participants[i].selectedPlayers.firstIndex(where: { $0.id == event.player.id }) {
+                    participants[i].selectedPlayers[activeIndex] = updatedPlayer
+                }
+                
+                // Check substituted players
+                if let subIndex = participants[i].substitutedPlayers.firstIndex(where: { $0.id == event.player.id }) {
+                    participants[i].substitutedPlayers[subIndex] = updatedPlayer
+                }
+            }
+        }
     }
     
     @MainActor

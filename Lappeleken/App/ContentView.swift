@@ -18,25 +18,30 @@ struct ContentView: View {
     @State private var showUpgradeView = false
     @State private var showSaveGameSheet = false
     @State private var gameName = ""
+    @State private var showAutoSavePrompt = false
+
     
     var body: some View {
         NavigationView {
             if activeGame {
                 GameView(gameSession: gameSession)
                     .toolbar {
-                        ToolbarItem(placement: .navigationBarLeading) {
-                            Button("Save") {
-                                showSaveGameSheet = true
-                            }
-                        }
                         
-                        ToolbarItemGroup(placement: .navigationBarTrailing) {
-                            Button("Settings") {
-                                showSettingsView = true
-                            }
-                            
+                        ToolbarItem(placement: .navigationBarTrailing) {
                             Button("End Game") {
                                 showSummaryView = true
+                            }
+                        }
+                    }
+                    .onAppear {
+                        // Show save prompt when game view appears (game has started)
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            if AppPurchaseManager.shared.currentTier == .free &&
+                               !gameSession.participants.isEmpty &&
+                               !UserDefaults.standard.bool(forKey: "hasShownSavePromptFor\(gameSession.id.uuidString)") {
+                                
+                                showAutoSavePrompt = true
+                                UserDefaults.standard.set(true, forKey: "hasShownSavePromptFor\(gameSession.id.uuidString)")
                             }
                         }
                     }
@@ -80,10 +85,34 @@ struct ContentView: View {
                     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ShowHistory"))) { _ in
                         showHistoryView = true
                     }
-                    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("StartNewGame"))) { _ in
-                        // Handle start new game from history empty state
+                    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ContinueSavedGame"))) { notification in
+                        if let userInfo = notification.userInfo,
+                           let restoredGameSession = userInfo["gameSession"] as? GameSession,
+                           let gameName = userInfo["gameName"] as? String {
+                            
+                            // Replace current game session with restored one
+                            gameSession.participants = restoredGameSession.participants
+                            gameSession.events = restoredGameSession.events
+                            gameSession.selectedPlayers = restoredGameSession.selectedPlayers
+                            gameSession.availablePlayers = restoredGameSession.availablePlayers
+                            gameSession.canUndoLastEvent = restoredGameSession.canUndoLastEvent
+                            
+                            // Start the game
+                            activeGame = true
+                            
+                            print("✅ Continued saved game: \(gameName)")
+                            print("📊 Restored \(gameSession.participants.count) participants, \(gameSession.events.count) events")
+                        }
+                    }
+
+
+                    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("CloseHistoryView"))) { _ in
                         showHistoryView = false
                     }
+                    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("StartNewGame"))) { _ in
+                        showHistoryView = false
+                    }
+                
             }
         }
         .navigationViewStyle(StackNavigationViewStyle()) // Ensure consistent behavior across devices
@@ -102,6 +131,9 @@ struct ContentView: View {
                     gameSession.reset()
                     activeGame = false
                 }
+        }
+        .sheet(isPresented: $showAutoSavePrompt) {
+            autoSaveGamePrompt
         }
         .sheet(isPresented: $showHistoryView) {
             HistoryView()
@@ -127,6 +159,54 @@ struct ContentView: View {
             }
         } message: {
             Text("Enter a name for this game session")
+        }
+    }
+    
+    private var autoSaveGamePrompt: some View {
+        NavigationView {
+            VStack(spacing: 20) {
+                Image(systemName: "square.and.arrow.down")
+                    .font(.system(size: 50))
+                    .foregroundColor(AppDesignSystem.Colors.primary)
+                
+                Text("Save Your Game?")
+                    .font(AppDesignSystem.Typography.headingFont)
+                
+                Text("Give your game a name so you don't lose your progress. You can always save it later from the game summary.")
+                    .font(AppDesignSystem.Typography.bodyFont)
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+                
+                TextField("Game name (optional)", text: $gameName)
+                    .padding()
+                    .background(Color.white)
+                    .cornerRadius(AppDesignSystem.Layout.cornerRadius)
+                    .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
+                
+                HStack(spacing: 16) {
+                    Button("Skip") {
+                        showAutoSavePrompt = false
+                        gameName = ""
+                    }
+                    .buttonStyle(SecondaryButtonStyle())
+                    
+                    Button("Save & Continue") {
+                        let finalGameName = gameName.isEmpty ?
+                            "Game \(Date().formatted(date: .abbreviated, time: .shortened))" :
+                            gameName
+                        
+                        GameHistoryManager.shared.saveGameSession(gameSession, name: finalGameName)
+                        
+                        showAutoSavePrompt = false
+                        gameName = ""
+                    }
+                    .buttonStyle(PrimaryButtonStyle())
+                }
+            }
+            .padding()
+            .navigationTitle("Quick Save")
+            .navigationBarTitleDisplayMode(.inline)
         }
     }
 }

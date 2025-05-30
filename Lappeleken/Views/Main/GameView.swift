@@ -1,5 +1,5 @@
 //
-//  GameView.swift
+//  GameView.swift (Cleaned Up Version)
 //  Lucky Football Slip
 //
 //  Created by Ivar Hovland on 08/05/2025.
@@ -13,9 +13,10 @@ struct GameView: View {
     @State private var selectedEventType: Bet.EventType? = nil
     @State private var showingEventSheet = false
     @State private var showingSubstitutionSheet = false
-    @State private var showingAutoSavePrompt = false // This was missing
+    @State private var showingAutoSavePrompt = false
     @State private var autoSaveGameName = ""
-    
+    @State private var showingUndoConfirmation = false
+
     var body: some View {
         TabView {
             participantsView
@@ -26,11 +27,6 @@ struct GameView: View {
             playersView
                 .tabItem {
                     Label("Players", systemImage: "sportscourt")
-                }
-            
-            eventsView
-                .tabItem {
-                    Label("Events", systemImage: "list.bullet")
                 }
             
             TimelineView(gameSession: gameSession)
@@ -49,6 +45,7 @@ struct GameView: View {
                 }
         }
         .navigationTitle("Lucky Football Slip")
+        .navigationBarTitleDisplayMode(.inline)
         .accentColor(AppDesignSystem.Colors.primary)
         .sheet(isPresented: $showingEventSheet) {
             recordEventView
@@ -129,6 +126,7 @@ struct GameView: View {
     private var participantsView: some View {
         ScrollView {
             VStack(spacing: AppDesignSystem.Layout.standardPadding) {
+                // Action buttons row with undo functionality
                 HStack {
                     HStack(spacing: 10) {
                         Button(action: {
@@ -150,7 +148,23 @@ struct GameView: View {
                             }
                         }
                         .buttonStyle(PrimaryButtonStyle())
+                        
+                        // Undo button
+                        if gameSession.canUndoLastEvent {
+                            Button(action: {
+                                showUndoConfirmation()
+                            }) {
+                                HStack {
+                                    Image(systemName: "arrow.uturn.backward.circle.fill")
+                                    Text("Undo")
+                                }
+                            }
+                            .buttonStyle(SecondaryButtonStyle())
+                            .foregroundColor(AppDesignSystem.Colors.error)
+                        }
                     }
+                    
+                    Spacer()
                 }
                 
                 ForEach(gameSession.participants) { participant in
@@ -162,7 +176,16 @@ struct GameView: View {
             .padding()
         }
         .background(AppDesignSystem.Colors.background.ignoresSafeArea())
-        .withBannerAd(placement: .bottom)
+        .alert("Undo Last Event", isPresented: $showingUndoConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Undo", role: .destructive) {
+                gameSession.undoLastEvent()
+            }
+        } message: {
+            if let lastEvent = gameSession.events.last {
+                Text("This will undo '\(lastEvent.eventType.rawValue)' for \(lastEvent.player.name) and reverse all balance changes.")
+            }
+        }
     }
     
     private var playersView: some View {
@@ -247,39 +270,8 @@ struct GameView: View {
         .id("players-view-\(gameSession.events.count)-\(gameSession.substitutions.count)")
     }
     
-    private var eventsView: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: AppDesignSystem.Layout.standardPadding) {
-                HStack {
-                    Text("Game Events")
-                        .font(AppDesignSystem.Typography.headingFont)
-                    
-                    Spacer()
-                    
-                    Button(action: {
-                        showingEventSheet = true
-                    }) {
-                        Label("Record Event", systemImage: "plus.circle.fill")
-                    }
-                    .buttonStyle(PrimaryButtonStyle())
-                }
-                
-                if gameSession.events.isEmpty {
-                    Text("No events recorded yet")
-                        .font(AppDesignSystem.Typography.bodyFont)
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.top, 40)
-                } else {
-                    ForEach(gameSession.events.sorted(by: { $0.timestamp > $1.timestamp })) { event in
-                        EventCard(event: event)
-                    }
-                }
-            }
-            .padding()
-        }
-        .background(AppDesignSystem.Colors.background.ignoresSafeArea())
-        .withBannerAd(placement: .bottom)
+    private func showUndoConfirmation() {
+        showingUndoConfirmation = true
     }
     
     // MARK: - Record Event Sheet
