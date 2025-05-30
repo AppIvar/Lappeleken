@@ -24,7 +24,7 @@ struct CardView<Content: View>: View {
     }
 }
 
-struct StatusCard: View {
+/*struct StatusCard: View {
     let title: String
     let subtitle: String
     let icon: String
@@ -53,7 +53,7 @@ struct StatusCard: View {
         .background(AppDesignSystem.Colors.cardBackground)
         .cornerRadius(AppDesignSystem.Layout.cornerRadius)
     }
-}
+}*/
 
 struct CompetitionCard: View {
     let productID: AppPurchaseManager.ProductID

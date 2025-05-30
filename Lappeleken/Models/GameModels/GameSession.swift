@@ -134,12 +134,42 @@ class GameSession: ObservableObject, Codable {
     
     @objc private func handleModeChange() {
         self.dataService = ServiceProvider.shared.getGameDataService()
+        
+        // Update isLiveMode from UserDefaults
+        let newLiveMode = UserDefaults.standard.bool(forKey: "isLiveMode")
+        if newLiveMode != self.isLiveMode {
+            self.isLiveMode = newLiveMode
+            
+            // Initialize or clear match service based on mode
+            if newLiveMode {
+                self.matchService = ServiceProvider.shared.getMatchService()
+            } else {
+                self.matchService = nil
+            }
+            
+            print("🔄 GameSession mode updated: Live Mode = \(newLiveMode)")
+        }
     }
     
 
     func fetchAvailableMatches() async throws {
-        // Check live mode status first
-        if !isLiveMode {
+        // Always check UserDefaults for the most current live mode status
+        let currentLiveMode = UserDefaults.standard.bool(forKey: "isLiveMode")
+        
+        // Update our property if it's out of sync
+        if currentLiveMode != isLiveMode {
+            await MainActor.run {
+                isLiveMode = currentLiveMode
+                if isLiveMode {
+                    matchService = ServiceProvider.shared.getMatchService()
+                } else {
+                    matchService = nil
+                }
+            }
+        }
+        
+        // Check live mode status
+        if !currentLiveMode {
             print("Debug - Live mode is disabled when trying to fetch matches")
             throw NSError(domain: "com.lappeleken.error", code: 1,
                          userInfo: [NSLocalizedDescriptionKey: "Live mode is not enabled. Please enable it in settings."])
@@ -875,4 +905,66 @@ class GameSession: ObservableObject, Codable {
         // Force UI update
         objectWillChange.send()
     }
+    
+    // Debug method to check current state
+    func debugCurrentState() {
+        print("🔍 GameSession Debug State:")
+        print("  - Available Players: \(availablePlayers.count)")
+        print("  - Selected Players: \(selectedPlayers.count)")
+        print("  - Participants: \(participants.count)")
+        print("  - Bets: \(bets.count)")
+        
+        if availablePlayers.isEmpty {
+            print("⚠️ No available players! This is likely the issue.")
+            print("💡 Try calling: gameSession.addPlayers(SampleData.corePlayers)")
+        } else {
+            print("✅ Players are loaded:")
+            for (index, player) in availablePlayers.prefix(5).enumerated() {
+                print("     \(index + 1). \(player.name) (\(player.team.shortName))")
+            }
+            if availablePlayers.count > 5 {
+                print("     ... and \(availablePlayers.count - 5) more")
+            }
+        }
+    }
+    
+    // Force reload sample data
+    func forceLoadSampleData() {
+        print("🔄 Force loading sample data...")
+        availablePlayers = []
+        addPlayers(SampleData.corePlayers)
+        print("✅ Loaded \(availablePlayers.count) players")
+        objectWillChange.send()
+    }
+    
+    // Verify data integrity
+    func verifyDataIntegrity() -> Bool {
+        print("🔍 Verifying data integrity...")
+        
+        // Check if we have players
+        guard !availablePlayers.isEmpty else {
+            print("❌ No available players")
+            return false
+        }
+        
+        // Check if all players have valid teams
+        let playersWithoutTeams = availablePlayers.filter { $0.team.name.isEmpty }
+        if !playersWithoutTeams.isEmpty {
+            print("❌ Found \(playersWithoutTeams.count) players without teams")
+            return false
+        }
+        
+        // Check if we have multiple teams
+        let uniqueTeams = Set(availablePlayers.map { $0.team.id })
+        if uniqueTeams.count < 2 {
+            print("❌ Need at least 2 teams, found \(uniqueTeams.count)")
+            return false
+        }
+        
+        print("✅ Data integrity check passed")
+        print("   - \(availablePlayers.count) players")
+        print("   - \(uniqueTeams.count) teams")
+        return true
+    }
 }
+

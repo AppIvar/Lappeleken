@@ -1,11 +1,9 @@
 //
-//  AssignPlayersView.swift
+//  Enhanced AssignPlayersView.swift
 //  Lucky Football Slip
 //
-//  Created by Ivar Hovland on 09/05/2025.
+//  Vibrant and engaging player assignment experience
 //
-
-// Replace the existing AssignPlayersView with this improved version:
 
 import SwiftUI
 
@@ -16,206 +14,671 @@ struct AssignPlayersView: View {
     @State private var showConfetti = false
     @State private var currentParticipantIndex = -1
     @State private var assignedPlayerIds: [UUID] = []
+    @State private var animateBackground = false
+    @State private var pulseButton = false
     
     var body: some View {
         NavigationView {
-            VStack {
-                if !assignmentComplete {
-                    // Before assignment
-                    VStack(spacing: 40) {
-                        Image(systemName: "shuffle")
-                            .font(.system(size: 70))
-                            .foregroundColor(AppDesignSystem.Colors.primary)
-                            .padding(.top, 40)
-                        
-                        Text("Ready to assign players")
-                            .font(AppDesignSystem.Typography.headingFont)
-                        
-                        Text("Players will be randomly assigned to participants.")
-                            .font(AppDesignSystem.Typography.bodyFont)
-                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 30)
-                        
-                        Button("Assign Players") {
-                            performPlayerAssignment()
-                        }
-                        .buttonStyle(PrimaryButtonStyle())
-                        .padding(.horizontal, 40)
-                        .padding(.top, 20)
-                    }
-                } else {
-                    // After assignment
-                    VStack {
-                        Text("Players Assigned!")
-                            .font(AppDesignSystem.Typography.titleFont)
-                            .foregroundColor(AppDesignSystem.Colors.primary)
-                            .padding(.top, 20)
-                            .padding(.bottom, 10)
-                        
-                        if showConfetti {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 60))
-                                .foregroundColor(AppDesignSystem.Colors.success)
-                                .padding(.bottom, 20)
-                                .transition(.scale)
-                        }
-                        
-                        ScrollView {
-                            VStack(spacing: 16) {
-                                ForEach(0..<gameSession.participants.count, id: \.self) { index in
-                                    let participant = gameSession.participants[index]
-                                    VStack(alignment: .leading, spacing: 8) {
-                                        Text(participant.name)
-                                            .font(AppDesignSystem.Typography.subheadingFont)
-                                            .padding(.bottom, 5)
-                                            .opacity(index <= currentParticipantIndex ? 1 : 0.3)
-                                        
-                                        if index <= currentParticipantIndex {
-                                            ForEach(participant.selectedPlayers) { player in
-                                                HStack {
-                                                    Text(player.name)
-                                                        .font(AppDesignSystem.Typography.bodyFont)
-                                                    
-                                                    Spacer()
-                                                    
-                                                    Text(player.team.name)
-                                                        .font(AppDesignSystem.Typography.captionFont)
-                                                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                                                }
-                                                .padding()
-                                                .background(AppDesignSystem.Colors.cardBackground)
-                                                .cornerRadius(AppDesignSystem.Layout.cornerRadius)
-                                                .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
-                                                .opacity(assignedPlayerIds.contains(player.id) ? 1 : 0)
-                                                .scaleEffect(assignedPlayerIds.contains(player.id) ? 1 : 0.8)
-                                                .animation(.spring(response: 0.4, dampingFraction: 0.6), value: assignedPlayerIds.contains(player.id))
-                                            }
-                                        }
-                                    }
-                                    .padding(.bottom, 16)
-                                }
-                            }
-                            .padding(.horizontal)
-                        }
-                        
-                        if currentParticipantIndex >= gameSession.participants.count - 1 {
-                            Button("Start Game") {
-                                handleStartGame()
-                            }
-                            .buttonStyle(PrimaryButtonStyle())
-                            .padding(.vertical, 20)
-                            .transition(.opacity)
-                        }
+            ZStack {
+                // Enhanced animated background
+                backgroundView
+                
+                VStack(spacing: 0) {
+                    if !assignmentComplete {
+                        // Before assignment - vibrant waiting state
+                        preAssignmentView
+                    } else {
+                        // After assignment - celebratory reveal
+                        postAssignmentView
                     }
                 }
+                .padding()
             }
-            .padding()
-            .background(
-                ZStack {
-                    AppDesignSystem.Colors.background.ignoresSafeArea()
-                    
-                    if showConfetti {
-                        ConfettiView()
-                            .ignoresSafeArea()
-                    }
-                }
-            )
             .navigationTitle("Player Assignment")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button("Cancel") {
                         presentationMode.wrappedValue.dismiss()
                     }
+                    .foregroundColor(AppDesignSystem.Colors.primary)
                 }
+            }
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
+                animateBackground = true
+            }
+            withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
+                pulseButton = true
             }
         }
     }
     
+    // MARK: - Background
+    
+    private var backgroundView: some View {
+        LinearGradient(
+            colors: assignmentComplete ? [
+                AppDesignSystem.Colors.success.opacity(0.1),
+                AppDesignSystem.Colors.primary.opacity(0.05),
+                AppDesignSystem.Colors.secondary.opacity(0.1)
+            ] : [
+                AppDesignSystem.Colors.background,
+                AppDesignSystem.Colors.primary.opacity(0.05),
+                AppDesignSystem.Colors.background
+            ],
+            startPoint: animateBackground ? .topLeading : .bottomTrailing,
+            endPoint: animateBackground ? .bottomTrailing : .topLeading
+        )
+        .ignoresSafeArea()
+        .overlay(
+            // Floating elements
+            ZStack {
+                if assignmentComplete {
+                    FloatingCelebrationElements()
+                } else {
+                    FloatingFootballElements()
+                }
+            }
+        )
+    }
+    
+    // MARK: - Pre-Assignment View
+    
+    private var preAssignmentView: some View {
+        VStack(spacing: 40) {
+            Spacer()
+            
+            // Enhanced icon with glow effect
+            ZStack {
+                Circle()
+                    .fill(
+                        RadialGradient(
+                            colors: [
+                                AppDesignSystem.Colors.primary.opacity(0.3),
+                                AppDesignSystem.Colors.primary.opacity(0.1),
+                                Color.clear
+                            ],
+                            center: .center,
+                            startRadius: 30,
+                            endRadius: 100
+                        )
+                    )
+                    .frame(width: 200, height: 200)
+                    .scaleEffect(pulseButton ? 1.1 : 1.0)
+                
+                Image(systemName: "shuffle")
+                    .font(.system(size: 80, weight: .medium))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [
+                                AppDesignSystem.Colors.primary,
+                                AppDesignSystem.Colors.secondary
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .shadow(
+                        color: AppDesignSystem.Colors.primary.opacity(0.3),
+                        radius: 20,
+                        x: 0,
+                        y: 10
+                    )
+            }
+            
+            VStack(spacing: 16) {
+                Text("Ready to Assign Players")
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [
+                                AppDesignSystem.Colors.primaryText,
+                                AppDesignSystem.Colors.primary
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .multilineTextAlignment(.center)
+                
+                Text("Players will be randomly assigned to participants")
+                    .font(.system(size: 18, weight: .medium, design: .rounded))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 20)
+                
+                // Enhanced stats preview
+                statsPreviewCard
+            }
+            
+            Spacer()
+            
+            // Enhanced assign button
+            Button(action: assignPlayers) {
+                HStack(spacing: 12) {
+                    Image(systemName: "shuffle.circle.fill")
+                        .font(.system(size: 24))
+                    
+                    Text("Assign Players")
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 18)
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    AppDesignSystem.Colors.primary,
+                                    AppDesignSystem.Colors.primary.opacity(0.8)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                )
+                .shadow(
+                    color: AppDesignSystem.Colors.primary.opacity(0.4),
+                    radius: 12,
+                    x: 0,
+                    y: 6
+                )
+                .scaleEffect(pulseButton ? 1.02 : 1.0)
+            }
+            .padding(.horizontal, 30)
+            
+            Spacer(minLength: 40)
+        }
+    }
+    
+    // MARK: - Post-Assignment View
+    
+    private var postAssignmentView: some View {
+        VStack(spacing: 24) {
+            // Enhanced success header
+            VStack(spacing: 16) {
+                if showConfetti {
+                    ZStack {
+                        Circle()
+                            .fill(
+                                RadialGradient(
+                                    colors: [
+                                        AppDesignSystem.Colors.success.opacity(0.3),
+                                        AppDesignSystem.Colors.success.opacity(0.1),
+                                        Color.clear
+                                    ],
+                                    center: .center,
+                                    startRadius: 20,
+                                    endRadius: 60
+                                )
+                            )
+                            .frame(width: 120, height: 120)
+                        
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 60, weight: .medium))
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [
+                                        AppDesignSystem.Colors.success,
+                                        AppDesignSystem.Colors.grassGreen
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .shadow(
+                                color: AppDesignSystem.Colors.success.opacity(0.3),
+                                radius: 15,
+                                x: 0,
+                                y: 8
+                            )
+                    }
+                    .transition(.scale.combined(with: .opacity))
+                }
+                
+                Text("Players Assigned!")
+                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [
+                                AppDesignSystem.Colors.success,
+                                AppDesignSystem.Colors.primary
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+            }
+            
+            // Enhanced participants list
+            ScrollView(showsIndicators: false) {
+                LazyVStack(spacing: 16) {
+                    ForEach(0..<gameSession.participants.count, id: \.self) { index in
+                        AssignmentParticipantCard(
+                            participant: gameSession.participants[index],
+                            isRevealed: index <= currentParticipantIndex,
+                            assignedPlayerIds: assignedPlayerIds
+                        )
+                    }
+                }
+                .padding(.horizontal, 4)
+            }
+            
+            // Enhanced start game button
+            if currentParticipantIndex >= gameSession.participants.count - 1 {
+                Button(action: startGameAction) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "play.circle.fill")
+                            .font(.system(size: 24))
+                        
+                        Text("Start Game")
+                            .font(.system(size: 20, weight: .bold, design: .rounded))
+                    }
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 18)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        AppDesignSystem.Colors.success,
+                                        AppDesignSystem.Colors.grassGreen
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                    )
+                    .shadow(
+                        color: AppDesignSystem.Colors.success.opacity(0.4),
+                        radius: 12,
+                        x: 0,
+                        y: 6
+                    )
+                }
+                .padding(.horizontal, 30)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+    }
+    
+    // MARK: - Stats Preview Card
+    
+    private var statsPreviewCard: some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 20) {
+                StatPreviewItem(
+                    icon: "person.2.fill",
+                    value: "\(gameSession.participants.count)",
+                    label: "Participants",
+                    color: AppDesignSystem.Colors.primary
+                )
+                
+                StatPreviewItem(
+                    icon: "sportscourt.fill",
+                    value: "\(gameSession.selectedPlayers.count)",
+                    label: "Players",
+                    color: AppDesignSystem.Colors.secondary
+                )
+                
+                if !gameSession.selectedPlayers.isEmpty && !gameSession.participants.isEmpty {
+                    StatPreviewItem(
+                        icon: "divide.circle.fill",
+                        value: "\(gameSession.selectedPlayers.count / gameSession.participants.count)",
+                        label: "Per Person",
+                        color: AppDesignSystem.Colors.accent
+                    )
+                }
+            }
+        }
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(AppDesignSystem.Colors.cardBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(AppDesignSystem.Colors.primary.opacity(0.2), lineWidth: 1)
+                )
+        )
+        .shadow(
+            color: Color.black.opacity(0.08),
+            radius: 8,
+            x: 0,
+            y: 4
+        )
+        .padding(.horizontal, 20)
+    }
+    
     // MARK: - Helper Methods
     
-    private func performPlayerAssignment() {
-        // Debug check
+    private func assignPlayers() {
         print("AssignPlayersView - Before assignment:")
         print("Participants: \(gameSession.participants.count)")
         print("Selected players: \(gameSession.selectedPlayers.count)")
         
-        // Check if we can assign
         guard !gameSession.participants.isEmpty && !gameSession.selectedPlayers.isEmpty else {
             print("ERROR: Cannot assign players, starting game without assignment")
-            startGameDirectly()
+            NotificationCenter.default.post(name: Notification.Name("StartGame"), object: nil)
+            presentationMode.wrappedValue.dismiss()
             return
         }
         
-        // Perform the assignment
         gameSession.assignPlayersRandomly()
         
-        // Start animation
-        withAnimation(.easeInOut(duration: 0.5)) {
+        withAnimation(AppDesignSystem.Animations.bouncy) {
             assignmentComplete = true
             
-            // Start showing participants one by one
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 animateNextParticipant()
             }
         }
     }
     
-    private func handleStartGame() {
-        // Check if we should show interstitial before starting game
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let rootViewController = windowScene.windows.first?.rootViewController else {
-            startGameDirectly()
-            return
-        }
-        
-        // Use the new enhanced ad manager method
-        AdManager.shared.showInterstitialForGameFlow(.playerAssignment, from: rootViewController) { success in
-            DispatchQueue.main.async {
-                self.startGameDirectly()
-            }
-        }
-    }
-    
-    private func startGameDirectly() {
-        gameSession.objectWillChange.send()
-        
-        NotificationCenter.default.post(name: Notification.Name("StartGame"), object: nil)
-        
-        presentationMode.wrappedValue.dismiss()
-    }
-    
-    // Function to animate through participants one by one
     private func animateNextParticipant() {
-        // Move to next participant
         currentParticipantIndex += 1
         
         if currentParticipantIndex < gameSession.participants.count {
             let participant = gameSession.participants[currentParticipantIndex]
             
-            // Animate each player one by one
             for (index, player) in participant.selectedPlayers.enumerated() {
                 DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 0.3) {
-                    withAnimation {
+                    withAnimation(AppDesignSystem.Animations.bouncy) {
                         assignedPlayerIds.append(player.id)
                     }
                 }
             }
             
-            // Schedule next participant after a delay
             let playerCount = participant.selectedPlayers.count
-            let delay = Double(playerCount) * 0.3 + 0.7 // Allow time for player animations plus a gap
+            let delay = Double(playerCount) * 0.3 + 0.7
             
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                 animateNextParticipant()
             }
         } else {
-            // All participants have been shown
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                withAnimation {
+                withAnimation(AppDesignSystem.Animations.bouncy) {
                     showConfetti = true
                 }
             }
+        }
+    }
+    
+    private func startGameAction() {
+        if AppPurchaseManager.shared.currentTier == .free && AdManager.shared.shouldShowInterstitialAfterGameComplete() {
+            showInterstitialBeforeStartingGame()
+        } else {
+            startGame()
+        }
+    }
+    
+    private func showInterstitialBeforeStartingGame() {
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let rootViewController = windowScene.windows.first?.rootViewController else {
+            startGame()
+            return
+        }
+        
+        print("🎯 Showing interstitial ad before starting game")
+        
+        AdManager.shared.showInterstitialAd(from: rootViewController) { success in
+            DispatchQueue.main.async {
+                if success {
+                    print("✅ Interstitial ad shown before game start")
+                    AdManager.shared.trackAdImpression(type: "interstitial_game_start")
+                }
+                self.startGame()
+            }
+        }
+    }
+    
+    private func startGame() {
+        gameSession.objectWillChange.send()
+        NotificationCenter.default.post(name: Notification.Name("StartGame"), object: nil)
+        presentationMode.wrappedValue.dismiss()
+    }
+}
+
+// MARK: - Assignment Participant Card
+
+struct AssignmentParticipantCard: View {
+    let participant: Participant
+    let isRevealed: Bool
+    let assignedPlayerIds: [UUID]
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Participant header
+            HStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                AppDesignSystem.Colors.primary,
+                                AppDesignSystem.Colors.primary.opacity(0.7)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 40, height: 40)
+                    .overlay(
+                        Text(String(participant.name.prefix(1)).uppercased())
+                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                            .foregroundColor(.white)
+                    )
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(participant.name)
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
+                    
+                    Text("\(participant.selectedPlayers.count) players")
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                }
+                
+                Spacer()
+                
+                if isRevealed {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 24))
+                        .foregroundColor(AppDesignSystem.Colors.success)
+                }
+            }
+            
+            // Players list
+            if isRevealed {
+                LazyVGrid(columns: [
+                    GridItem(.flexible()),
+                    GridItem(.flexible())
+                ], spacing: 12) {
+                    ForEach(participant.selectedPlayers) { player in
+                        AssignmentPlayerChip(
+                            player: player,
+                            isVisible: assignedPlayerIds.contains(player.id)
+                        )
+                    }
+                }
+            }
+        }
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(AppDesignSystem.Colors.cardBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16)
+                        .stroke(
+                            isRevealed ?
+                            AppDesignSystem.Colors.primary.opacity(0.3) :
+                            Color.gray.opacity(0.2),
+                            lineWidth: isRevealed ? 2 : 1
+                        )
+                )
+        )
+        .shadow(
+            color: isRevealed ?
+            AppDesignSystem.Colors.primary.opacity(0.15) :
+            Color.black.opacity(0.05),
+            radius: isRevealed ? 8 : 2,
+            x: 0,
+            y: isRevealed ? 4 : 1
+        )
+        .opacity(isRevealed ? 1.0 : 0.6)
+        .scaleEffect(isRevealed ? 1.0 : 0.95)
+        .animation(AppDesignSystem.Animations.bouncy, value: isRevealed)
+    }
+}
+
+// MARK: - Assignment Player Chip
+
+struct AssignmentPlayerChip: View {
+    let player: Player
+    let isVisible: Bool
+    
+    var body: some View {
+        HStack(spacing: 8) {
+            Circle()
+                .fill(AppDesignSystem.TeamColors.getColor(for: player.team))
+                .frame(width: 8, height: 8)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(player.name)
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                    .lineLimit(1)
+                
+                Text(player.team.shortName)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+            }
+            
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(AppDesignSystem.TeamColors.getAccentColor(for: player.team))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(AppDesignSystem.TeamColors.getColor(for: player.team).opacity(0.3), lineWidth: 1)
+                )
+        )
+        .opacity(isVisible ? 1.0 : 0.0)
+        .scaleEffect(isVisible ? 1.0 : 0.8)
+        .animation(
+            AppDesignSystem.Animations.bouncy.delay(Double.random(in: 0...0.3)),
+            value: isVisible
+        )
+    }
+}
+
+// MARK: - Stat Preview Item
+
+struct StatPreviewItem: View {
+    let icon: String
+    let value: String
+    let label: String
+    let color: Color
+    
+    var body: some View {
+        VStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(color.opacity(0.2))
+                    .frame(width: 40, height: 40)
+                
+                Image(systemName: icon)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundColor(color)
+            }
+            
+            Text(value)
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .foregroundColor(AppDesignSystem.Colors.primaryText)
+            
+            Text(label)
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .foregroundColor(AppDesignSystem.Colors.secondaryText)
+        }
+    }
+}
+
+// MARK: - Floating Elements
+
+struct FloatingFootballElements: View {
+    @State private var offset1 = CGSize.zero
+    @State private var offset2 = CGSize.zero
+    
+    var body: some View {
+        ZStack {
+            Image(systemName: "soccerball")
+                .font(.system(size: 20))
+                .foregroundColor(AppDesignSystem.Colors.primary.opacity(0.1))
+                .offset(offset1)
+                .animation(
+                    Animation.easeInOut(duration: 4).repeatForever(autoreverses: true),
+                    value: offset1
+                )
+            
+            Image(systemName: "sportscourt")
+                .font(.system(size: 16))
+                .foregroundColor(AppDesignSystem.Colors.secondary.opacity(0.1))
+                .offset(offset2)
+                .animation(
+                    Animation.easeInOut(duration: 5).repeatForever(autoreverses: true),
+                    value: offset2
+                )
+        }
+        .onAppear {
+            offset1 = CGSize(width: 80, height: 60)
+            offset2 = CGSize(width: -60, height: 80)
+        }
+    }
+}
+
+struct FloatingCelebrationElements: View {
+    @State private var offset1 = CGSize.zero
+    @State private var offset2 = CGSize.zero
+    @State private var offset3 = CGSize.zero
+    
+    var body: some View {
+        ZStack {
+            Image(systemName: "star.fill")
+                .font(.system(size: 16))
+                .foregroundColor(AppDesignSystem.Colors.goalYellow.opacity(0.3))
+                .offset(offset1)
+                .animation(
+                    Animation.easeInOut(duration: 3).repeatForever(autoreverses: true),
+                    value: offset1
+                )
+            
+            Image(systemName: "trophy.fill")
+                .font(.system(size: 14))
+                .foregroundColor(AppDesignSystem.Colors.success.opacity(0.2))
+                .offset(offset2)
+                .animation(
+                    Animation.easeInOut(duration: 4).repeatForever(autoreverses: true),
+                    value: offset2
+                )
+            
+            Image(systemName: "crown.fill")
+                .font(.system(size: 12))
+                .foregroundColor(AppDesignSystem.Colors.accent.opacity(0.2))
+                .offset(offset3)
+                .animation(
+                    Animation.easeInOut(duration: 5).repeatForever(autoreverses: true),
+                    value: offset3
+                )
+        }
+        .onAppear {
+            offset1 = CGSize(width: 100, height: 70)
+            offset2 = CGSize(width: -80, height: 90)
+            offset3 = CGSize(width: 60, height: -80)
         }
     }
 }

@@ -116,19 +116,19 @@ struct PlayerLineupCard: View {
             // Stats
             HStack(spacing: 12) {
                 if player.goals > 0 {
-                    StatBadge(icon: "soccerball", value: "\(player.goals)", color: AppDesignSystem.Colors.success)
+                    StatBadge(icon: "soccerball", value: player.goals, color: AppDesignSystem.Colors.success)
                 }
                 
                 if player.assists > 0 {
-                    StatBadge(icon: "arrow.up.forward", value: "\(player.assists)", color: AppDesignSystem.Colors.primary)
+                    StatBadge(icon: "arrow.up.forward", value: player.assists, color: AppDesignSystem.Colors.primary)
                 }
                 
                 if player.yellowCards > 0 {
-                    StatBadge(icon: "square.fill", value: "\(player.yellowCards)", color: Color.yellow)
+                    StatBadge(icon: "square.fill", value: player.yellowCards, color: Color.yellow)
                 }
                 
                 if player.redCards > 0 {
-                    StatBadge(icon: "square.fill", value: "\(player.redCards)", color: AppDesignSystem.Colors.error)
+                    StatBadge(icon: "square.fill", value: player.redCards, color: AppDesignSystem.Colors.error)
                 }
             }
             
@@ -158,21 +158,35 @@ struct PlayerLineupCard: View {
 
 struct StatBadge: View {
     let icon: String
-    let value: String
+    let value: Int
     let color: Color
     
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 3) {
             Image(systemName: icon)
-                .font(.system(size: 12))
+                .font(.system(size: 10, weight: .medium))
             
-            Text(value)
-                .font(.system(size: 12, weight: .medium))
+            Text("\(value)")
+                .font(.system(size: 11, weight: .bold, design: .rounded))
         }
-        .foregroundColor(color)
+        .foregroundColor(.white)
         .padding(.horizontal, 6)
-        .padding(.vertical, 2)
-        .background(color.opacity(0.1))
-        .cornerRadius(8)
+        .padding(.vertical, 3)
+        .background(
+            RoundedRectangle(cornerRadius: 6)
+                .fill(
+                    LinearGradient(
+                        colors: [color, color.opacity(0.8)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .shadow(
+            color: color.opacity(0.3),
+            radius: 2,
+            x: 0,
+            y: 1
+        )
     }
 }

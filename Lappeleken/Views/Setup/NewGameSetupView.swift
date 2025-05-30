@@ -1,8 +1,8 @@
 //
-//  NewGameSetupView.swift
-//  Lappeleken
+//  Enhanced NewGameSetupView.swift
+//  Lucky Football Slip
 //
-//  Created by Ivar Hovland on 08/05/2025.
+//  Vibrant game setup with enhanced design system
 //
 
 import SwiftUI
@@ -17,265 +17,305 @@ struct NewGameSetupView: View {
     @State private var betAmounts = [Bet.EventType: Double]()
     @State private var betNegativeFlags = [Bet.EventType: Bool]()
     @State private var showingCustomBetSheet = false
+    @State private var animateProgress = false
+    @State private var animateGradient = false
     
     private let steps = ["Participants", "Select Players", "Set Bets", "Review"]
     
     var body: some View {
-        NavigationView {
-            VStack {
-                // Progress indicator
-                HStack {
-                    ForEach(0..<steps.count, id: \.self) { index in
-                        VStack {
-                            Circle()
-                                .fill(index <= currentStep ? AppDesignSystem.Colors.primary : AppDesignSystem.Colors.secondaryText.opacity(0.3))
-                                .frame(width: 20, height: 20)
-                            
-                            Text(steps[index])
-                                .font(AppDesignSystem.Typography.captionFont)
-                                .foregroundColor(index <= currentStep ? AppDesignSystem.Colors.primaryText : AppDesignSystem.Colors.secondaryText)
+        ZStack {
+            // Enhanced animated background
+            backgroundView
+            
+            NavigationView {
+                VStack(spacing: 0) {
+                    // Enhanced progress indicator
+                    progressIndicatorView
+                    
+                    // Content with smooth transitions
+                    ScrollView(showsIndicators: false) {
+                        VStack(spacing: 32) {
+                            stepContentView
                         }
+                        .padding(24)
+                        .padding(.bottom, 120) // Space for floating buttons
+                    }
+                    .background(Color.clear)
+                }
+                .overlay(
+                    // Floating navigation buttons
+                    floatingNavigationButtons,
+                    alignment: .bottom
+                )
+                .navigationTitle("New Game Setup")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarLeading) {
+                        Button("Cancel") {
+                            presentationMode.wrappedValue.dismiss()
+                        }
+                        .foregroundColor(AppDesignSystem.Colors.primary)
+                    }
+                }
+            }
+        }
+        .onAppear {
+            setupInitialData()
+            
+            withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
+                animateGradient = true
+            }
+            
+            withAnimation(AppDesignSystem.Animations.standard.delay(0.3)) {
+                animateProgress = true
+            }
+        }
+        .sheet(isPresented: $showingCustomBetSheet) {
+            CustomBetView(gameSession: gameSession)
+        }
+    }
+    
+    // MARK: - Background
+    
+    private var backgroundView: some View {
+        LinearGradient(
+            colors: [
+                Color(red: 0.95, green: 0.98, blue: 1.0),
+                Color(red: 0.98, green: 0.96, blue: 1.0),
+                Color(red: 0.96, green: 0.97, blue: 1.0)
+            ],
+            startPoint: animateGradient ? .topLeading : .bottomTrailing,
+            endPoint: animateGradient ? .bottomTrailing : .topLeading
+        )
+        .ignoresSafeArea()
+    }
+    
+    // MARK: - Progress Indicator
+    
+    private var progressIndicatorView: some View {
+        VStack(spacing: 16) {
+            HStack {
+                ForEach(0..<steps.count, id: \.self) { index in
+                    HStack {
+                        // Step circle
+                        ZStack {
+                            Circle()
+                                .fill(
+                                    index <= currentStep ?
+                                    LinearGradient(
+                                        colors: [
+                                            AppDesignSystem.Colors.primary,
+                                            AppDesignSystem.Colors.primary.opacity(0.8)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    ) :
+                                    LinearGradient(
+                                        colors: [
+                                            AppDesignSystem.Colors.secondaryText.opacity(0.2),
+                                            AppDesignSystem.Colors.secondaryText.opacity(0.1)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                                .frame(width: 32, height: 32)
+                            
+                            if index < currentStep {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundColor(.white)
+                            } else {
+                                Text("\(index + 1)")
+                                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                                    .foregroundColor(
+                                        index <= currentStep ? .white : AppDesignSystem.Colors.secondaryText
+                                    )
+                            }
+                        }
+                        .shadow(
+                            color: index <= currentStep ?
+                            AppDesignSystem.Colors.primary.opacity(0.3) :
+                            Color.clear,
+                            radius: 4,
+                            x: 0,
+                            y: 2
+                        )
+                        .scaleEffect(animateProgress && index == currentStep ? 1.1 : 1.0)
+                        .animation(AppDesignSystem.Animations.bouncy, value: currentStep)
                         
+                        // Connection line
                         if index < steps.count - 1 {
                             Rectangle()
-                                .fill(index < currentStep ? AppDesignSystem.Colors.primary : AppDesignSystem.Colors.secondaryText.opacity(0.3))
-                                .frame(height: 2)
-                        }
-                    }
-                }
-                .padding()
-                
-                // Content based on current step
-                ScrollView {
-                    VStack {
-                        switch currentStep {
-                        case 0:
-                            participantsSetupView
-                        case 1:
-                            playersSelectionView
-                        case 2:
-                            setBetsView
-                        case 3:
-                            reviewView
-                        default:
-                            EmptyView()
-                        }
-                    }
-                    .padding()
-                }
-                
-                // Navigation buttons
-                HStack {
-                    if currentStep > 0 {
-                        Button("Back") {
-                            currentStep -= 1
-                        }
-                        .buttonStyle(SecondaryButtonStyle())
-                    }
-                    
-                    Spacer()
-                    
-                    if currentStep < steps.count - 1 {
-                        Button("Next") {
-                            if currentStep == 0 {
-                                // Add any pending participant name
-                                let trimmedName = participantName.trimmingCharacters(in: .whitespacesAndNewlines)
-                                if !trimmedName.isEmpty {
-                                    gameSession.addParticipant(trimmedName)
-                                    participantName = ""
-                                }
-                                
-                                if gameSession.participants.isEmpty {
-                                    // Don't proceed if no participants added
-                                    return
-                                }
-                            }
-                            
-                            if currentStep == 1 {
-                                // Set selected players
-                                gameSession.selectedPlayers = gameSession.availablePlayers.filter { selectedPlayerIds.contains($0.id) }
-                                
-                                if gameSession.selectedPlayers.isEmpty {
-                                    // Don't proceed if no players selected
-                                    return
-                                }
-                            }
-                            
-                            if currentStep == 2 {
-                                // Add bets with new negative bet support
-                                gameSession.bets = []
-                                for (eventType, amount) in betAmounts {
-                                    gameSession.addBet(eventType: eventType, amount: amount)
-                                }
-                                print("Added \(gameSession.bets.count) bets")
-                            }
-                            
-                            currentStep += 1
-                        }
-                        .buttonStyle(PrimaryButtonStyle())
-                    } else {
-                        Button("Assign Players") {
-                            // Make sure we have the selected players set
-                            gameSession.selectedPlayers = gameSession.availablePlayers.filter { selectedPlayerIds.contains($0.id) }
-                            
-                            // Debug print
-                            print("Before assignment setup:")
-                            print("Participants: \(gameSession.participants.count)")
-                            print("Selected players: \(gameSession.selectedPlayers.count)")
-                            
-                            for i in 0..<gameSession.participants.count {
-                                gameSession.participants[i].selectedPlayers = []
-                            }
-                            presentationMode.wrappedValue.dismiss()
-                            
-                            NotificationCenter.default.post(name: Notification.Name("ShowAssignment"), object: nil)
-                        }
-                        .buttonStyle(PrimaryButtonStyle())
-                    }
-                }
-                .padding()
-            }
-            .onAppear {
-                // Load sample data when the view appears
-                if gameSession.availablePlayers.isEmpty {
-                    gameSession.addPlayers(SampleData.samplePlayers)
-                }
-                
-                // Initialize bet amounts and negative flags
-                if betAmounts.isEmpty {
-                    for eventType in Bet.EventType.allCases {
-                        betAmounts[eventType] = 1.0
-                        
-                        // Set certain bets as negative by default
-                        if eventType == .ownGoal || eventType == .redCard ||
-                           eventType == .yellowCard || eventType == .penaltyMissed {
-                            betNegativeFlags[eventType] = true
-                            betAmounts[eventType] = -1.0
-                        } else {
-                            betNegativeFlags[eventType] = false
+                                .fill(
+                                    index < currentStep ?
+                                    AppDesignSystem.Colors.primary :
+                                    AppDesignSystem.Colors.secondaryText.opacity(0.2)
+                                )
+                                .frame(height: 3)
+                                .cornerRadius(1.5)
+                                .scaleEffect(x: animateProgress ? 1.0 : 0.0, anchor: .leading)
+                                .animation(
+                                    AppDesignSystem.Animations.standard.delay(Double(index) * 0.1),
+                                    value: animateProgress
+                                )
                         }
                     }
                 }
             }
-            .navigationTitle("New Game Setup")
-            .navigationBarItems(leading: Button("Cancel") {
-                presentationMode.wrappedValue.dismiss()
-            })
+            .padding(.horizontal, 24)
             
-            .sheet(isPresented: $showingCustomBetSheet) {
-                CustomBetView(gameSession: gameSession)
+            // Step labels
+            HStack {
+                ForEach(0..<steps.count, id: \.self) { index in
+                    Text(steps[index])
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundColor(
+                            index <= currentStep ?
+                            AppDesignSystem.Colors.primaryText :
+                            AppDesignSystem.Colors.secondaryText
+                        )
+                        .frame(maxWidth: .infinity)
+                        .opacity(animateProgress ? 1.0 : 0.0)
+                        .animation(
+                            AppDesignSystem.Animations.standard.delay(Double(index) * 0.1),
+                            value: animateProgress
+                        )
+                }
             }
+            .padding(.horizontal, 24)
+        }
+        .padding(.vertical, 20)
+        .background(
+            Rectangle()
+                .fill(AppDesignSystem.Colors.cardBackground.opacity(0.8))
+                .shadow(
+                    color: Color.black.opacity(0.05),
+                    radius: 8,
+                    x: 0,
+                    y: 4
+                )
+        )
+    }
+    
+    // MARK: - Step Content
+    
+    @ViewBuilder
+    private var stepContentView: some View {
+        switch currentStep {
+        case 0:
+            participantsSetupView
+        case 1:
+            playersSelectionView
+        case 2:
+            setBetsView
+        case 3:
+            reviewView
+        default:
+            EmptyView()
         }
     }
     
-    // MARK: - Step Views
+    // MARK: - Participants Setup
     
     private var participantsSetupView: some View {
-        VStack(alignment: .leading, spacing: AppDesignSystem.Layout.standardPadding) {
-            Text("Add Participants")
-                .font(AppDesignSystem.Typography.headingFont)
+        VStack(spacing: 24) {
+            // Enhanced header
+            VStack(spacing: 8) {
+                Image(systemName: "person.3.fill")
+                    .font(.system(size: 60))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [
+                                AppDesignSystem.Colors.primary,
+                                AppDesignSystem.Colors.secondary
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .shadow(
+                        color: AppDesignSystem.Colors.primary.opacity(0.3),
+                        radius: 8,
+                        x: 0,
+                        y: 4
+                    )
+                
+                Text("Add Participants")
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                Text("Who's playing in this game?")
+                    .font(.system(size: 16, weight: .medium, design: .rounded))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    .multilineTextAlignment(.center)
+            }
             
-            HStack {
-                TextField("Participant name", text: $participantName)
-                    .padding()
-                    .background(Color.white)
-                    .cornerRadius(AppDesignSystem.Layout.cornerRadius)
-                    .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
-                    .onSubmit {
-                        // Allow pressing return to add participant
-                        addParticipantIfValid()
+            // Enhanced participant input
+            VStack(spacing: 16) {
+                HStack(spacing: 12) {
+                    TextField("Enter participant name", text: $participantName)
+                        .font(.system(size: 16, weight: .medium, design: .rounded))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Color.white)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(
+                                            participantName.isEmpty ?
+                                            Color.gray.opacity(0.3) :
+                                            AppDesignSystem.Colors.primary.opacity(0.5),
+                                            lineWidth: 1
+                                        )
+                                )
+                        )
+                        .shadow(
+                            color: Color.black.opacity(0.05),
+                            radius: 4,
+                            x: 0,
+                            y: 2
+                        )
+                    
+                    Button(action: addParticipant) {
+                        Image(systemName: "plus.circle.fill")
+                            .font(.system(size: 32))
+                            .foregroundColor(
+                                participantName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?
+                                AppDesignSystem.Colors.disabled :
+                                AppDesignSystem.Colors.primary
+                            )
                     }
-                    .submitLabel(.done)
-                
-                Button(action: {
-                    addParticipantIfValid()
-                }) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.title2)
-                        .foregroundColor(participantName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?
-                                       AppDesignSystem.Colors.secondaryText : AppDesignSystem.Colors.primary)
+                    .disabled(participantName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .scaleEffect(participantName.isEmpty ? 0.8 : 1.0)
+                    .animation(AppDesignSystem.Animations.bouncy, value: participantName.isEmpty)
                 }
-                .disabled(participantName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-            
-            if gameSession.participants.isEmpty {
-                Text("Add at least one participant to continue")
-                    .font(AppDesignSystem.Typography.captionFont)
-                    .foregroundColor(AppDesignSystem.Colors.error)
-                    .padding(.top, 4)
-            }
-            
-            Text("Current Participants:")
-                .font(AppDesignSystem.Typography.subheadingFont)
-                .padding(.top)
-            
-            ForEach(gameSession.participants) { participant in
-                HStack {
-                    Text(participant.name)
-                        .font(AppDesignSystem.Typography.bodyFont)
-                    
-                    Spacer()
-                    
-                    Button(action: {
-                        if let index = gameSession.participants.firstIndex(where: { $0.id == participant.id }) {
-                            gameSession.participants.remove(at: index)
-                        }
-                    }) {
-                        Image(systemName: "trash")
-                            .foregroundColor(AppDesignSystem.Colors.error)
+                
+                if gameSession.participants.isEmpty {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(AppDesignSystem.Colors.warning)
+                        
+                        Text("Add at least one participant to continue")
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                            .foregroundColor(AppDesignSystem.Colors.warning)
                     }
                 }
-                .padding()
-                .background(Color.white)
-                .cornerRadius(AppDesignSystem.Layout.cornerRadius)
-                .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
-            }
-        }
-    }
-    
-    private var playersSelectionView: some View {
-        VStack(alignment: .leading, spacing: AppDesignSystem.Layout.standardPadding) {
-            HStack {
-                Text("Select Players")
-                    .font(AppDesignSystem.Typography.headingFont)
-                
-                Spacer()
-                
-                NavigationLink(destination: ManualPlayerEntryView(gameSession: gameSession)) {
-                    Label("Add Player", systemImage: "plus.circle")
-                        .font(AppDesignSystem.Typography.bodyFont)
-                }
             }
             
-            Text("Choose players to include in the game. These will be randomly assigned to participants.")
-                .font(AppDesignSystem.Typography.bodyFont)
-                .foregroundColor(AppDesignSystem.Colors.secondaryText)
-            
-            if selectedPlayerIds.isEmpty {
-                Text("Select at least one player to continue")
-                    .font(AppDesignSystem.Typography.captionFont)
-                    .foregroundColor(AppDesignSystem.Colors.error)
-                    .padding(.top, 4)
-            }
-            
-            // Grouped by team
-            ForEach(Array(Set(gameSession.availablePlayers.map { $0.team })).sorted(by: { $0.name < $1.name }), id: \.id) { team in
-                Section {
-                    Text(team.name)
-                        .font(AppDesignSystem.Typography.subheadingFont)
-                        .padding(.top)
+            // Enhanced participants list
+            if !gameSession.participants.isEmpty {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Participants (\(gameSession.participants.count))")
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
                     
-                    // Players for this team
-                    ForEach(gameSession.availablePlayers.filter { $0.team.id == team.id }) { player in
-                        PlayerCard(
-                            player: player,
-                            isSelected: selectedPlayerIds.contains(player.id),
-                            action: {
-                                if selectedPlayerIds.contains(player.id) {
-                                    selectedPlayerIds.remove(player.id)
-                                } else {
-                                    selectedPlayerIds.insert(player.id)
-                                }
+                    ForEach(gameSession.participants) { participant in
+                        EnhancedParticipantRow(
+                            participant: participant,
+                            onDelete: {
+                                deleteParticipant(participant)
                             }
                         )
                     }
@@ -284,108 +324,159 @@ struct NewGameSetupView: View {
         }
     }
     
-    private func addParticipantIfValid() {
-        let trimmedName = participantName.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedName.isEmpty {
-            gameSession.addParticipant(trimmedName)
-            participantName = ""
+    // MARK: - Players Selection
+    
+    private var playersSelectionView: some View {
+        VStack(spacing: 24) {
+            // Enhanced header with action
+            VStack(spacing: 16) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Image(systemName: "sportscourt.fill")
+                            .font(.system(size: 50))
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [
+                                        AppDesignSystem.Colors.success,
+                                        AppDesignSystem.Colors.info
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                        
+                        Text("Select Players")
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .foregroundColor(AppDesignSystem.Colors.primaryText)
+                        
+                        Text("Choose players for your game")
+                            .font(.system(size: 16, weight: .medium, design: .rounded))
+                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    }
+                    
+                    Spacer()
+                    
+                    NavigationLink(destination: ManualPlayerEntryView(gameSession: gameSession)) {
+                        VStack(spacing: 4) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 24))
+                                .foregroundColor(AppDesignSystem.Colors.secondary)
+                            
+                            Text("Add Player")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .foregroundColor(AppDesignSystem.Colors.secondary)
+                        }
+                    }
+                }
+                
+                if selectedPlayerIds.isEmpty {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(AppDesignSystem.Colors.warning)
+                        
+                        Text("Select at least one player to continue")
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                            .foregroundColor(AppDesignSystem.Colors.warning)
+                    }
+                } else {
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(AppDesignSystem.Colors.success)
+                        
+                        Text("\(selectedPlayerIds.count) players selected")
+                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                            .foregroundColor(AppDesignSystem.Colors.success)
+                    }
+                }
+            }
             
-            // Add haptic feedback
-            HapticManager.shared.playSuccess()
+            // Enhanced team sections
+            ForEach(Array(Set(gameSession.availablePlayers.map { $0.team })).sorted(by: { $0.name < $1.name }), id: \.id) { team in
+                EnhancedTeamSection(
+                    team: team,
+                    players: gameSession.availablePlayers.filter { $0.team.id == team.id },
+                    selectedPlayerIds: $selectedPlayerIds
+                )
+            }
         }
     }
     
+    // MARK: - Set Bets
+    
     private var setBetsView: some View {
-        VStack(alignment: .leading, spacing: AppDesignSystem.Layout.standardPadding) {
-            HStack {
-                Text("Set Betting Amounts")
-                    .font(AppDesignSystem.Typography.headingFont)
-                
-                Spacer()
-                
-                Button(action: {
-                    showingCustomBetSheet = true
-                }) {
-                    Label("Add Custom Bet", systemImage: "plus.circle")
-                        .font(AppDesignSystem.Typography.bodyFont)
+        VStack(spacing: 24) {
+            // Enhanced header with custom bet action
+            VStack(spacing: 16) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Image(systemName: "dollarsign.circle.fill")
+                            .font(.system(size: 50))
+                            .foregroundStyle(
+                                LinearGradient(
+                                    colors: [
+                                        AppDesignSystem.Colors.warning,
+                                        AppDesignSystem.Colors.secondary
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                        
+                        Text("Set Betting Amounts")
+                            .font(.system(size: 28, weight: .bold, design: .rounded))
+                            .foregroundColor(AppDesignSystem.Colors.primaryText)
+                        
+                        Text("Configure event payouts")
+                            .font(.system(size: 16, weight: .medium, design: .rounded))
+                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    }
+                    
+                    Spacer()
+                    
+                    Button(action: {
+                        showingCustomBetSheet = true
+                    }) {
+                        VStack(spacing: 4) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 24))
+                                .foregroundColor(AppDesignSystem.Colors.accent)
+                            
+                            Text("Custom Bet")
+                                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                                .foregroundColor(AppDesignSystem.Colors.accent)
+                        }
+                    }
                 }
             }
             
-            // Currency Selection
-            HStack {
-                Text("Select Currency")
-                    .font(AppDesignSystem.Typography.subheadingFont)
+            // Enhanced currency selection
+            EnhancedCurrencySelector()
+            
+            // Enhanced betting rules explanation
+            VStack(alignment: .leading, spacing: 8) {
+                Text("How Betting Works")
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
                 
-                Spacer()
-                
-                // Currency Picker
-                Menu {
-                    Button(action: {
-                        UserDefaults.standard.set("USD", forKey: "selectedCurrency")
-                        UserDefaults.standard.set("$", forKey: "currencySymbol")
-                    }) {
-                        Label("USD ($)", systemImage: UserDefaults.standard.string(forKey: "selectedCurrency") == "USD" ? "checkmark" : "")
-                    }
+                VStack(spacing: 4) {
+                    BettingRuleRow(
+                        icon: "plus.circle.fill",
+                        text: "Positive bets: Players without the event pay those with it",
+                        color: AppDesignSystem.Colors.success
+                    )
                     
-                    Button(action: {
-                        UserDefaults.standard.set("EUR", forKey: "selectedCurrency")
-                        UserDefaults.standard.set("€", forKey: "currencySymbol")
-                    }) {
-                        Label("EUR (€)", systemImage: UserDefaults.standard.string(forKey: "selectedCurrency") == "EUR" ? "checkmark" : "")
-                    }
-                    
-                    Button(action: {
-                        UserDefaults.standard.set("GBP", forKey: "selectedCurrency")
-                        UserDefaults.standard.set("£", forKey: "currencySymbol")
-                    }) {
-                        Label("GBP (£)", systemImage: UserDefaults.standard.string(forKey: "selectedCurrency") == "GBP" ? "checkmark" : "")
-                    }
-                    
-                    Button(action: {
-                        UserDefaults.standard.set("NOK", forKey: "selectedCurrency")
-                        UserDefaults.standard.set("kr", forKey: "currencySymbol")
-                    }) {
-                        Label("NOK (kr)", systemImage: UserDefaults.standard.string(forKey: "selectedCurrency") == "NOK" ? "checkmark" : "")
-                    }
-                    
-                    Button(action: {
-                        UserDefaults.standard.set("SEK", forKey: "selectedCurrency")
-                        UserDefaults.standard.set("kr", forKey: "currencySymbol")
-                    }) {
-                        Label("SEK (kr)", systemImage: UserDefaults.standard.string(forKey: "selectedCurrency") == "SEK" ? "checkmark" : "")
-                    }
-                    
-                    Button(action: {
-                        UserDefaults.standard.set("DKK", forKey: "selectedCurrency")
-                        UserDefaults.standard.set("kr", forKey: "currencySymbol")
-                    }) {
-                        Label("DKK (kr)", systemImage: UserDefaults.standard.string(forKey: "selectedCurrency") == "DKK" ? "checkmark" : "")
-                    }
-                } label: {
-                    HStack {
-                        Text(UserDefaults.standard.string(forKey: "selectedCurrency") ?? "EUR")
-                            .font(AppDesignSystem.Typography.bodyFont)
-                        Image(systemName: "chevron.down")
-                            .font(.caption)
-                    }
-                    .padding(8)
-                    .background(AppDesignSystem.Colors.primary.opacity(0.1))
-                    .cornerRadius(8)
+                    BettingRuleRow(
+                        icon: "minus.circle.fill",
+                        text: "Negative bets: Players with the event pay those without it",
+                        color: AppDesignSystem.Colors.error
+                    )
                 }
             }
-            .padding(.bottom)
+            .enhancedCard()
             
-            Text("Set how much participants will pay for each event type.")
-                .font(AppDesignSystem.Typography.bodyFont)
-                .foregroundColor(AppDesignSystem.Colors.secondaryText)
-            
-            Text("Toggle +/- to change who pays whom.")
-                .font(AppDesignSystem.Typography.bodyFont)
-                .foregroundColor(AppDesignSystem.Colors.primary)
-                .padding(.bottom)
-            
+            // Enhanced bet settings
             ForEach(Bet.EventType.allCases, id: \.self) { eventType in
-                BetSettingsRow(
+                EnhancedBetSettingsRow(
                     eventType: eventType,
                     betAmount: Binding(
                         get: { abs(betAmounts[eventType] ?? 1.0) },
@@ -408,110 +499,633 @@ struct NewGameSetupView: View {
         }
     }
     
+    // MARK: - Review
+    
     private var reviewView: some View {
-        VStack(alignment: .leading, spacing: AppDesignSystem.Layout.standardPadding) {
-            Text("Review Game Setup")
-                .font(AppDesignSystem.Typography.headingFont)
-            
-            CardView {
-                VStack(alignment: .leading, spacing: AppDesignSystem.Layout.standardPadding) {
-                    Text("Participants (\(gameSession.participants.count))")
-                        .font(AppDesignSystem.Typography.subheadingFont)
-                    
-                    Text(gameSession.participants.map { $0.name }.joined(separator: ", "))
-                        .font(AppDesignSystem.Typography.bodyFont)
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                }
+        VStack(spacing: 24) {
+            // Enhanced header
+            VStack(spacing: 8) {
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.system(size: 60))
+                    .foregroundStyle(
+                        LinearGradient(
+                            colors: [
+                                AppDesignSystem.Colors.success,
+                                AppDesignSystem.Colors.primary
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .shadow(
+                        color: AppDesignSystem.Colors.success.opacity(0.3),
+                        radius: 8,
+                        x: 0,
+                        y: 4
+                    )
+                
+                Text("Review Game Setup")
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                Text("Everything looks good? Let's start playing!")
+                    .font(.system(size: 16, weight: .medium, design: .rounded))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    .multilineTextAlignment(.center)
             }
             
-            CardView {
-                VStack(alignment: .leading, spacing: AppDesignSystem.Layout.standardPadding) {
-                    Text("Selected Players (\(gameSession.selectedPlayers.count))")
-                        .font(AppDesignSystem.Typography.subheadingFont)
-                    
-                    let playersByTeam = Dictionary(grouping: gameSession.selectedPlayers) { $0.team.name }
-                    
-                    ForEach(playersByTeam.keys.sorted(), id: \.self) { teamName in
-                        Text(teamName)
-                            .font(AppDesignSystem.Typography.bodyFont.bold())
-                            .foregroundColor(AppDesignSystem.Colors.primaryText)
-                            .padding(.top, 4)
-                        
-                        if let players = playersByTeam[teamName] {
-                            Text(players.map { $0.name }.joined(separator: ", "))
-                                .font(AppDesignSystem.Typography.bodyFont)
-                                .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                        }
-                    }
-                }
-            }
+            // Enhanced review sections
+            EnhancedReviewSection(
+                title: "Participants",
+                icon: "person.3.fill",
+                color: AppDesignSystem.Colors.primary,
+                content: gameSession.participants.map { $0.name }.joined(separator: ", "),
+                count: gameSession.participants.count
+            )
             
-            CardView {
-                VStack(alignment: .leading, spacing: AppDesignSystem.Layout.standardPadding) {
-                    Text("Betting Amounts")
-                        .font(AppDesignSystem.Typography.subheadingFont)
-                    
-                    ForEach(Bet.EventType.allCases, id: \.self) { eventType in
-                        let amount = betAmounts[eventType] ?? 0.0
-                        let isNegative = amount < 0
-                        let formattedAmount = formatCurrency(abs(amount))
-                        
-                        HStack {
-                            Text(eventType.rawValue)
-                                .font(AppDesignSystem.Typography.bodyFont)
-                            
-                            Spacer()
-                            
-                            Text("\(isNegative ? "-" : "+")\(formattedAmount)")
-                                .font(AppDesignSystem.Typography.bodyFont.bold())
-                                .foregroundColor(isNegative ? AppDesignSystem.Colors.error : AppDesignSystem.Colors.success)
-                        }
-                    }
-                }
-            }
+            EnhancedReviewSection(
+                title: "Selected Players",
+                icon: "sportscourt.fill",
+                color: AppDesignSystem.Colors.success,
+                content: createPlayersReviewText(),
+                count: selectedPlayerIds.count
+            )
             
-            Text("Ready to start the game? Players will be randomly assigned to participants.")
-                .font(AppDesignSystem.Typography.bodyFont)
-                .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                .padding(.top)
+            EnhancedReviewSection(
+                title: "Betting Rules",
+                icon: "dollarsign.circle.fill",
+                color: AppDesignSystem.Colors.warning,
+                content: createBetsReviewText(),
+                count: betAmounts.count
+            )
+            
+            // Ready message
+            VStack(spacing: 12) {
+                Text("🎉 Ready to Start!")
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                Text("Players will be randomly assigned to participants, and the game will begin.")
+                    .font(.system(size: 14, weight: .medium, design: .rounded))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    .multilineTextAlignment(.center)
+            }
+            .enhancedCard()
         }
     }
     
-    // Helper function for bet descriptions
-    private func eventDescription(for eventType: Bet.EventType) -> String {
-        switch eventType {
-        case .goal:
-            return "scores a goal"
-        case .assist:
-            return "makes an assist"
-        case .yellowCard:
-            return "receives a yellow card"
-        case .redCard:
-            return "receives a red card"
-        case .ownGoal:
-            return "scores own goal"
-        case .penalty:
-            return "scores a penalty"
-        case .penaltyMissed:
-            return "misses a penalty"
-        case .cleanSheet:
-            return "kept a clean sheet"
-        case .custom:
-            return "custom event"
+    // MARK: - Floating Navigation
+    
+    private var floatingNavigationButtons: some View {
+        VStack(spacing: 0) {
+            Spacer()
+            
+            HStack(spacing: 16) {
+                if currentStep > 0 {
+                    Button("Back") {
+                        withAnimation(AppDesignSystem.Animations.standard) {
+                            currentStep -= 1
+                        }
+                    }
+                    .font(.system(size: 16, weight: .semibold, design: .rounded))
+                    .foregroundColor(AppDesignSystem.Colors.primary)
+                    .padding(.vertical, 16)
+                    .padding(.horizontal, 24)
+                    .background(
+                        RoundedRectangle(cornerRadius: 25)
+                            .fill(Color.white)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 25)
+                                    .stroke(AppDesignSystem.Colors.primary, lineWidth: 2)
+                            )
+                    )
+                    .shadow(
+                        color: Color.black.opacity(0.1),
+                        radius: 8,
+                        x: 0,
+                        y: 4
+                    )
+                }
+                
+                Spacer()
+                
+                Button(currentStep < steps.count - 1 ? "Next" : "Assign Players") {
+                    handleNextButton()
+                }
+                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .foregroundColor(.white)
+                .padding(.vertical, 16)
+                .padding(.horizontal, currentStep < steps.count - 1 ? 32 : 24)
+                .background(
+                    RoundedRectangle(cornerRadius: 25)
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    AppDesignSystem.Colors.primary,
+                                    AppDesignSystem.Colors.primary.opacity(0.8)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                )
+                .vibrantButton()
+                .disabled(!canProceed)
+                .opacity(canProceed ? 1.0 : 0.6)
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 20)
+            .background(
+                Rectangle()
+                    .fill(AppDesignSystem.Colors.background.opacity(0.95))
+                    .shadow(
+                        color: Color.black.opacity(0.1),
+                        radius: 8,
+                        x: 0,
+                        y: -4
+                    )
+            )
         }
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func setupInitialData() {
+        if gameSession.availablePlayers.isEmpty {
+            gameSession.addPlayers(SampleData.samplePlayers)
+        }
+        
+        if betAmounts.isEmpty {
+            for eventType in Bet.EventType.allCases {
+                betAmounts[eventType] = 1.0
+                
+                if eventType == .ownGoal || eventType == .redCard ||
+                   eventType == .yellowCard || eventType == .penaltyMissed {
+                    betNegativeFlags[eventType] = true
+                    betAmounts[eventType] = -1.0
+                } else {
+                    betNegativeFlags[eventType] = false
+                }
+            }
+        }
+    }
+    
+    private func addParticipant() {
+        let trimmedName = participantName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedName.isEmpty {
+            withAnimation(AppDesignSystem.Animations.bouncy) {
+                gameSession.addParticipant(trimmedName)
+                participantName = ""
+            }
+        }
+    }
+    
+    private func deleteParticipant(_ participant: Participant) {
+        withAnimation(AppDesignSystem.Animations.standard) {
+            if let index = gameSession.participants.firstIndex(where: { $0.id == participant.id }) {
+                gameSession.participants.remove(at: index)
+            }
+        }
+    }
+    
+    private var canProceed: Bool {
+        switch currentStep {
+        case 0: return !gameSession.participants.isEmpty
+        case 1: return !selectedPlayerIds.isEmpty
+        case 2: return true
+        case 3: return true
+        default: return false
+        }
+    }
+    
+    private func handleNextButton() {
+        // Auto-add participant if name is entered but not added (for step 0)
+        if currentStep == 0 {
+            let trimmedName = participantName.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmedName.isEmpty {
+                withAnimation(AppDesignSystem.Animations.bouncy) {
+                    gameSession.addParticipant(trimmedName)
+                    participantName = ""
+                }
+            }
+        }
+        
+        if currentStep < steps.count - 1 {
+            if currentStep == 1 {
+                gameSession.selectedPlayers = gameSession.availablePlayers.filter { selectedPlayerIds.contains($0.id) }
+            }
+            
+            if currentStep == 2 {
+                gameSession.bets = []
+                for (eventType, amount) in betAmounts {
+                    gameSession.addBet(eventType: eventType, amount: amount)
+                }
+            }
+            
+            withAnimation(AppDesignSystem.Animations.standard) {
+                currentStep += 1
+            }
+        } else {
+            // Final step - assign players
+            gameSession.selectedPlayers = gameSession.availablePlayers.filter { selectedPlayerIds.contains($0.id) }
+            
+            for i in 0..<gameSession.participants.count {
+                gameSession.participants[i].selectedPlayers = []
+            }
+            
+            presentationMode.wrappedValue.dismiss()
+            NotificationCenter.default.post(name: Notification.Name("ShowAssignment"), object: nil)
+        }
+    }
+    
+    private func createPlayersReviewText() -> String {
+        let playersByTeam = Dictionary(grouping: gameSession.availablePlayers.filter { selectedPlayerIds.contains($0.id) }) { $0.team.name }
+        
+        return playersByTeam.keys.sorted().map { teamName in
+            let players = playersByTeam[teamName] ?? []
+            return "\(teamName): \(players.map { $0.name }.joined(separator: ", "))"
+        }.joined(separator: "\n")
+    }
+    
+    private func createBetsReviewText() -> String {
+        return betAmounts.map { eventType, amount in
+            let formattedAmount = formatCurrency(abs(amount))
+            let prefix = amount >= 0 ? "+" : "-"
+            return "\(eventType.rawValue): \(prefix)\(formattedAmount)"
+        }.joined(separator: "\n")
     }
     
     private func formatCurrency(_ value: Double) -> String {
         let formatter = NumberFormatter()
         formatter.numberStyle = .currency
         formatter.currencySymbol = UserDefaults.standard.string(forKey: "currencySymbol") ?? "€"
-        
         return formatter.string(from: NSNumber(value: value)) ?? "€0.00"
     }
 }
 
-struct NewGameSetupView_Previews: PreviewProvider {
-    static var previews: some View {
-        NewGameSetupView(gameSession: GameSession())
+// MARK: - Enhanced Components
+
+struct EnhancedParticipantRow: View {
+    let participant: Participant
+    let onDelete: () -> Void
+    
+    @State private var showDeleteConfirmation = false
+    
+    var body: some View {
+        HStack(spacing: 16) {
+            // Participant avatar
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                AppDesignSystem.Colors.primary,
+                                AppDesignSystem.Colors.primary.opacity(0.7)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 40, height: 40)
+                
+                if let firstLetter = participant.name.first {
+                    Text(String(firstLetter).uppercased())
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                }
+            }
+            .shadow(
+                color: AppDesignSystem.Colors.primary.opacity(0.3),
+                radius: 4,
+                x: 0,
+                y: 2
+            )
+            
+            Text(participant.name)
+                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                .foregroundColor(AppDesignSystem.Colors.primaryText)
+            
+            Spacer()
+            
+            Button(action: {
+                showDeleteConfirmation = true
+            }) {
+                Image(systemName: "trash.circle.fill")
+                    .font(.system(size: 24))
+                    .foregroundColor(AppDesignSystem.Colors.error)
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.white)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(AppDesignSystem.Colors.primary.opacity(0.2), lineWidth: 1)
+                )
+        )
+        .shadow(
+            color: Color.black.opacity(0.05),
+            radius: 4,
+            x: 0,
+            y: 2
+        )
+        .alert("Remove Participant", isPresented: $showDeleteConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Remove", role: .destructive) {
+                onDelete()
+            }
+        } message: {
+            Text("Are you sure you want to remove \(participant.name) from the game?")
+        }
+    }
+}
+
+struct EnhancedTeamSection: View {
+    let team: Team
+    let players: [Player]
+    @Binding var selectedPlayerIds: Set<UUID>
+    
+    @State private var isExpanded = true
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Team header
+            Button(action: {
+                withAnimation(AppDesignSystem.Animations.bouncy) {
+                    isExpanded.toggle()
+                }
+            }) {
+                HStack(spacing: 12) {
+                    // Team color indicator
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(AppDesignSystem.TeamColors.getColor(for: team))
+                        .frame(width: 6, height: 24)
+                    
+                    Text(team.name)
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
+                    
+                    VibrantStatusBadge(
+                        "\(players.count) players",
+                        color: AppDesignSystem.TeamColors.getColor(for: team)
+                    )
+                    
+                    Spacer()
+                    
+                    let selectedCount = players.filter { selectedPlayerIds.contains($0.id) }.count
+                    if selectedCount > 0 {
+                        VibrantStatusBadge(
+                            "\(selectedCount) selected",
+                            color: AppDesignSystem.Colors.success
+                        )
+                    }
+                    
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                }
+            }
+            .buttonStyle(PlainButtonStyle())
+            
+            if isExpanded {
+                LazyVGrid(columns: [GridItem(.flexible())], spacing: 8) {
+                    ForEach(players) { player in
+                        PlayerCard(
+                            player: player,
+                            isSelected: selectedPlayerIds.contains(player.id),
+                            action: {
+                                withAnimation(AppDesignSystem.Animations.quick) {
+                                    if selectedPlayerIds.contains(player.id) {
+                                        selectedPlayerIds.remove(player.id)
+                                    } else {
+                                        selectedPlayerIds.insert(player.id)
+                                    }
+                                }
+                            }
+                        )
+                    }
+                }
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        }
+        .enhancedCard(team: team)
+    }
+}
+
+struct EnhancedCurrencySelector: View {
+    @AppStorage("selectedCurrency") private var selectedCurrency = "EUR"
+    @AppStorage("currencySymbol") private var currencySymbol = "€"
+    
+    private let currencies = [
+        ("USD", "$", "US Dollar"),
+        ("EUR", "€", "Euro"),
+        ("GBP", "£", "British Pound"),
+        ("NOK", "kr", "Norwegian Krone"),
+        ("SEK", "kr", "Swedish Krona"),
+        ("DKK", "kr", "Danish Krone")
+    ]
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Currency")
+                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .foregroundColor(AppDesignSystem.Colors.primaryText)
+            
+            Menu {
+                ForEach(currencies, id: \.0) { currency in
+                    Button(action: {
+                        selectedCurrency = currency.0
+                        currencySymbol = currency.1
+                    }) {
+                        HStack {
+                            Text("\(currency.1) \(currency.0) - \(currency.2)")
+                            if selectedCurrency == currency.0 {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack {
+                    Image(systemName: "dollarsign.circle")
+                        .font(.system(size: 20))
+                        .foregroundColor(AppDesignSystem.Colors.warning)
+                    
+                    Text(selectedCurrency)
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
+                    
+                    Text(currencySymbol)
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    
+                    Spacer()
+                    
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                }
+                .padding(16)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.white)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(AppDesignSystem.Colors.warning.opacity(0.3), lineWidth: 1)
+                        )
+                )
+            }
+        }
+        .enhancedCard()
+    }
+}
+
+struct BettingRuleRow: View {
+    let icon: String
+    let text: String
+    let color: Color
+    
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 14))
+                .foregroundColor(color)
+            
+            Text(text)
+                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .foregroundColor(AppDesignSystem.Colors.secondaryText)
+        }
+    }
+}
+
+struct EnhancedBetSettingsRow: View {
+    let eventType: Bet.EventType
+    @Binding var betAmount: Double
+    @Binding var isNegative: Bool
+    
+    private func eventDescription(for eventType: Bet.EventType, isNegative: Bool) -> String {
+        let action: String
+        
+        switch eventType {
+        case .goal: action = "scores a goal"
+        case .assist: action = "makes an assist"
+        case .yellowCard: action = "receives a yellow card"
+        case .redCard: action = "receives a red card"
+        case .ownGoal: action = "scores own goal"
+        case .penalty: action = "scores a penalty"
+        case .penaltyMissed: action = "misses a penalty"
+        case .cleanSheet: action = "kept a clean sheet"
+        case .custom: action = "custom event"
+        }
+        
+        let currencySymbol = UserDefaults.standard.string(forKey: "currencySymbol") ?? "€"
+        let amountString = String(format: "%.2f", abs(betAmount))
+        
+        return isNegative ?
+        "Players WITH the event pay \(currencySymbol)\(amountString)" :
+        "Players WITHOUT the event pay \(currencySymbol)\(amountString)"
+    }
+    
+    var body: some View {
+        VStack(spacing: 16) {
+            HStack {
+                Text(eventType.rawValue)
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                Spacer()
+                
+                // Toggle button
+                Button(action: {
+                    withAnimation(AppDesignSystem.Animations.bouncy) {
+                        isNegative.toggle()
+                    }
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: isNegative ? "minus.circle.fill" : "plus.circle.fill")
+                            .font(.system(size: 20))
+                        
+                        Text(isNegative ? "Negative" : "Positive")
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(
+                                LinearGradient(
+                                    colors: [
+                                        isNegative ? AppDesignSystem.Colors.error : AppDesignSystem.Colors.success,
+                                        (isNegative ? AppDesignSystem.Colors.error : AppDesignSystem.Colors.success).opacity(0.8)
+                                    ],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                    )
+                    .vibrantButton(color: isNegative ? AppDesignSystem.Colors.error : AppDesignSystem.Colors.success)
+                }
+            }
+            
+            HStack(spacing: 12) {
+                Text(UserDefaults.standard.string(forKey: "currencySymbol") ?? "€")
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                TextField("Amount", value: $betAmount, formatter: NumberFormatter())
+                    .font(.system(size: 16, weight: .medium, design: .rounded))
+                    .keyboardType(.decimalPad)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.white)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(AppDesignSystem.Colors.primary.opacity(0.3), lineWidth: 1)
+                            )
+                    )
+            }
+            
+            Text(eventDescription(for: eventType, isNegative: isNegative))
+                .font(.system(size: 12, weight: .medium, design: .rounded))
+                .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                .multilineTextAlignment(.leading)
+        }
+        .enhancedCard()
+    }
+}
+
+struct EnhancedReviewSection: View {
+    let title: String
+    let icon: String
+    let color: Color
+    let content: String
+    let count: Int
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 20))
+                    .foregroundColor(color)
+                
+                Text(title)
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                Spacer()
+                
+                VibrantStatusBadge("\(count)", color: color)
+            }
+            
+            Text(content)
+                .font(.system(size: 14, weight: .medium, design: .rounded))
+                .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                .lineLimit(nil)
+        }
+        .enhancedCard()
     }
 }

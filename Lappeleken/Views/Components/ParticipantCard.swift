@@ -3,8 +3,8 @@
 //  Lucky Football Slip
 //
 //  Created by Ivar Hovland on 19/05/2025.
-//
-
+/*
+/
 import SwiftUI
 
 // Participant card
@@ -36,4 +36,4 @@ struct ParticipantCard: View {
         
         return formatter.string(from: NSNumber(value: value)) ?? "\(currencySymbol)0.00"
     }
-}
+}*/
