@@ -631,54 +631,78 @@ struct LiveGameSetupView: View {
         currentStep += 1
     }
     
+
+
     private func loadPlayersForSelectedMatches() {
         isLoading = true
         error = nil
         
         Task {
             do {
-                // Determine which matches to load based on premium status
                 let matchIdsToLoad = AppConfig.canSelectMultipleMatches
-                    ? self.selectedMatchIds
+                    ? Array(self.selectedMatchIds)
                     : [self.selectedMatchIds.first!]
                 
-                // Clear previous players
                 await MainActor.run {
                     gameSession.availablePlayers = []
                 }
                 
-                // Load players for each match
                 var allPlayers: [Player] = []
-                var loadedMatchIds: [String] = []
                 var playerUnavailableMatches: [Match] = []
                 
-                for matchId in matchIdsToLoad {
+                print("🔄 Loading players for \(matchIdsToLoad.count) matches with rate limiting...")
+                
+                // Process matches sequentially to respect rate limits
+                for (index, matchId) in matchIdsToLoad.enumerated() {
                     if let match = gameSession.availableMatches.first(where: { $0.id == matchId }) {
-                        // Load players for this match
                         do {
-                            // Use a public method for accessing matchService instead of directly accessing a private property
-                            let players = try await gameSession.fetchMatchPlayers(for: matchId) ?? []
+                            print("📥 Loading players for match \(index + 1)/\(matchIdsToLoad.count): \(match.homeTeam.name) vs \(match.awayTeam.name)")
                             
-                            // Check if we got actual players or dummy ones
+                            // Use the robust method with built-in rate limiting and caching
+                            let players = try await gameSession.fetchMatchPlayersRobust(for: matchId) ?? []
+                            
                             let hasDummyPlayers = players.isEmpty || players.contains(where: {
-                                $0.name.contains("Player ") // Check for dummy player naming pattern
+                                $0.name.contains("Player ")
                             })
                             
                             if hasDummyPlayers {
-                                // Store match that doesn't have real players yet
                                 playerUnavailableMatches.append(match)
+                                print("⚠️ Using dummy players for \(match.homeTeam.name) vs \(match.awayTeam.name)")
+                            } else {
+                                print("✅ Loaded \(players.count) real players for \(match.homeTeam.name) vs \(match.awayTeam.name)")
                             }
                             
-                            // Add the players to our collection
                             allPlayers.append(contentsOf: players)
-                            loadedMatchIds.append(matchId)
                             
-                            // Increment match usage for free users
                             if AppPurchaseManager.shared.currentTier == .free {
                                 AppConfig.incrementMatchUsage()
                             }
+                            
+                            // Rate limiting: Add delay between matches (except for the last one)
+                            if index < matchIdsToLoad.count - 1 {
+                                print("⏳ Waiting 2 seconds before next match to respect API limits...")
+                                try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                            }
+                            
+                        } catch let error as APIError {
+                            print("❌ API Error loading players for match \(matchId): \(error)")
+                            
+                            switch error {
+                            case .rateLimited:
+                                print("🚨 Rate limited - waiting before continuing...")
+                                let waitTime = APIRateLimiter.shared.timeUntilNextCall()
+                                if waitTime > 0 {
+                                    try await Task.sleep(nanoseconds: UInt64(waitTime * 1_000_000_000))
+                                }
+                                // Retry this match
+                                continue
+                                
+                            default:
+                                // For other errors, continue to next match
+                                print("⚠️ Continuing to next match despite error")
+                            }
                         } catch {
-                            print("Error loading players for match \(matchId): \(error)")
+                            print("❌ Unexpected error loading players for match \(matchId): \(error)")
                             // Continue to next match even if this one fails
                         }
                     }
@@ -686,27 +710,49 @@ struct LiveGameSetupView: View {
                 
                 await MainActor.run {
                     isLoading = false
-                    
-                    // Update game session with all players from all selected matches
                     gameSession.availablePlayers = allPlayers
                     
-                    // If we found some players, proceed
+                    let stats = APIRateLimiter.shared.getUsageStats()
+                    print("📊 API Usage after loading: \(stats.current)/\(stats.max) calls")
+                    
                     if !allPlayers.isEmpty {
-                        // Show lineup warning if any match has no real players
+                        print("✅ Successfully loaded \(allPlayers.count) total players")
+                        
                         if !playerUnavailableMatches.isEmpty {
+                            print("⚠️ \(playerUnavailableMatches.count) matches using placeholder players")
                             self.showPlayerUnavailableWarning(matches: playerUnavailableMatches)
                         } else {
-                            // If all players are real, just proceed to next step
                             currentStep += 1
                         }
                     } else {
-                        error = "No players found for the selected match(es). Players may not be available yet. You can try again closer to kickoff time when team lineups are announced."
+                        error = "No players found for the selected match(es). This might be because team lineups haven't been announced yet, or there's an issue with the football data service. Please try again later."
                     }
+                    
+                    gameSession.objectWillChange.send()
                 }
+                
             } catch {
                 await MainActor.run {
                     isLoading = false
-                    self.error = "Error loading players: \(error.localizedDescription)"
+                    
+                    if let apiError = error as? APIError {
+                        switch apiError {
+                        case .rateLimited:
+                            self.error = "Too many requests to the football API. Please wait a moment and try again."
+                        case .networkError:
+                            self.error = "Network connection issue. Please check your internet and try again."
+                        case .serverError(let code, _):
+                            if code >= 500 {
+                                self.error = "The football data service is temporarily unavailable. Please try again later."
+                            } else {
+                                self.error = "There was a problem loading player data. Please try again."
+                            }
+                        default:
+                            self.error = "Error loading players: \(error.localizedDescription)"
+                        }
+                    } else {
+                        self.error = "Error loading players: \(error.localizedDescription)"
+                    }
                 }
             }
         }

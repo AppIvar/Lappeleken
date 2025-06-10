@@ -452,6 +452,8 @@ class AppPurchaseManager: ObservableObject {
         }
     }
     
+    
+    
     // MARK: - New Methods Required by UI
     
     func purchaseProduct(_ productId: String) async throws {
@@ -656,4 +658,52 @@ enum PurchaseError: Error, LocalizedError {
             return "An unknown error occurred"
         }
     }
+}
+
+extension AppPurchaseManager {
+    
+    // Add the missing property
+    var freeLiveMatchesUsed: Int {
+        get {
+            return UserDefaults.standard.integer(forKey: "usedLiveMatchCount")
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: "usedLiveMatchCount")
+        }
+    }
+    
+    #if DEBUG
+    /// Reset all purchase state for debugging
+    func debugResetPurchaseState() {
+        UserDefaults.standard.removeObject(forKey: "usedLiveMatchCount")  // Fixed key name
+        UserDefaults.standard.removeObject(forKey: "adRewardedLiveMatches")
+        UserDefaults.standard.removeObject(forKey: "purchaseTier")
+        UserDefaults.standard.removeObject(forKey: "purchasedCompetitions")
+        
+        // Reset to default state
+        currentTier = .free
+        purchasedCompetitions = []
+        ownedCompetitions = []
+        
+        print("🔄 DEBUG: Purchase state reset")
+        print("  - Free matches used: \(freeLiveMatchesUsed)")
+        print("  - Can use live features: \(canUseLiveFeatures)")
+        print("  - Remaining free matches: \(remainingFreeMatches)")
+        
+        objectWillChange.send()
+    }
+    
+    /// Grant additional free matches for testing
+    func debugGrantFreeMatches(count: Int = 3) {
+        let currentUsed = freeLiveMatchesUsed
+        freeLiveMatchesUsed = max(0, currentUsed - count)
+        
+        print("🎁 DEBUG: Granted \(count) free matches")
+        print("  - Previously used: \(currentUsed)")
+        print("  - Now used: \(freeLiveMatchesUsed)")
+        print("  - Remaining: \(remainingFreeMatches)")
+        
+        objectWillChange.send()
+    }
+    #endif
 }

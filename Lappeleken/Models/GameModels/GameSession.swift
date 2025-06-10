@@ -123,6 +123,13 @@ class GameSession: ObservableObject, Codable {
             self.matchService = ServiceProvider.shared.getMatchService()
         }
         
+        #if DEBUG
+        // Connect to test monitoring bridge if in test mode
+        if TestConfiguration.shared.isTestMode {
+            TestMonitoringBridge.shared.connectToGameSession(self)
+        }
+        #endif
+        
         // Set up the observer
         NotificationCenter.default.addObserver(
             self,
@@ -149,127 +156,71 @@ class GameSession: ObservableObject, Codable {
             
             print("🔄 GameSession mode updated: Live Mode = \(newLiveMode)")
         }
+        
+        #if DEBUG
+        // Update test bridge connection
+        if TestConfiguration.shared.isTestMode {
+            TestMonitoringBridge.shared.connectToGameSession(self)
+        } else {
+            TestMonitoringBridge.shared.disconnect()
+        }
+        #endif
     }
     
 
     func fetchAvailableMatches() async throws {
-        // Always check UserDefaults for the most current live mode status
-        let currentLiveMode = UserDefaults.standard.bool(forKey: "isLiveMode")
-        
-        // Update our property if it's out of sync
-        if currentLiveMode != isLiveMode {
-            await MainActor.run {
-                isLiveMode = currentLiveMode
-                if isLiveMode {
-                    matchService = ServiceProvider.shared.getMatchService()
-                } else {
-                    matchService = nil
-                }
-            }
+        try await fetchAvailableMatchesRobust()
+    }
+
+    
+    func fetchMatchLineup(for matchId: String) async throws {
+        guard isLiveMode, let matchService = matchService else {
+            print("❌ Cannot fetch lineup: Live mode disabled or no match service")
+            return
         }
         
-        // Check live mode status
-        if !currentLiveMode {
-            print("Debug - Live mode is disabled when trying to fetch matches")
-            throw NSError(domain: "com.lappeleken.error", code: 1,
-                         userInfo: [NSLocalizedDescriptionKey: "Live mode is not enabled. Please enable it in settings."])
-        }
-        
-        // Then check if match service exists
-        guard let matchService = matchService else {
-            print("Debug - Match service is nil when trying to fetch matches")
-            throw NSError(domain: "com.lappeleken.error", code: 2,
-                         userInfo: [NSLocalizedDescriptionKey: "Match service initialization failed. Please restart the app."])
-        }
-        
-        print("🚀 Starting to fetch available matches...")
-        print("Debug - About to fetch matches with service: \(matchService)")
+        print("📋 Fetching lineup for match \(matchId)")
+        print("🔧 Using service type: \(type(of: matchService))")
         
         do {
-            // Try to get live matches first
-            print("🔴 Attempting to fetch live matches...")
-            let liveMatches = try await matchService.fetchLiveMatches(competitionCode: nil)
+            let lineup: Lineup
             
-            if !liveMatches.isEmpty {
-                await MainActor.run {
-                    self.availableMatches = liveMatches
-                    print("✅ Updated UI with \(liveMatches.count) live matches")
-                    self.objectWillChange.send()
-                }
-                return
-            }
-            
-            print("⚪ No live matches found, trying upcoming matches...")
-            
-            // If no live matches, try upcoming matches
-            let upcomingMatches = try await matchService.fetchUpcomingMatches(competitionCode: nil)
-            
-            if !upcomingMatches.isEmpty {
-                await MainActor.run {
-                    self.availableMatches = upcomingMatches
-                    print("✅ Updated UI with \(upcomingMatches.count) upcoming matches")
-                    self.objectWillChange.send()
-                }
-                return
-            }
-            
-            print("⚪ No upcoming matches found either")
-            
-            // If we still have no matches, try fetching from specific competitions
-            print("🎯 Trying to fetch from specific competitions...")
-            
-            let competitions = ["BL1", "PL", "SA", "PD", "CL", "EL"] // Include Bundesliga first
-            var allMatches: [Match] = []
-            
-            for competitionCode in competitions {
-                do {
-                    print("🔍 Checking \(competitionCode)...")
-                    let competitionMatches = try await matchService.fetchLiveMatches(competitionCode: competitionCode)
-                    allMatches.append(contentsOf: competitionMatches)
-                    print("  Found \(competitionMatches.count) matches in \(competitionCode)")
-                } catch {
-                    print("  ❌ Error fetching from \(competitionCode): \(error)")
-                }
+            if let footballService = matchService as? FootballDataMatchService {
+                print("🌐 Using FootballDataMatchService to fetch lineup")
+                lineup = try await footballService.fetchMatchLineup(matchId: matchId)
+            } else if let mockService = matchService as? MockFootballDataService {
+                print("🧪 Using MockFootballDataService to fetch lineup")
+                lineup = try await mockService.fetchMatchLineup(matchId: matchId)
+            } else {
+                print("🔄 Using generic MatchService to fetch lineup")
+                lineup = try await matchService.fetchMatchLineup(matchId: matchId)
             }
             
             await MainActor.run {
-                self.availableMatches = allMatches
-                print("✅ Updated UI with \(allMatches.count) total matches from all competitions")
+                self.matchLineups[matchId] = lineup
+                
+                // Extract players from lineup
+                var allPlayers: [Player] = []
+                allPlayers.append(contentsOf: lineup.homeTeam.startingXI)
+                allPlayers.append(contentsOf: lineup.homeTeam.substitutes)
+                allPlayers.append(contentsOf: lineup.awayTeam.startingXI)
+                allPlayers.append(contentsOf: lineup.awayTeam.substitutes)
+                
+                self.availablePlayers = allPlayers
+                self.selectedPlayers = allPlayers
+                
+                print("✅ Lineup processed: \(allPlayers.count) players available")
+                print("  - Home XI: \(lineup.homeTeam.startingXI.count)")
+                print("  - Home Subs: \(lineup.homeTeam.substitutes.count)")
+                print("  - Away XI: \(lineup.awayTeam.startingXI.count)")
+                print("  - Away Subs: \(lineup.awayTeam.substitutes.count)")
+                
                 self.objectWillChange.send()
             }
             
         } catch {
-            print("❌ Error in fetchAvailableMatches: \(error)")
+            print("❌ Error fetching lineup: \(error)")
             throw error
-        }
-    }
-    
-    func fetchMatchLineup(for matchId: String) async throws {
-        guard isLiveMode, let matchService = matchService else { return }
-        
-        do {
-            // Now that you have premium access, use the actual lineup endpoint
-            if let footballService = matchService as? FootballDataMatchService {
-                let lineup = try await footballService.fetchMatchLineup(matchId: matchId)
-                
-                await MainActor.run {
-                    self.matchLineups[matchId] = lineup
-                    self.objectWillChange.send()
-                }
-            } else {
-                // Fallback: if we can't get lineup, just get players
-                let players = try await matchService.fetchMatchPlayers(matchId: matchId)
-                print("Got \(players.count) players but no lineup structure available")
-                
-                // You could create a basic lineup structure here if needed
-                // For now, just update available players
-                await MainActor.run {
-                    self.availablePlayers = players
-                    self.objectWillChange.send()
-                }
-            }
-        } catch {
-            print("Error fetching lineup: \(error)")
         }
     }
     
@@ -279,10 +230,26 @@ class GameSession: ObservableObject, Codable {
         // Cancel existing monitoring
         matchMonitoringTask?.cancel()
         
-        // Start enhanced monitoring
-        if matchService is FootballDataMatchService {
-            let service = matchService as! FootballDataMatchService
-            matchMonitoringTask = service.enhancedMatchMonitoring(
+        print("🎯 Starting match monitoring for: \(match.homeTeam.name) vs \(match.awayTeam.name)")
+        print("🔧 Using service type: \(type(of: matchService))")
+        
+        // Start monitoring based on service type
+        if let footballService = matchService as? FootballDataMatchService {
+            print("🌐 Using FootballDataMatchService enhanced monitoring")
+            matchMonitoringTask = footballService.enhancedMatchMonitoring(
+                matchId: match.id,
+                updateInterval: 30,
+                onUpdate: { [weak self] update in
+                    guard let self = self else { return }
+                    
+                    Task { @MainActor in
+                        self.processEnhancedMatchUpdate(update)
+                    }
+                }
+            )
+        } else if let mockService = matchService as? MockFootballDataService {
+            print("🧪 Using MockFootballDataService monitoring")
+            matchMonitoringTask = mockService.startMonitoringMatch(
                 matchId: match.id,
                 updateInterval: 30,
                 onUpdate: { [weak self] update in
@@ -294,6 +261,7 @@ class GameSession: ObservableObject, Codable {
                 }
             )
         } else {
+            print("🔄 Using generic MatchService monitoring")
             // Fallback to regular monitoring
             matchMonitoringTask = matchService.startMonitoringMatch(
                 matchId: match.id,
@@ -310,66 +278,11 @@ class GameSession: ObservableObject, Codable {
     }
     
     func selectMatch(_ match: Match) async {
-        guard isLiveMode, let matchService = matchService else { return }
-        
-        // Cancel any existing monitoring
-        matchMonitoringTask?.cancel()
-        
-        do {
-            print("🏟️ Selected match: \(match.homeTeam.name) vs \(match.awayTeam.name)")
-            
-            // Get players for this match
-            let players = try await matchService.fetchMatchPlayers(matchId: match.id)
-            print("👥 Retrieved \(players.count) players for this match")
-            
-            // Important: Switch to MainActor for UI updates
-            await MainActor.run {
-                // Update UI state
-                self.selectedMatch = match
-                self.availablePlayers = players
-                self.selectedPlayers = players  // Also update selected players
-                
-                print("🔄 Updated game session state with match and players")
-                self.objectWillChange.send()
-            }
-            
-            // Start monitoring this match with the default updateInterval
-            print("🎯 Starting match monitoring for match ID: \(match.id)")
-            matchMonitoringTask = matchService.startMonitoringMatch(
-                matchId: match.id,
-                updateInterval: 60,  // Default is 60 seconds
-                onUpdate: { [weak self] update in
-                    // Capture self weakly to avoid memory leak
-                    guard let self = self else { return }
-                    
-                    // Use MainActor to update UI safely from background task
-                    Task { @MainActor in
-                        print("📡 Received match update!")
-                        self.processMatchUpdate(update)
-                    }
-                }
-            )
-        } catch {
-            print("❌ Error selecting match: \(error)")
-            
-            // Even if there's an error, still update the UI to show the selected match
-            await MainActor.run {
-                self.selectedMatch = match
-                
-                // Try to use sample players if we couldn't get real ones
-                if self.availablePlayers.isEmpty {
-                    self.availablePlayers = SampleData.samplePlayers
-                    self.selectedPlayers = SampleData.samplePlayers
-                }
-                
-                self.objectWillChange.send()
-            }
-        }
+        await selectMatchRobust(match)
     }
     
     func fetchMatchPlayers(for matchId: String) async throws -> [Player]? {
-        // This is a public method that internally uses your private matchService
-        return try await matchService?.fetchMatchPlayers(matchId: matchId)
+        return try await fetchMatchPlayersRobust(for: matchId)
     }
     
     func saveGame(name: String) {
@@ -966,5 +879,227 @@ class GameSession: ObservableObject, Codable {
         print("   - \(uniqueTeams.count) teams")
         return true
     }
+    
+    func fetchAvailableMatchesRobust() async throws {
+        guard isLiveMode else {
+            throw NSError(domain: "GameSession", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "Live mode is not enabled"
+            ])
+        }
+        
+        guard let matchService = matchService else {
+            throw NSError(domain: "GameSession", code: 2, userInfo: [
+                NSLocalizedDescriptionKey: "Match service not available"
+            ])
+        }
+        
+        print("🚀 Starting robust match fetch...")
+        print("🔧 Using service type: \(type(of: matchService))")
+        
+        do {
+            var matches: [Match] = []
+            
+            // Handle both real and mock services
+            if let footballService = matchService as? FootballDataMatchService {
+                print("🌐 Using real FootballDataMatchService")
+                matches = try await footballService.fetchLiveMatchesWithFallback(competitionCode: nil)
+            } else if let mockService = matchService as? MockFootballDataService {
+                print("🧪 Using MockFootballDataService")
+                matches = try await mockService.fetchLiveMatchesWithFallback(competitionCode: nil)
+            } else {
+                print("🔄 Using generic MatchService interface")
+                // Try live matches first, then fallback to upcoming
+                matches = try await matchService.fetchLiveMatches(competitionCode: nil)
+                
+                if matches.isEmpty {
+                    print("⚪ No live matches, trying upcoming...")
+                    matches = try await matchService.fetchUpcomingMatches(competitionCode: nil)
+                }
+                
+                if matches.isEmpty {
+                    print("⚪ No upcoming matches, trying date range...")
+                    if let footballService = matchService as? FootballDataMatchService {
+                        matches = try await footballService.fetchMatchesInDateRange(days: 7)
+                    } else if let mockService = matchService as? MockFootballDataService {
+                        matches = try await mockService.fetchMatchesInDateRange(days: 7)
+                    }
+                }
+            }
+            
+            await MainActor.run {
+                self.availableMatches = matches
+                print("✅ Successfully loaded \(matches.count) matches")
+                for match in matches {
+                    print("  - \(match.homeTeam.name) vs \(match.awayTeam.name) (\(match.status))")
+                }
+                self.objectWillChange.send()
+            }
+            
+        } catch let error as APIError {
+            let userFriendlyMessage = getUserFriendlyErrorMessage(for: error)
+            await MainActor.run {
+                print("❌ Failed to fetch matches: \(userFriendlyMessage)")
+            }
+            throw NSError(domain: "GameSession", code: 3, userInfo: [
+                NSLocalizedDescriptionKey: userFriendlyMessage
+            ])
+            
+        } catch {
+            await MainActor.run {
+                print("❌ Unexpected error fetching matches: \(error)")
+            }
+            throw error
+        }
+    }
+    
+    func fetchMatchPlayersRobust(for matchId: String) async throws -> [Player]? {
+        guard let matchService = matchService else {
+            throw NSError(domain: "GameSession", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "Match service not available"
+            ])
+        }
+        
+        do {
+            print("🔧 Fetching players using service type: \(type(of: matchService))")
+            
+            if let footballService = matchService as? FootballDataMatchService {
+                return try await footballService.fetchMatchPlayersWithCache(matchId: matchId)
+            } else if let mockService = matchService as? MockFootballDataService {
+                return try await mockService.fetchMatchPlayersWithCache(matchId: matchId)
+            } else {
+                // Fallback to generic interface
+                return try await matchService.fetchMatchPlayers(matchId: matchId)
+            }
+        } catch {
+            print("❌ Error fetching players for match \(matchId): \(error)")
+            throw error
+        }
+    }
+    
+    func selectMatchRobust(_ match: Match) async {
+        guard isLiveMode, let matchService = matchService else { return }
+        
+        // Cancel any existing monitoring
+        matchMonitoringTask?.cancel()
+        
+        do {
+            print("🏟️ Selected match: \(match.homeTeam.name) vs \(match.awayTeam.name)")
+            
+            // Set the selected match first
+            await MainActor.run {
+                self.selectedMatch = match
+                self.objectWillChange.send()
+            }
+            
+            // Try to fetch lineup with caching
+            do {
+                print("📋 Attempting to fetch lineup for match \(match.id)")
+                try await fetchMatchLineup(for: match.id)
+                print("✅ Lineup fetched successfully")
+            } catch {
+                print("⚠️ Lineup fetch failed, falling back to basic players: \(error)")
+                // If lineup fails, try to get basic players with caching
+                let players = try await fetchMatchPlayersRobust(for: match.id) ?? []
+                print("👥 Retrieved \(players.count) players for this match")
+                
+                await MainActor.run {
+                    self.availablePlayers = players
+                    self.selectedPlayers = players
+                    print("🔄 Updated game session state with players")
+                    self.objectWillChange.send()
+                }
+            }
+            
+            // Start smart monitoring
+            print("🎯 Starting smart match monitoring for match ID: \(match.id)")
+            startSmartMonitoring(match)
+            
+        } catch {
+            print("❌ Error selecting match: \(error)")
+            
+            await MainActor.run {
+                self.selectedMatch = match
+                
+                if self.availablePlayers.isEmpty {
+                    print("🔄 Using sample players as fallback")
+                    self.availablePlayers = SampleData.samplePlayers
+                    self.selectedPlayers = SampleData.samplePlayers
+                }
+                
+                self.objectWillChange.send()
+            }
+        }
+    }
+    
+    private func startSmartMonitoring(_ match: Match) {
+        guard let matchService = matchService else { return }
+        
+        print("🎯 Starting smart match monitoring for match ID: \(match.id)")
+        print("🔧 Using service type: \(type(of: matchService))")
+        
+        if let footballService = matchService as? FootballDataMatchService {
+            matchMonitoringTask = footballService.smartMatchMonitoring(
+                matchId: match.id,
+                onUpdate: { [weak self] update in
+                    guard let self = self else { return }
+                    
+                    Task { @MainActor in
+                        self.processEnhancedMatchUpdate(update)
+                    }
+                }
+            )
+        } else if let mockService = matchService as? MockFootballDataService {
+            matchMonitoringTask = mockService.smartMatchMonitoring(
+                matchId: match.id,
+                onUpdate: { [weak self] update in
+                    guard let self = self else { return }
+                    
+                    Task { @MainActor in
+                        self.processEnhancedMatchUpdate(update)
+                    }
+                }
+            )
+        } else {
+            // Fallback to basic monitoring
+            matchMonitoringTask = matchService.startMonitoringMatch(
+                matchId: match.id,
+                updateInterval: 30,
+                onUpdate: { [weak self] update in
+                    guard let self = self else { return }
+                    
+                    Task { @MainActor in
+                        self.processMatchUpdate(update)
+                    }
+                }
+            )
+        }
+    }
+    
+    private func getUserFriendlyErrorMessage(for error: APIError) -> String {
+        switch error {
+        case .rateLimited:
+            return "Too many requests. Please wait a moment and try again."
+            
+        case .networkError:
+            return "Please check your internet connection and try again."
+            
+        case .serverError(let code, _):
+            if code >= 500 {
+                return "The football data service is temporarily unavailable. Please try again later."
+            } else {
+                return "There was a problem with your request. Please try again."
+            }
+            
+        case .decodingError:
+            return "There was a problem processing the match data. Please try again."
+            
+        case .invalidURL:
+            return "There was a configuration error. Please restart the app."
+            
+        case .unknown:
+            return "An unexpected error occurred. Please try again."
+        }
+    }
 }
+
 

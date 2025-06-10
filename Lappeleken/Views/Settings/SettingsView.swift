@@ -65,6 +65,17 @@ struct SettingsView: View {
                             currencySettingsContent
                         }
                         
+                        // Debug Section (only in DEBUG builds)
+                        #if DEBUG
+                        EnhancedSettingsSection(
+                            title: "🐛 Debug Tools",
+                            icon: "ant.fill",
+                            color: AppDesignSystem.Colors.error
+                        ) {
+                            debugContent
+                        }
+                        #endif
+                        
                         // About Section
                         EnhancedSettingsSection(
                             title: "About",
@@ -111,7 +122,84 @@ struct SettingsView: View {
         }
         .showBannerAdForFreeUsers()
     }
-    
+
+    // Add this new debug content section:
+    #if DEBUG
+    private var debugContent: some View {
+        VStack(spacing: 16) {
+            EnhancedSettingsRow(
+                title: "Reset Purchase State",
+                subtitle: "Reset all purchase data",
+                icon: "arrow.clockwise.circle.fill",
+                color: AppDesignSystem.Colors.warning
+            ) {
+                AppPurchaseManager.shared.debugResetPurchaseState()
+            }
+            
+            EnhancedSettingsRow(
+                title: "Grant 3 Free Matches",
+                subtitle: "Add 3 free live matches",
+                icon: "gift.fill",
+                color: AppDesignSystem.Colors.success
+            ) {
+                AppPurchaseManager.shared.debugGrantFreeMatches(count: 3)
+            }
+            
+            EnhancedSettingsRow(
+                title: "Reset All App State",
+                subtitle: "Complete app data reset",
+                icon: "trash.circle.fill",
+                color: AppDesignSystem.Colors.error
+            ) {
+                AppConfig.debugResetAppState()
+            }
+            
+            // Debug info display
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Current State:")
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Free matches used: \(AppPurchaseManager.shared.freeLiveMatchesUsed)")
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    
+                    Text("Can use live: \(AppPurchaseManager.shared.canUseLiveFeatures ? "Yes" : "No")")
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    
+                    Text("Remaining: \(AppPurchaseManager.shared.remainingFreeMatches)")
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    
+                    Text("Current tier: \(AppPurchaseManager.shared.currentTier.displayName)")
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                }
+            }
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.gray.opacity(0.1))
+            )
+            
+            // Test Mode Section
+            testModeSection
+        }
+    }
+
+    // Add the test mode section
+    var testModeSection: some View {
+        EnhancedSettingsSection(
+            title: "🧪 Test Mode",
+            icon: "flask.fill",
+            color: .orange
+        ) {
+            TestModeDebugView()
+        }
+    }
+    #endif
     // MARK: - Background
     
     private var backgroundView: some View {
@@ -851,80 +939,81 @@ struct LiveModeInfoView: View {
                                 .foregroundColor(AppDesignSystem.Colors.secondaryText)
                                 .multilineTextAlignment(.center)
                         }
-                    }
-                    
-                    // Enhanced feature list
-                    VStack(spacing: 16) {
-                        ForEach(Array(liveFeatures.enumerated()), id: \.offset) { index, feature in
-                            EnhancedLiveModeFeature(
-                                feature: feature,
-                                index: index,
-                                isAnimated: animateFeatures
-                            )
-                        }
-                    }
-                    
-                    // Free mode info (if applicable)
-                    if AppPurchaseManager.shared.currentTier == .free {
-                        freeModeInfoCard
-                    }
-                    
-                    // Important note
-                    VStack(spacing: 12) {
-                        Text("📶 Network Required")
-                            .font(.system(size: 16, weight: .bold, design: .rounded))
-                            .foregroundColor(AppDesignSystem.Colors.primaryText)
                         
-                        Text("Live Mode requires an internet connection and uses data. Updates may be delayed by 1-2 minutes from the actual match.")
-                            .font(.system(size: 14, weight: .medium, design: .rounded))
-                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                            .multilineTextAlignment(.center)
-                    }
-                    .enhancedCard()
-                    
-                    // Get started button
-                    Button("Get Started") {
-                        presentationMode.wrappedValue.dismiss()
-                        onGetStarted()
-                    }
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 16)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        AppDesignSystem.Colors.primary,
-                                        AppDesignSystem.Colors.primary.opacity(0.8)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
+                        
+                        // Enhanced feature list
+                        VStack(spacing: 16) {
+                            ForEach(Array(liveFeatures.enumerated()), id: \.offset) { index, feature in
+                                EnhancedLiveModeFeature(
+                                    feature: feature,
+                                    index: index,
+                                    isAnimated: animateFeatures
                                 )
-                            )
-                    )
-                    .vibrantButton()
-                    
-                    Spacer(minLength: 40)
-                }
-                .padding(20)
-            }
-            .background(AppDesignSystem.Colors.background)
-            .navigationTitle("Live Mode")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Close") {
-                        presentationMode.wrappedValue.dismiss()
+                            }
+                        }
+                        
+                        // Free mode info (if applicable)
+                        if AppPurchaseManager.shared.currentTier == .free {
+                            freeModeInfoCard
+                        }
+                        
+                        // Important note
+                        VStack(spacing: 12) {
+                            Text("📶 Network Required")
+                                .font(.system(size: 16, weight: .bold, design: .rounded))
+                                .foregroundColor(AppDesignSystem.Colors.primaryText)
+                            
+                            Text("Live Mode requires an internet connection and uses data. Updates may be delayed by 1-2 minutes from the actual match.")
+                                .font(.system(size: 14, weight: .medium, design: .rounded))
+                                .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                                .multilineTextAlignment(.center)
+                        }
+                        .enhancedCard()
+                        
+                        // Get started button
+                        Button("Get Started") {
+                            presentationMode.wrappedValue.dismiss()
+                            onGetStarted()
+                        }
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(
+                                    LinearGradient(
+                                        colors: [
+                                            AppDesignSystem.Colors.primary,
+                                            AppDesignSystem.Colors.primary.opacity(0.8)
+                                        ],
+                                        startPoint: .topLeading,
+                                        endPoint: .bottomTrailing
+                                    )
+                                )
+                        )
+                        .vibrantButton()
+                        
+                        Spacer(minLength: 40)
                     }
-                    .foregroundColor(AppDesignSystem.Colors.primary)
+                    .padding(20)
+                }
+                .background(AppDesignSystem.Colors.background)
+                .navigationTitle("Live Mode")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Close") {
+                            presentationMode.wrappedValue.dismiss()
+                        }
+                        .foregroundColor(AppDesignSystem.Colors.primary)
+                    }
                 }
             }
-        }
-        .onAppear {
-            withAnimation(AppDesignSystem.Animations.standard.delay(0.5)) {
-                animateFeatures = true
+            .onAppear {
+                withAnimation(AppDesignSystem.Animations.standard.delay(0.5)) {
+                    animateFeatures = true
+                }
             }
         }
     }
@@ -1033,3 +1122,4 @@ struct EnhancedLiveModeFeature: View {
         )
     }
 }
+

@@ -14,6 +14,7 @@ struct GameView: View {
     @State private var showingEventSheet = false
     @State private var showingSubstitutionSheet = false
     @State private var showingAutoSavePrompt = false
+    @State private var showingSettingsView = false
     @State private var autoSaveGameName = ""
     @State private var animateGradient = false
 
@@ -50,6 +51,7 @@ struct GameView: View {
                     }
                 
                 SettingsView()
+                    .environmentObject(gameSession)
                     .tabItem {
                         Label("Settings", systemImage: "gear")
                     }

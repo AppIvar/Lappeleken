@@ -84,8 +84,29 @@ class APIClient {
         }
     }
     
-    
     func footballDataRequest<T: Decodable>(endpoint: String) async throws -> T {
+        // Check rate limit before making calls
+        if !APIRateLimiter.shared.canMakeCall() {
+            let waitTime = APIRateLimiter.shared.timeUntilNextCall()
+            if AppConfig.enableDetailedLogging {
+                print("🚨 Rate limit reached, waiting \(waitTime) seconds")
+            }
+            
+            if waitTime > 0 && waitTime < 60 { // Don't wait more than 1 minute
+                try await Task.sleep(nanoseconds: UInt64(waitTime * 1_000_000_000))
+                
+                // Check again after waiting
+                guard APIRateLimiter.shared.canMakeCall() else {
+                    throw APIError.rateLimited
+                }
+            } else {
+                throw APIError.rateLimited
+            }
+        }
+        
+        // Record the API call
+        APIRateLimiter.shared.recordCall()
+        
         guard let url = URL(string: "\(baseURL)/\(endpoint)") else {
             throw APIError.invalidURL
         }
@@ -95,10 +116,9 @@ class APIClient {
         request.addValue("application/json", forHTTPHeaderField: "Accept")
         request.addValue(AppConfig.footballDataAPIKey, forHTTPHeaderField: "X-Auth-Token")
         
-        // Only log in debug mode
         if AppConfig.enableDetailedLogging {
-            print("📡 API Request: \(url.absoluteString)")
-            print("🔑 Using API Key: \(AppConfig.footballDataAPIKey.prefix(8))...")
+            let stats = APIRateLimiter.shared.getUsageStats()
+            print("📡 API Request (\(stats.current)/\(stats.max)): \(url.absoluteString)")
         }
         
         do {
@@ -108,56 +128,23 @@ class APIClient {
                 throw APIError.unknown
             }
             
-            if AppConfig.enableDetailedLogging {
-                print("📥 API Response: Status \(httpResponse.statusCode)")
-                
-                // Print response headers for debugging
-                if let headers = httpResponse.allHeaderFields as? [String: String] {
-                    for (key, value) in headers {
-                        if key.lowercased().contains("limit") || key.lowercased().contains("remaining") {
-                            print("  \(key): \(value)")
-                        }
-                    }
-                }
-            }
-            
             if httpResponse.statusCode == 429 {
                 throw APIError.rateLimited
             }
             
             if (200...299).contains(httpResponse.statusCode) {
-                do {
-                    // Only log raw JSON in debug mode
-                    if AppConfig.enableDetailedLogging {
-                        if let jsonString = String(data: data, encoding: .utf8) {
-                            print("📄 Response JSON (first 200 chars): \(String(jsonString.prefix(200)))...")
-                        }
-                    }
-                    
-                    let decoder = JSONDecoder()
-                    decoder.keyDecodingStrategy = .convertFromSnakeCase
-                    decoder.dateDecodingStrategy = .iso8601
-                    
-                    return try decoder.decode(T.self, from: data)
-                } catch {
-                    if AppConfig.enableDetailedLogging {
-                        print("❌ Decoding Error: \(error)")
-                    }
-                    throw APIError.decodingError(error)
-                }
+                let decoder = JSONDecoder()
+                decoder.keyDecodingStrategy = .convertFromSnakeCase
+                decoder.dateDecodingStrategy = .iso8601
+                
+                return try decoder.decode(T.self, from: data)
             } else {
                 let errorBody = String(data: data, encoding: .utf8) ?? "No error body"
-                if AppConfig.enableDetailedLogging {
-                    print("❌ Server Error \(httpResponse.statusCode): \(errorBody)")
-                }
                 throw APIError.serverError(httpResponse.statusCode, errorBody)
             }
         } catch {
             if let apiError = error as? APIError {
                 throw apiError
-            }
-            if AppConfig.enableDetailedLogging {
-                print("❌ Network Error: \(error)")
             }
             throw APIError.networkError(error)
         }
