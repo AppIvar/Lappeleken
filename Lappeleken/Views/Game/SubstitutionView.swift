@@ -61,7 +61,7 @@ struct SubstitutionView: View {
                 existingPlayerPickerSheet
             }
         }
-        .withBannerAd(placement: .bottom)
+        .withMinimalBanner()
     }
     
     // MARK: - Player Off Section

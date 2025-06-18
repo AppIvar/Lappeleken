@@ -120,7 +120,7 @@ struct SettingsView: View {
                 animateGradient = true
             }
         }
-        .showBannerAdForFreeUsers()
+        .withSmartMonetization()
     }
 
     // Add this new debug content section:
@@ -146,12 +146,13 @@ struct SettingsView: View {
             }
             
             EnhancedSettingsRow(
-                title: "Reset All App State",
-                subtitle: "Complete app data reset",
-                icon: "trash.circle.fill",
-                color: AppDesignSystem.Colors.error
+                title: "Toggle Premium Status",
+                subtitle: "Switch between free and premium",
+                icon: "crown.fill",
+                color: AppDesignSystem.Colors.warning
             ) {
-                AppConfig.debugResetAppState()
+                let isPremium = AppPurchaseManager.shared.currentTier == .premium
+                AppPurchaseManager.shared.debugSetPremium(!isPremium)
             }
             
             // Debug info display
@@ -161,7 +162,7 @@ struct SettingsView: View {
                     .foregroundColor(AppDesignSystem.Colors.primaryText)
                 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Free matches used: \(AppPurchaseManager.shared.freeLiveMatchesUsed)")
+                    Text("Daily matches used: \(AppPurchaseManager.shared.dailyFreeMatchesUsed)")
                         .font(.system(size: 12, weight: .medium, design: .rounded))
                         .foregroundColor(AppDesignSystem.Colors.secondaryText)
                     
@@ -169,7 +170,7 @@ struct SettingsView: View {
                         .font(.system(size: 12, weight: .medium, design: .rounded))
                         .foregroundColor(AppDesignSystem.Colors.secondaryText)
                     
-                    Text("Remaining: \(AppPurchaseManager.shared.remainingFreeMatches)")
+                    Text("Remaining today: \(AppPurchaseManager.shared.remainingFreeMatchesToday)")
                         .font(.system(size: 12, weight: .medium, design: .rounded))
                         .foregroundColor(AppDesignSystem.Colors.secondaryText)
                     
@@ -266,24 +267,26 @@ struct SettingsView: View {
     
     private var premiumFeaturesContent: some View {
         VStack(spacing: 16) {
-            // Upgrade button
+            // Main upgrade button - always visible
             EnhancedUpgradeRow(
                 currentTier: purchaseManager.currentTier,
-                remainingMatches: remainingFreeMatches
+                remainingMatches: purchaseManager.remainingFreeMatchesToday
             ) {
                 showingUpgradeView = true
             }
             
-            // Free matches info for free users
+            // Daily matches info for free users
             if purchaseManager.currentTier == .free {
-                EnhancedFreeMatchesRow(
-                    remaining: remainingFreeMatches,
-                    total: AppConfig.maxFreeMatches
-                )
+                dailyMatchesInfoCard
+                
+                // Watch ad option if available
+                if purchaseManager.remainingFreeMatchesToday == 0 && AdManager.shared.isRewardedReady {
+                    watchAdForExtraMatchCard
+                }
             }
             
             // Restore purchases option
-            if !availableProducts.isEmpty {
+            if purchaseManager.currentTier == .free && !purchaseManager.availableProducts.isEmpty {
                 EnhancedSettingsRow(
                     title: "Restore Purchases",
                     subtitle: "Restore previous purchases",
@@ -294,6 +297,128 @@ struct SettingsView: View {
                         await purchaseManager.restorePurchases()
                     }
                 }
+            }
+        }
+    }
+    
+    private var dailyMatchesInfoCard: some View {
+        VStack(spacing: 12) {
+            HStack {
+                Image(systemName: "calendar")
+                    .font(.system(size: 20))
+                    .foregroundColor(purchaseManager.remainingFreeMatchesToday > 0 ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.error)
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Daily Live Matches")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
+                    
+                    Text("\(purchaseManager.remainingFreeMatchesToday) of 1 remaining today")
+                        .font(.system(size: 14))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                }
+                
+                Spacer()
+                
+                // Visual indicator
+                ZStack {
+                    Circle()
+                        .stroke(Color.gray.opacity(0.2), lineWidth: 3)
+                        .frame(width: 40, height: 40)
+                    
+                    Circle()
+                        .trim(from: 0, to: CGFloat(purchaseManager.remainingFreeMatchesToday))
+                        .stroke(
+                            purchaseManager.remainingFreeMatchesToday > 0 ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.error,
+                            style: StrokeStyle(lineWidth: 3, lineCap: .round)
+                        )
+                        .frame(width: 40, height: 40)
+                        .rotationEffect(.degrees(-90))
+                    
+                    Text("\(purchaseManager.remainingFreeMatchesToday)")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
+                }
+            }
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(
+                        purchaseManager.remainingFreeMatchesToday > 0 ?
+                        AppDesignSystem.Colors.success.opacity(0.1) :
+                        AppDesignSystem.Colors.error.opacity(0.1)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(
+                                purchaseManager.remainingFreeMatchesToday > 0 ?
+                                AppDesignSystem.Colors.success.opacity(0.3) :
+                                AppDesignSystem.Colors.error.opacity(0.3),
+                                lineWidth: 1
+                            )
+                    )
+            )
+        }
+    }
+
+    private var watchAdForExtraMatchCard: some View {
+        Button(action: {
+            showRewardedAdForExtraMatch()
+        }) {
+            HStack(spacing: 12) {
+                Image(systemName: "play.rectangle.fill")
+                    .font(.system(size: 20))
+                    .foregroundColor(.white)
+                    .frame(width: 40, height: 40)
+                    .background(
+                        LinearGradient(
+                            colors: [.blue, .purple],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .cornerRadius(10)
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Watch Ad for Extra Match")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
+                    
+                    Text("Get another live match for today")
+                        .font(.system(size: 14))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                }
+                
+                Spacer()
+                
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+            }
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.blue.opacity(0.05))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.blue.opacity(0.2), lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+    
+    private func showRewardedAdForExtraMatch() {
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let rootViewController = windowScene.windows.first?.rootViewController else {
+            return
+        }
+        
+        AdManager.shared.showRewardedAdForExtraMatch(from: rootViewController) { success in
+            if success {
+                print("✅ Extra match granted via rewarded ad from settings")
+            } else {
+                print("❌ Failed to show rewarded ad from settings")
             }
         }
     }
@@ -379,10 +504,7 @@ struct SettingsView: View {
     }
     
     private var remainingFreeMatches: Int {
-        let used = UserDefaults.standard.integer(forKey: "usedLiveMatchCount")
-        let adRewarded = UserDefaults.standard.integer(forKey: "adRewardedLiveMatches")
-        let total = AppConfig.maxFreeMatches + adRewarded
-        return max(0, total - used)
+        return purchaseManager.remainingFreeMatchesToday
     }
     
     private var availableProducts: [String] {

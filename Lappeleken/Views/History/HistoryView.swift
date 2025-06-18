@@ -97,6 +97,8 @@ struct HistoryView: View {
                 }
             }
         }
+        .withSmartBanner()
+        .withInterstitialAd(trigger: .historyView)
     }
     
     // MARK: - Background
@@ -904,7 +906,7 @@ struct GameDetailSheet: View {
     private func continueGame() {
         // Check if we should show interstitial ad for free users
         if AppPurchaseManager.shared.currentTier == .free &&
-           AdManager.shared.shouldShowInterstitialForSettings() { // Using settings method as proxy
+            AdManager.shared.shouldShowInterstitialForSettings() { // Using settings method as proxy
             showInterstitialThenContinueGame()
         } else {
             loadAndContinueGame()
@@ -965,19 +967,50 @@ struct GameDetailSheet: View {
         
         PDFExporter.exportGameSummary(gameSession: tempGameSession) { fileURL in
             guard let url = fileURL else {
-                print("Error exporting PDF")
+                print("❌ Error exporting PDF from history")
                 return
             }
             
-            let activityVC = UIActivityViewController(
-                activityItems: [url],
-                applicationActivities: nil
-            )
-            
-            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-               let window = windowScene.windows.first,
-               let rootVC = window.rootViewController {
-                rootVC.present(activityVC, animated: true, completion: nil)
+            // Ensure we're on the main thread and handle presentation properly
+            DispatchQueue.main.async {
+                // Dismiss this detail view first
+                self.presentationMode.wrappedValue.dismiss()
+                
+                // Wait a moment then present the share sheet
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                          let window = windowScene.windows.first else {
+                        print("❌ Could not get window for PDF sharing")
+                        return
+                    }
+                    
+                    // Get the topmost view controller
+                    var topViewController = window.rootViewController
+                    while let presentedViewController = topViewController?.presentedViewController {
+                        topViewController = presentedViewController
+                    }
+                    
+                    guard let rootVC = topViewController else {
+                        print("❌ Could not get root view controller for PDF sharing")
+                        return
+                    }
+                    
+                    let activityVC = UIActivityViewController(
+                        activityItems: [url],
+                        applicationActivities: nil
+                    )
+                    
+                    // Configure for iPad
+                    if let popover = activityVC.popoverPresentationController {
+                        popover.sourceView = rootVC.view
+                        popover.sourceRect = CGRect(x: rootVC.view.bounds.midX, y: rootVC.view.bounds.midY, width: 0, height: 0)
+                        popover.permittedArrowDirections = []
+                    }
+                    
+                    rootVC.present(activityVC, animated: true) {
+                        print("✅ PDF share sheet presented successfully from history")
+                    }
+                }
             }
         }
     }

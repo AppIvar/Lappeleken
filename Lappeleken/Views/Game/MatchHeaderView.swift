@@ -94,6 +94,7 @@ struct MatchHeaderView: View {
         .onReceive(timer) { _ in
             currentTime = Date()
         }
+        .withMinimalBanner()
     }
     
     private var matchStatusBadge: some View {

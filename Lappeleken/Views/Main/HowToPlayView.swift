@@ -108,7 +108,7 @@ struct HowToPlayView: View {
                 }
             }
         }
-        .showBannerAdForFreeUsers()
+        .withSmartMonetization()
     }
     
     // MARK: - Background

@@ -73,6 +73,7 @@ struct NewGameSetupView: View {
         .sheet(isPresented: $showingCustomBetSheet) {
             CustomBetView(gameSession: gameSession)
         }
+        .withMinimalBanner()
     }
     
     // MARK: - Background
@@ -651,9 +652,10 @@ struct NewGameSetupView: View {
     // MARK: - Helper Methods
     
     private func setupInitialData() {
-        if gameSession.availablePlayers.isEmpty {
-            gameSession.addPlayers(SampleData.samplePlayers)
-        }
+        // ALWAYS reset to sample players for manual mode
+        gameSession.availablePlayers = []
+        gameSession.selectedPlayers = []
+        gameSession.addPlayers(SampleData.samplePlayers)
         
         if betAmounts.isEmpty {
             for eventType in Bet.EventType.allCases {

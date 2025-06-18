@@ -161,7 +161,6 @@ static var isTestModeEnabled: Bool {
         print("🌍 Environment: \(environment)")
         print("📊 Logging enabled: \(enableDetailedLogging)")
         print("💰 Purchase tier: \(AppPurchaseManager.shared.currentTier.displayName)")
-        print("🎯 Free matches remaining: \(AppPurchaseManager.shared.remainingFreeMatches)")
 #endif
     }
     

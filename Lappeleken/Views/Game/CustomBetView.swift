@@ -89,6 +89,7 @@ struct CustomBetView: View {
             .navigationBarItems(trailing: Button("Cancel") {
                 presentationMode.wrappedValue.dismiss()
             })
+            .withMinimalBanner()
         }
     }
 }

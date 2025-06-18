@@ -79,8 +79,31 @@ struct EventsTimelineView: View {
         .onChange(of: filteredEvents.count) { _ in
             initializeAnimations()
         }
+        .withTabBanner(tabName: "EventsTimeline")
+        // Remove the problematic .onReceive section - we'll handle events differently
     }
     
+    func trackEventForAds(_ eventType: String) {
+        let significantEvents: Set<String> = [
+            "goal", "own_goal", "penalty", "red_card", "yellow_card",
+            "substitution", "var_decision", "penalty_missed"
+        ]
+        
+        if significantEvents.contains(eventType.lowercased()) {
+            AdManager.shared.recordLiveMatchEvent(eventType: eventType)
+        }
+    }
+    
+    private func trackEventForAds(_ event: MatchEvent) {
+        let significantEvents: Set<String> = [
+            "goal", "own_goal", "penalty", "red_card", "yellow_card",
+            "substitution", "var_decision", "penalty_missed"
+        ]
+        
+        if significantEvents.contains(event.type.lowercased()) {
+            AdManager.shared.recordLiveMatchEvent(eventType: event.type)
+        }
+    }
     // MARK: - Background
     
     private var backgroundView: some View {

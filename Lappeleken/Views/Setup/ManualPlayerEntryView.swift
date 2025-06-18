@@ -129,6 +129,7 @@ struct ManualPlayerEntryView: View {
                 )
             }
         }
+        .withSmartBanner()
     }
     
     // MARK: - Enhanced Team Selection Section

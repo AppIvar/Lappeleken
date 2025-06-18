@@ -21,7 +21,7 @@ class AdManager: NSObject, ObservableObject {
     private var interstitialAd: InterstitialAd?
     private var rewardedAd: RewardedAd?
     
-    // MARK: - Ad Unit IDs with better debugging
+    // MARK: - Ad Unit IDs
     private struct AdUnitIDs {
         // Test IDs
         static let interstitialTest = "ca-app-pub-3940256099942544/1033173712"
@@ -55,7 +55,34 @@ class AdManager: NSObject, ObservableObject {
         }
     }
     
-    // MARK: - Enhanced Initialization
+    // MARK: - Event-Based Ad System Properties
+    
+    private var liveMatchEventCount: Int {
+        get {
+            return UserDefaults.standard.integer(forKey: "liveMatchEventCount")
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: "liveMatchEventCount")
+        }
+    }
+    
+    private var eventsUntilNextAd: Int {
+        get {
+            let stored = UserDefaults.standard.integer(forKey: "eventsUntilNextAd")
+            if stored == 0 {
+                // First time - set random threshold between 2-3 events
+                let threshold = Int.random(in: 2...3)
+                UserDefaults.standard.set(threshold, forKey: "eventsUntilNextAd")
+                return threshold
+            }
+            return stored
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: "eventsUntilNextAd")
+        }
+    }
+    
+    // MARK: - Initialization
     
     override init() {
         super.init()
@@ -104,16 +131,13 @@ class AdManager: NSObject, ObservableObject {
         }
     }
     
-    // MARK: - Enhanced Interstitial Ads
+    // MARK: - Ad Loading
     
     private func loadInterstitialAd() async {
         print("🎯 Loading interstitial ad...")
         print("🔍 Ad Unit ID: \(AdUnitIDs.interstitial)")
         
         let request = Request()
-        
-        // Add request debugging
-        print("🔍 Request created successfully")
         
         do {
             let ad = try await InterstitialAd.load(with: AdUnitIDs.interstitial, request: request)
@@ -128,49 +152,9 @@ class AdManager: NSObject, ObservableObject {
             await MainActor.run {
                 self.isAdLoaded = false
                 print("❌ Failed to load interstitial ad: \(error)")
-                
-                // More specific error handling
-                if let gadError = error as NSError? {
-                    print("🔍 GAD Error Code: \(gadError.code)")
-                    print("🔍 GAD Error Domain: \(gadError.domain)")
-                    print("🔍 GAD Error Description: \(gadError.localizedDescription)")
-                    
-                    print("💡 Error details: \(gadError.localizedDescription)")
-                    if gadError.localizedDescription.lowercased().contains("no fill") {
-                        print("💡 Suggestion: Try again later or check ad unit configuration")
-                    } else if gadError.localizedDescription.lowercased().contains("network") {
-                        print("💡 Suggestion: Check internet connection")
-                    }
-                }
             }
         }
     }
-    
-    func showInterstitialAd(from viewController: UIViewController, completion: @escaping (Bool) -> Void) {
-        guard let interstitialAd = interstitialAd else {
-            print("❌ Interstitial ad not loaded yet.")
-            completion(false)
-            return
-        }
-     
-        // Check if user is premium
-        guard AppPurchaseManager.shared.currentTier == .free else {
-            print("ℹ️ User is premium, skipping interstitial ad")
-            completion(true)
-            return
-        }
-        
-        print("🎯 Presenting interstitial ad...")
-        isShowingAd = true
-        interstitialAd.present(from: viewController)
-        
-        // Call completion after a short delay
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            completion(true)
-        }
-    }
-    
-    // MARK: - Enhanced Rewarded Ads
     
     private func loadRewardedAd() async {
         print("🎯 Loading rewarded ad...")
@@ -191,15 +175,115 @@ class AdManager: NSObject, ObservableObject {
             await MainActor.run {
                 self.isRewardedReady = false
                 print("❌ Failed to load rewarded ad: \(error)")
-                
-                // Same detailed error handling as interstitial
-                if let gadError = error as NSError? {
-                    print("🔍 GAD Error Code: \(gadError.code)")
-                    print("🔍 GAD Error Description: \(gadError.localizedDescription)")
+            }
+        }
+    }
+    
+    // MARK: - Live Match Event Tracking
+    
+    /// Call this when live match events occur (goals, cards, etc.)
+    func recordLiveMatchEvent(eventType: String = "match_event") {
+        // Only track for free users
+        guard AppPurchaseManager.shared.currentTier == .free else {
+            print("ℹ️ Premium user - no event tracking")
+            return
+        }
+        
+        liveMatchEventCount += 1
+        print("📊 Live event recorded: \(eventType). Total events: \(liveMatchEventCount)")
+        
+        // Check if we should show an ad
+        if shouldShowAdAfterLiveEvent() {
+            showEventBasedInterstitial()
+        }
+    }
+    
+    private func shouldShowAdAfterLiveEvent() -> Bool {
+        let currentEvents = liveMatchEventCount
+        let threshold = eventsUntilNextAd
+        
+        print("🎯 Events: \(currentEvents), Threshold: \(threshold)")
+        
+        if currentEvents >= threshold {
+            // Reset for next ad cycle
+            resetEventCounting()
+            return isAdLoaded // Only show if ad is ready
+        }
+        
+        return false
+    }
+    
+    private func resetEventCounting() {
+        liveMatchEventCount = 0
+        eventsUntilNextAd = Int.random(in: 2...3) // Reset to new random threshold
+        print("🔄 Event counting reset. Next ad in \(eventsUntilNextAd) events")
+    }
+    
+    private func showEventBasedInterstitial() {
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let rootViewController = windowScene.windows.first?.rootViewController else {
+            print("❌ Cannot get root view controller for event-based ad")
+            return
+        }
+        
+        print("🎯 Showing event-based interstitial ad")
+        
+        showInterstitialAd(from: rootViewController) { [weak self] success in
+            Task { @MainActor in
+                if success {
+                    print("✅ Event-based interstitial shown successfully")
+                    self?.trackAdImpression(type: "interstitial_live_event")
+                } else {
+                    print("❌ Failed to show event-based interstitial")
+                    // Don't reset counter if ad failed to show
+                    self?.liveMatchEventCount -= 1
                 }
             }
         }
     }
+    
+    // MARK: - Session Management
+    
+    /// Call when starting a new live match
+    func startNewLiveMatchSession() {
+        liveMatchEventCount = 0
+        eventsUntilNextAd = Int.random(in: 2...3)
+        print("🎮 New live match session started. First ad in \(eventsUntilNextAd) events")
+    }
+    
+    /// Call when ending a live match
+    func endLiveMatchSession() {
+        // Keep the count for potential next match in same session
+        print("🏁 Live match session ended. Events recorded: \(liveMatchEventCount)")
+    }
+    
+    // MARK: - Interstitial Ads
+    
+    func showInterstitialAd(from viewController: UIViewController, completion: @escaping (Bool) -> Void) {
+        guard AppPurchaseManager.shared.currentTier == .free else {
+            print("ℹ️ Premium user - no interstitial ads")
+            completion(true)
+            return
+        }
+        
+        guard let interstitialAd = interstitialAd, !isShowingAd else {
+            print("❌ Interstitial ad not ready or already showing")
+            completion(false)
+            return
+        }
+        
+        isShowingAd = true
+        print("🎯 Presenting interstitial ad")
+        
+        // Store completion for delegate callback
+        self.interstitialCompletion = completion
+        
+        interstitialAd.present(from: viewController)
+    }
+    
+    private var interstitialCompletion: ((Bool) -> Void)?
+    
+    // MARK: - Rewarded Ads
     
     func showRewardedAd(from viewController: UIViewController, completion: @escaping (Bool) -> Void) {
         guard let rewardedAd = rewardedAd else {
@@ -213,123 +297,33 @@ class AdManager: NSObject, ObservableObject {
             print("✅ User earned reward")
             Task { @MainActor in
                 completion(true)
-                self?.grantFreeLiveMatchFromAd()
+                self?.trackAdImpression(type: "rewarded")
             }
         })
     }
     
-    func debugAdLoading() async {
-        print("🧪 Debug: Testing ad loading...")
-        print("🔍 Current ad states:")
-        print("  - Interstitial loaded: \(isAdLoaded)")
-        print("  - Rewarded ready: \(isRewardedReady)")
-        print("  - Banner ready: \(isBannerReady)")
-        
-        await loadInterstitialAd()
-        await loadRewardedAd()
-    }
-    
-    // MARK: - Ad Strategy Methods
-    
-    func shouldShowInterstitialAfterPlayerAssignment() -> Bool {
-        guard AppPurchaseManager.shared.currentTier == .free else { return false }
-        
-        return shouldShowInterstitialWithCooldown(for: "player_assignment", cooldownMinutes: 15)
-    }
-
-    func shouldShowInterstitialAfterGameSetup() -> Bool {
-        guard AppPurchaseManager.shared.currentTier == .free else { return false }
-        
-        // Show ad when starting a new game, but not too frequently
-        return shouldShowInterstitialWithCooldown(for: "game_setup", cooldownMinutes: 20)
-    }
-
-    func shouldShowInterstitialBeforeGameSummary() -> Bool {
-        guard AppPurchaseManager.shared.currentTier == .free else { return false }
-        
-        // Show ad before showing game summary (less intrusive than after game ends)
-        return shouldShowInterstitialWithCooldown(for: "game_summary", cooldownMinutes: 10)
-    }
-    
-    func shouldShowAfterEventsWithSmartTiming() -> Bool {
-        guard AppPurchaseManager.shared.currentTier == .free else { return false }
-        
-        let eventCount = UserDefaults.standard.integer(forKey: "totalEventsRecorded")
-        let lastAdShown = UserDefaults.standard.double(forKey: "lastInterstitial_events")
-        let now = Date().timeIntervalSince1970
-        
-        // More sophisticated logic:
-        // - Show after every 3rd event, but with cooldown
-        // - Don't show if ad was shown in last 2 minutes
-        // - Reduce frequency for very active sessions
-        
-        let shouldShowBasedOnCount = eventCount > 0 && eventCount % 3 == 0
-        let cooldownExpired = (now - lastAdShown) > 120 // 2 minutes
-        
-        // If user is very active (more than 10 events), increase threshold to every 5th event
-        let adjustedThreshold = eventCount > 10 ? 5 : 3
-        let shouldShowWithAdjustment = eventCount > 0 && eventCount % adjustedThreshold == 0
-        
-        if shouldShowWithAdjustment && cooldownExpired {
-            recordInterstitialShown(for: "events", withContext: "count_\(eventCount)")
-            return true
+    func showRewardedAdForExtraMatch(from viewController: UIViewController, completion: @escaping (Bool) -> Void) {
+        guard AppPurchaseManager.shared.currentTier == .free else {
+            print("ℹ️ Premium user doesn't need extra matches")
+            completion(false)
+            return
         }
         
-        return false
-    }
-    
-    func shouldShowInterstitialForContinueGame() -> Bool {
-        guard AppPurchaseManager.shared.currentTier == .free else { return false }
+        guard isRewardedReady else {
+            print("❌ Rewarded ad not ready")
+            completion(false)
+            return
+        }
         
-        // Show ad when continuing a saved game, but with cooldown to avoid annoyance
-        return shouldShowInterstitialWithCooldown(for: "continue_game", cooldownMinutes: 3)
-    }
-    
-    private func recordInterstitialShown(for key: String, withContext context: String = "") {
-        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "lastInterstitial_\(key)")
+        print("🎯 Showing rewarded ad for extra daily match")
         
-        // Track additional context for analytics
-        if !context.isEmpty {
-            let contextKey = "adContext_\(key)"
-            var contexts = UserDefaults.standard.array(forKey: contextKey) as? [String] ?? []
-            contexts.append("\(context)_\(Date().timeIntervalSince1970)")
-            
-            // Keep only last 10 contexts to avoid storage bloat
-            if contexts.count > 10 {
-                contexts = Array(contexts.suffix(10))
+        showRewardedAd(from: viewController) { success in
+            if success {
+                AppPurchaseManager.shared.grantAdRewardedMatch()
+                print("✅ Extra daily match granted via ad")
             }
-            
-            UserDefaults.standard.set(contexts, forKey: contextKey)
+            completion(success)
         }
-        
-        print("📊 Recorded interstitial shown for: \(key) with context: \(context)")
-    }
-    
-    // MARK: - Game Flow Integration Methods
-
-    func showInterstitialForGameFlow(_ flowType: GameFlowType, from viewController: UIViewController, completion: @escaping (Bool) -> Void) {
-        let shouldShow: Bool
-        
-        switch flowType {
-        case .playerAssignment:
-            shouldShow = shouldShowInterstitialAfterPlayerAssignment()
-        case .gameSetup:
-            shouldShow = shouldShowInterstitialAfterGameSetup()
-        case .beforeSummary:
-            shouldShow = shouldShowInterstitialBeforeGameSummary()
-        }
-        
-        if shouldShow {
-            showInterstitialAd(from: viewController, completion: completion)
-        } else {
-            completion(true) // Continue without ad
-        }
-    }
-
-    enum GameFlowType {
-        case playerAssignment
-        case gameSetup
-        case beforeSummary
     }
     
     // MARK: - Banner Ads
@@ -338,7 +332,7 @@ class AdManager: NSObject, ObservableObject {
         return AdUnitIDs.banner
     }
     
-    // MARK: - Legacy Ad Strategy Methods
+    // MARK: - Legacy Ad Methods (Keep for compatibility)
     
     func shouldShowInterstitialAfterGameComplete() -> Bool {
         guard AppPurchaseManager.shared.currentTier == .free else { return false }
@@ -346,8 +340,8 @@ class AdManager: NSObject, ObservableObject {
         let gameCount = UserDefaults.standard.integer(forKey: "completedGameCount")
         UserDefaults.standard.set(gameCount + 1, forKey: "completedGameCount")
         
-        // Show ad every 2nd game completion, but with some randomness
-        let shouldShow = gameCount > 0 && gameCount % 2 == 0 && Int.random(in: 1...10) <= 7
+        // Show ad every 2nd game completion
+        let shouldShow = gameCount > 0 && gameCount % 2 == 0
         
         if shouldShow {
             recordInterstitialShown(for: "game_complete")
@@ -358,13 +352,11 @@ class AdManager: NSObject, ObservableObject {
     
     func shouldShowInterstitialForHistoryView() -> Bool {
         guard AppPurchaseManager.shared.currentTier == .free else { return false }
-        
         return shouldShowInterstitialWithCooldown(for: "history_view", cooldownMinutes: 5)
     }
     
     func shouldShowInterstitialForSettings() -> Bool {
         guard AppPurchaseManager.shared.currentTier == .free else { return false }
-        
         return shouldShowInterstitialWithCooldown(for: "settings_view", cooldownMinutes: 10)
     }
     
@@ -387,31 +379,7 @@ class AdManager: NSObject, ObservableObject {
         UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "lastInterstitial_\(key)")
     }
     
-    func shouldShowAfterEvents() -> Bool {
-        let eventCount = UserDefaults.standard.integer(forKey: "totalEventsRecorded")
-        UserDefaults.standard.set(eventCount + 1, forKey: "totalEventsRecorded")
-        
-        print("📊 Event count incremented to: \(eventCount + 1)")
-        
-        // Show ad every 8 events for free users (less aggressive)
-        return eventCount > 0 && eventCount % 8 == 0 && AppPurchaseManager.shared.currentTier == .free
-    }
-    
-    func canWatchAdForFreeLiveMatch() -> Bool {
-        return AppPurchaseManager.shared.currentTier == .free && isRewardedReady
-    }
-    
-    func grantFreeLiveMatchFromAd() {
-        let current = UserDefaults.standard.integer(forKey: "adRewardedLiveMatches")
-        UserDefaults.standard.set(current + 1, forKey: "adRewardedLiveMatches")
-        
-        print("✅ Granted free live match from ad. Total: \(current + 1)")
-        
-        // Update AppPurchaseManager to reflect the change
-        AppPurchaseManager.shared.objectWillChange.send()
-    }
-    
-    // MARK: - Ad Performance Tracking
+    // MARK: - Analytics and Tracking
     
     func trackAdImpression(type: String) {
         let key = "adImpressions_\(type)"
@@ -421,13 +389,54 @@ class AdManager: NSObject, ObservableObject {
         print("📈 Ad impression tracked: \(type) (total: \(current + 1))")
     }
     
+    func recordViewTransition(from: String, to: String) {
+        let key = "viewTransition_\(from)_to_\(to)"
+        let count = UserDefaults.standard.integer(forKey: key)
+        UserDefaults.standard.set(count + 1, forKey: key)
+        
+        print("📊 View transition: \(from) → \(to) (count: \(count + 1))")
+    }
+    
     func getAdStats() -> [String: Int] {
         return [
             "interstitial": UserDefaults.standard.integer(forKey: "adImpressions_interstitial"),
+            "interstitial_live_event": UserDefaults.standard.integer(forKey: "adImpressions_interstitial_live_event"),
             "rewarded": UserDefaults.standard.integer(forKey: "adImpressions_rewarded"),
             "banner": UserDefaults.standard.integer(forKey: "adImpressions_banner")
         ]
     }
+    
+    func getLiveEventStats() -> (currentEvents: Int, eventsUntilAd: Int, adsShown: Int) {
+        let adsShown = UserDefaults.standard.integer(forKey: "adImpressions_interstitial_live_event")
+        return (liveMatchEventCount, eventsUntilNextAd, adsShown)
+    }
+    
+    // MARK: - Debug Methods (Keep for Testing)
+    
+    #if DEBUG
+    func debugResetAdCounters() {
+        liveMatchEventCount = 0
+        eventsUntilNextAd = 0
+        UserDefaults.standard.removeObject(forKey: "completedGameCount")
+        print("🔄 DEBUG: Ad counters reset")
+    }
+    
+    func debugForceShowInterstitial() {
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let rootViewController = windowScene.windows.first?.rootViewController else {
+            print("❌ Cannot get root view controller for debug ad")
+            return
+        }
+        
+        showInterstitialAd(from: rootViewController) { success in
+            print("🧪 DEBUG: Force interstitial result: \(success)")
+        }
+    }
+    
+    func debugSimulateLiveEvent() {
+        recordLiveMatchEvent(eventType: "debug_goal")
+    }
+    #endif
 }
 
 // MARK: - FullScreenContentDelegate
@@ -437,6 +446,12 @@ extension AdManager: FullScreenContentDelegate {
         print("✅ Ad dismissed")
         Task { @MainActor in
             self.isShowingAd = false
+            
+            // Call completion if available
+            if let completion = self.interstitialCompletion {
+                completion(true)
+                self.interstitialCompletion = nil
+            }
             
             // Reload the ad for next time
             if ad is InterstitialAd {
@@ -451,6 +466,12 @@ extension AdManager: FullScreenContentDelegate {
         print("❌ Ad failed to present: \(error)")
         Task { @MainActor in
             self.isShowingAd = false
+            
+            // Call completion with failure
+            if let completion = self.interstitialCompletion {
+                completion(false)
+                self.interstitialCompletion = nil
+            }
             
             // Reload the ad
             if ad is InterstitialAd {

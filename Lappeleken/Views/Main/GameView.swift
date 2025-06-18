@@ -80,8 +80,27 @@ struct GameView: View {
                 animateGradient = true
             }
         }
+        .withSmartMonetization() // Mix of banners and upgrade prompts
+        .onAppear {
+            // Track that user is in main game view
+            AdManager.shared.recordViewTransition(from: "setup", to: "GameView")
+        }
     }
     
+    private func handleLiveMatchEvent(_ eventType: String) {
+        // Your existing event handling logic
+        
+        // NEW: Track for ads
+        let significantEvents: Set<String> = [
+            "goal", "own_goal", "penalty", "red_card", "yellow_card",
+            "substitution", "var_decision", "penalty_missed"
+        ]
+        
+        if significantEvents.contains(eventType.lowercased()) {
+            AdManager.shared.recordLiveMatchEvent(eventType: eventType)
+        }
+    }
+
     // MARK: - Enhanced Background
     
     private var backgroundView: some View {

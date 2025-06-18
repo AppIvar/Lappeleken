@@ -61,7 +61,7 @@ struct HomeView: View {
                 pulseApp = true
             }
         }
-        .showBannerAdForFreeUsers()
+        .withSmartMonetization()
     }
     
     // MARK: - Background

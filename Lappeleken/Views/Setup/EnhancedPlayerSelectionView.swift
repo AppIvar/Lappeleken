@@ -62,6 +62,7 @@ struct PlayerSelectionView: View {
         .sheet(isPresented: $showingTeamPicker) {
             teamPickerSheet
         }
+        .withSmartBanner()
     }
     
     // MARK: - Header

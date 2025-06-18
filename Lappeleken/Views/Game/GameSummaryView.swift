@@ -105,6 +105,31 @@ struct GameSummaryView: View {
                 enhancedSaveGameSheet
             }
         }
+        
+        .withSmartBanner()
+        .onAppear {
+            // Show interstitial after game completion
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                showInterstitialIfNeeded()
+            }
+        }
+    }
+    
+    private func showInterstitialIfNeeded() {
+        guard AppPurchaseManager.shared.currentTier == .free else { return }
+        
+        if AdManager.shared.shouldShowInterstitialAfterGameComplete() {
+            guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                  let rootViewController = windowScene.windows.first?.rootViewController else {
+                return
+            }
+            
+            AdManager.shared.showInterstitialAd(from: rootViewController) { success in
+                if success {
+                    print("✅ Game completion interstitial shown")
+                }
+            }
+        }
     }
     
     // MARK: - Background
@@ -924,19 +949,49 @@ struct GameSummaryView: View {
     private func exportPDF() {
         PDFExporter.exportGameSummary(gameSession: gameSession) { fileURL in
             guard let url = fileURL else {
-                print("Error exporting PDF")
+                print("❌ Error exporting PDF")
                 return
             }
             
-            let activityVC = UIActivityViewController(
-                activityItems: [url],
-                applicationActivities: nil
-            )
-            
-            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-               let window = windowScene.windows.first,
-               let rootVC = window.rootViewController {
-                rootVC.present(activityVC, animated: true, completion: nil)
+            // Ensure we're on the main thread and dismiss any existing presentations first
+            DispatchQueue.main.async {
+                // Get the topmost view controller safely
+                guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                      let window = windowScene.windows.first else {
+                    print("❌ Could not get window for PDF sharing")
+                    return
+                }
+                
+                // Get the topmost presented view controller
+                var topViewController = window.rootViewController
+                while let presentedViewController = topViewController?.presentedViewController {
+                    topViewController = presentedViewController
+                }
+                
+                guard let rootVC = topViewController else {
+                    print("❌ Could not get root view controller for PDF sharing")
+                    return
+                }
+                
+                // Create the activity view controller
+                let activityVC = UIActivityViewController(
+                    activityItems: [url],
+                    applicationActivities: nil
+                )
+                
+                // Configure for iPad
+                if let popover = activityVC.popoverPresentationController {
+                    popover.sourceView = rootVC.view
+                    popover.sourceRect = CGRect(x: rootVC.view.bounds.midX, y: rootVC.view.bounds.midY, width: 0, height: 0)
+                    popover.permittedArrowDirections = []
+                }
+                
+                // Present with a small delay to ensure any other presentations are complete
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                    rootVC.present(activityVC, animated: true) {
+                        print("✅ PDF share sheet presented successfully")
+                    }
+                }
             }
         }
     }
