@@ -17,19 +17,19 @@ struct NewGameSetupView: View {
     @State private var betAmounts = [Bet.EventType: Double]()
     @State private var betNegativeFlags = [Bet.EventType: Bool]()
     @State private var showingCustomBetSheet = false
-    @State private var animateProgress = false
-    @State private var animateGradient = false
+    // REMOVED: @State private var animateProgress = false
+    // REMOVED: @State private var animateGradient = false
     
     private let steps = ["Participants", "Select Players", "Set Bets", "Review"]
     
     var body: some View {
         ZStack {
-            // Enhanced animated background
+            // Enhanced static background (no animation)
             backgroundView
             
             NavigationView {
                 VStack(spacing: 0) {
-                    // Enhanced progress indicator
+                    // Enhanced progress indicator (no animations)
                     progressIndicatorView
                     
                     // Content with smooth transitions
@@ -61,14 +61,7 @@ struct NewGameSetupView: View {
         }
         .onAppear {
             setupInitialData()
-            
-            withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
-                animateGradient = true
-            }
-            
-            withAnimation(AppDesignSystem.Animations.standard.delay(0.3)) {
-                animateProgress = true
-            }
+            // REMOVED: All animation code
         }
         .sheet(isPresented: $showingCustomBetSheet) {
             CustomBetView(gameSession: gameSession)
@@ -85,8 +78,8 @@ struct NewGameSetupView: View {
                 Color(red: 0.98, green: 0.96, blue: 1.0),
                 Color(red: 0.96, green: 0.97, blue: 1.0)
             ],
-            startPoint: animateGradient ? .topLeading : .bottomTrailing,
-            endPoint: animateGradient ? .bottomTrailing : .topLeading
+            startPoint: .topLeading, // REMOVED: animation-dependent values
+            endPoint: .bottomTrailing
         )
         .ignoresSafeArea()
     }
@@ -142,8 +135,7 @@ struct NewGameSetupView: View {
                             x: 0,
                             y: 2
                         )
-                        .scaleEffect(animateProgress && index == currentStep ? 1.1 : 1.0)
-                        .animation(AppDesignSystem.Animations.bouncy, value: currentStep)
+                        // REMOVED: .scaleEffect and .animation modifiers
                         
                         // Connection line
                         if index < steps.count - 1 {
@@ -155,11 +147,7 @@ struct NewGameSetupView: View {
                                 )
                                 .frame(height: 3)
                                 .cornerRadius(1.5)
-                                .scaleEffect(x: animateProgress ? 1.0 : 0.0, anchor: .leading)
-                                .animation(
-                                    AppDesignSystem.Animations.standard.delay(Double(index) * 0.1),
-                                    value: animateProgress
-                                )
+                                // REMOVED: .scaleEffect and .animation modifiers
                         }
                     }
                 }
@@ -177,11 +165,7 @@ struct NewGameSetupView: View {
                             AppDesignSystem.Colors.secondaryText
                         )
                         .frame(maxWidth: .infinity)
-                        .opacity(animateProgress ? 1.0 : 0.0)
-                        .animation(
-                            AppDesignSystem.Animations.standard.delay(Double(index) * 0.1),
-                            value: animateProgress
-                        )
+                        // REMOVED: .opacity and .animation modifiers
                 }
             }
             .padding(.horizontal, 24)
@@ -289,8 +273,7 @@ struct NewGameSetupView: View {
                             )
                     }
                     .disabled(participantName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .scaleEffect(participantName.isEmpty ? 0.8 : 1.0)
-                    .animation(AppDesignSystem.Animations.bouncy, value: participantName.isEmpty)
+                    // REMOVED: .scaleEffect and .animation modifiers
                 }
                 
                 if gameSession.participants.isEmpty {
@@ -324,6 +307,7 @@ struct NewGameSetupView: View {
             }
         }
     }
+    
     
     // MARK: - Players Selection
     
@@ -675,18 +659,16 @@ struct NewGameSetupView: View {
     private func addParticipant() {
         let trimmedName = participantName.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedName.isEmpty {
-            withAnimation(AppDesignSystem.Animations.bouncy) {
-                gameSession.addParticipant(trimmedName)
-                participantName = ""
-            }
+            // REMOVED: withAnimation wrapper
+            gameSession.addParticipant(trimmedName)
+            participantName = ""
         }
     }
     
     private func deleteParticipant(_ participant: Participant) {
-        withAnimation(AppDesignSystem.Animations.standard) {
-            if let index = gameSession.participants.firstIndex(where: { $0.id == participant.id }) {
-                gameSession.participants.remove(at: index)
-            }
+        // REMOVED: withAnimation wrapper
+        if let index = gameSession.participants.firstIndex(where: { $0.id == participant.id }) {
+            gameSession.participants.remove(at: index)
         }
     }
     
@@ -705,10 +687,9 @@ struct NewGameSetupView: View {
         if currentStep == 0 {
             let trimmedName = participantName.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmedName.isEmpty {
-                withAnimation(AppDesignSystem.Animations.bouncy) {
-                    gameSession.addParticipant(trimmedName)
-                    participantName = ""
-                }
+                // REMOVED: withAnimation wrapper
+                gameSession.addParticipant(trimmedName)
+                participantName = ""
             }
         }
         
@@ -724,9 +705,8 @@ struct NewGameSetupView: View {
                 }
             }
             
-            withAnimation(AppDesignSystem.Animations.standard) {
-                currentStep += 1
-            }
+            // REMOVED: withAnimation wrapper
+            currentStep += 1
         } else {
             // Final step - assign players
             gameSession.selectedPlayers = gameSession.availablePlayers.filter { selectedPlayerIds.contains($0.id) }

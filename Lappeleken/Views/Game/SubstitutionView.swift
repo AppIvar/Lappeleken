@@ -15,18 +15,39 @@ struct SubstitutionView: View {
     @State private var newPlayerName: String = ""
     @State private var selectedTeam: Team? = nil
     @State private var newPlayerPosition = Player.Position.midfielder
-    @State private var showTeamPicker = false
-    
-    // For existing player selection
+
+    // Sheet management
+    @State private var activeSheet: ActiveSheet?
     @State private var useExistingPlayer = false
     @State private var selectedExistingPlayer: Player? = nil
-    @State private var showExistingPlayerPicker = false
+
+    // For creating new teams
+    @State private var newTeamName = ""
+    @State private var newTeamShortName = ""
+
+    enum ActiveSheet: Identifiable {
+        case teamPicker
+        case createTeam
+        case existingPlayerPicker
+        
+        var id: String {
+            switch self {
+            case .teamPicker:
+                return "teamPicker"
+            case .createTeam:
+                return "createTeam"
+            case .existingPlayerPicker:
+                return "existingPlayerPicker"
+            }
+        }
+    }
     
     // Get all teams that exist in the game (from assigned players)
     private var availableTeams: [Team] {
         let assignedTeams = Set(gameSession.participants.flatMap { $0.selectedPlayers + $0.substitutedPlayers }.map { $0.team })
+        let allAvailableTeams = Set(gameSession.availablePlayers.map { $0.team }) // ADDED: Include all available players
         let sampleTeams = Set(SampleData.allTeams)
-        return Array(assignedTeams.union(sampleTeams)).sorted { $0.name < $1.name }
+        return Array(assignedTeams.union(allAvailableTeams).union(sampleTeams)).sorted { $0.name < $1.name }
     }
     
     // Get available players not currently assigned to any participant
@@ -54,11 +75,15 @@ struct SubstitutionView: View {
             .navigationBarItems(trailing: Button("Cancel") {
                 presentationMode.wrappedValue.dismiss()
             })
-            .sheet(isPresented: $showTeamPicker) {
-                teamPickerSheet
-            }
-            .sheet(isPresented: $showExistingPlayerPicker) {
-                existingPlayerPickerSheet
+            .sheet(item: $activeSheet) { sheet in
+                switch sheet {
+                case .teamPicker:
+                    teamPickerSheet
+                case .createTeam:
+                    createTeamSheet
+                case .existingPlayerPicker:
+                    existingPlayerPickerSheet
+                }
             }
         }
         .withMinimalBanner()
@@ -171,7 +196,7 @@ struct SubstitutionView: View {
                     .italic()
             } else {
                 Button(selectedExistingPlayer?.name ?? "Select Existing Player") {
-                    showExistingPlayerPicker = true
+                    activeSheet = .existingPlayerPicker
                 }
                 .foregroundColor(selectedExistingPlayer == nil ? .blue : .primary)
                 
@@ -199,29 +224,59 @@ struct SubstitutionView: View {
             
             // Team selection
             VStack(alignment: .leading, spacing: 8) {
-                HStack {
-                    Text("Team")
-                        .font(.subheadline)
-                        .foregroundColor(.primary)
-                    
-                    Spacer()
+                Text("Team")
+                    .font(.subheadline)
+                    .foregroundColor(.primary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                
+                // Buttons with explicit button styles and no form interference
+                VStack(spacing: 8) {
+                    Button(action: {
+                        print("🔧 Create New button tapped")
+                        activeSheet = .createTeam
+                        print("🔧 activeSheet set to: \(activeSheet?.id ?? "nil")")
+                    }) {
+                        Text("Create New Team")
+                            .font(.caption)
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(Color.green)
+                            .cornerRadius(6)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                    .contentShape(Rectangle())
                     
                     if selectedTeam != nil {
-                        Button("Change") {
-                            showTeamPicker = true
+                        Button(action: {
+                            print("🔧 Change button tapped")
+                            activeSheet = .teamPicker
+                            print("🔧 activeSheet set to: \(activeSheet?.id ?? "nil")")
+                        }) {
+                            Text("Change Team")
+                                .font(.caption)
+                                .foregroundColor(.white)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                                .background(Color.blue)
+                                .cornerRadius(6)
                         }
-                        .font(.caption)
-                        .foregroundColor(.blue)
+                        .buttonStyle(PlainButtonStyle())
+                        .contentShape(Rectangle())
                     }
                 }
                 
                 if let team = selectedTeam {
                     selectedTeamView(team: team)
                 } else {
-                    Button("Select Team") {
-                        showTeamPicker = true
+                    Button(action: {
+                        activeSheet = .teamPicker
+                    }) {
+                        Text("Select Existing Team")
+                            .foregroundColor(.blue)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
-                    .foregroundColor(.blue)
+                    .buttonStyle(PlainButtonStyle())
                 }
             }
             
@@ -234,7 +289,6 @@ struct SubstitutionView: View {
             .pickerStyle(SegmentedPickerStyle())
         }
     }
-    
     private func selectedTeamView(team: Team) -> some View {
         HStack {
             Circle()
@@ -251,10 +305,6 @@ struct SubstitutionView: View {
             Spacer()
         }
         .padding(.vertical, 4)
-        .contentShape(Rectangle())
-        .onTapGesture {
-            showTeamPicker = true
-        }
     }
     
     // MARK: - Action Section
@@ -294,7 +344,7 @@ struct SubstitutionView: View {
                 ForEach(availableTeams, id: \.id) { team in
                     Button(action: {
                         selectedTeam = team
-                        showTeamPicker = false
+                        activeSheet = nil
                     }) {
                         HStack {
                             Circle()
@@ -325,7 +375,7 @@ struct SubstitutionView: View {
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarItems(
                 trailing: Button("Cancel") {
-                    showTeamPicker = false
+                    activeSheet = nil
                 }
             )
         }
@@ -339,7 +389,7 @@ struct SubstitutionView: View {
                 ForEach(availableUnassignedPlayers, id: \.id) { player in
                     Button(action: {
                         selectedExistingPlayer = player
-                        showExistingPlayerPicker = false
+                        activeSheet = nil
                     }) {
                         HStack {
                             Circle()
@@ -380,10 +430,118 @@ struct SubstitutionView: View {
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarItems(
                 trailing: Button("Cancel") {
-                    showExistingPlayerPicker = false
+                    activeSheet = nil
                 }
             )
         }
+    }
+    
+    // MARK: - Create Team Sheet
+
+    private var createTeamSheet: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("Team Information")) {
+                    TextField("Team Name", text: $newTeamName)
+                        .autocapitalization(.words)
+                        .onChange(of: newTeamName) { newValue in
+                            if newTeamShortName.isEmpty {
+                                newTeamShortName = generateShortName(from: newValue)
+                            }
+                        }
+                    
+                    TextField("Short Name (3-4 letters)", text: $newTeamShortName)
+                        .autocapitalization(.allCharacters)
+                        .onChange(of: newTeamShortName) { newValue in
+                            newTeamShortName = String(newValue.prefix(4).uppercased())
+                        }
+                }
+                
+                Section {
+                    Button("Create Team") {
+                        createNewTeam()
+                    }
+                    .disabled(newTeamName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                              newTeamShortName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .foregroundColor(.white)
+                    .padding()
+                    .background(
+                        (newTeamName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                         newTeamShortName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        ? Color.gray
+                        : AppDesignSystem.Colors.primary
+                    )
+                    .cornerRadius(8)
+                }
+                .listRowBackground(Color.clear)
+            }
+            .navigationTitle("Create New Team")
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarItems(
+                leading: Button("Cancel") {
+                    resetNewTeamForm()
+                    activeSheet = nil
+                },
+                trailing: Button("Save") {
+                    createNewTeam()
+                }
+                .disabled(newTeamName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                          newTeamShortName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            )
+        }
+    }
+
+    // MARK: - Helper Methods for Team Creation
+
+    private func generateShortName(from teamName: String) -> String {
+        let words = teamName.components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+        
+        if words.count >= 2 {
+            let firstTwo = words.prefix(2).map { String($0.prefix(1).uppercased()) }
+            if words.count > 2 {
+                return (firstTwo + [String(words.last!.prefix(1).uppercased())]).joined()
+            } else {
+                return (firstTwo + [String(words[0].dropFirst().prefix(1).uppercased())]).joined()
+            }
+        } else if !words.isEmpty {
+            return String(words[0].prefix(3).uppercased())
+        }
+        
+        return ""
+    }
+
+    private func createNewTeam() {
+        let cleanTeamName = newTeamName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanShortName = newTeamShortName.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        
+        guard !cleanTeamName.isEmpty && !cleanShortName.isEmpty else { return }
+        
+        // Check if team already exists
+        if availableTeams.contains(where: { $0.name.lowercased() == cleanTeamName.lowercased() }) {
+            return
+        }
+        
+        // Create new team
+        let newTeam = Team(
+            name: cleanTeamName,
+            shortName: cleanShortName,
+            logoName: "team_logo",
+            primaryColor: "#1a73e8"
+        )
+        
+        // Select the new team and close sheet
+        selectedTeam = newTeam
+        resetNewTeamForm()
+        activeSheet = nil
+        
+        print("✅ Created new team: \(newTeam.name) (\(newTeam.shortName))")
+    }
+
+    private func resetNewTeamForm() {
+        newTeamName = ""
+        newTeamShortName = ""
     }
     
     // MARK: - Helper Properties and Methods

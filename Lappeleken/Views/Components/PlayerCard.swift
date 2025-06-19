@@ -2,7 +2,7 @@
 //  Enhanced PlayerCard.swift
 //  Lucky Football Slip
 //
-//  Vibrant player card with enhanced design system
+//  Vibrant player card with enhanced design system - ANIMATIONS REMOVED
 //
 
 import SwiftUI
@@ -12,8 +12,8 @@ struct PlayerCard: View {
     let isSelected: Bool
     let action: () -> Void
     
-    @State private var isPressed = false
-    @State private var animateGradient = false
+    // REMOVED: @State private var isPressed = false
+    // REMOVED: @State private var animateGradient = false
     
     private var playerAvatarGradient: RadialGradient {
         RadialGradient(
@@ -29,18 +29,7 @@ struct PlayerCard: View {
     }
     
     var body: some View {
-        Button(action: {
-            withAnimation(AppDesignSystem.Animations.quick) {
-                isPressed = true
-            }
-            
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                withAnimation(AppDesignSystem.Animations.bouncy) {
-                    isPressed = false
-                }
-                action()
-            }
-        }) {
+        Button(action: action) { // SIMPLIFIED: Direct action call, no animation
             HStack(spacing: 16) {
                 // Enhanced player avatar with team colors
                 ZStack {
@@ -116,7 +105,7 @@ struct PlayerCard: View {
                 
                 Spacer()
                 
-                // Enhanced selection indicator
+                // Enhanced selection indicator (no animation)
                 if isSelected {
                     ZStack {
                         Circle()
@@ -138,7 +127,7 @@ struct PlayerCard: View {
                             .font(.system(size: 24, weight: .medium))
                             .foregroundColor(AppDesignSystem.Colors.success)
                     }
-                    .transition(.scale.combined(with: .opacity))
+                    // REMOVED: .transition(.scale.combined(with: .opacity))
                 }
             }
             .padding(20)
@@ -151,8 +140,8 @@ struct PlayerCard: View {
                                 AppDesignSystem.TeamColors.getAccentColor(for: player.team),
                                 AppDesignSystem.TeamColors.getAccentColor(for: player.team).opacity(0.5)
                             ],
-                            startPoint: animateGradient ? .topLeading : .bottomTrailing,
-                            endPoint: animateGradient ? .bottomTrailing : .topLeading
+                            startPoint: .topLeading, // REMOVED: animation-dependent values
+                            endPoint: .bottomTrailing
                         ) :
                         LinearGradient(
                             colors: [
@@ -195,25 +184,11 @@ struct PlayerCard: View {
                 x: 0,
                 y: isSelected ? 6 : 2
             )
-            .scaleEffect(isPressed ? 0.96 : (isSelected ? 1.02 : 1.0))
+            // REMOVED: .scaleEffect(isPressed ? 0.96 : (isSelected ? 1.02 : 1.0))
+            .scaleEffect(isSelected ? 1.02 : 1.0) // SIMPLIFIED: Just scale when selected, no press animation
         }
         .buttonStyle(PlainButtonStyle())
-        .onAppear {
-            if isSelected {
-                withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
-                    animateGradient = true
-                }
-            }
-        }
-        .onChange(of: isSelected) { newValue in
-            if newValue {
-                withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
-                    animateGradient = true
-                }
-            } else {
-                animateGradient = false
-            }
-        }
+        // REMOVED: All .onAppear and .onChange animation code
     }
     
     // MARK: - Helper Properties
@@ -232,12 +207,12 @@ struct PlayerCard: View {
     }
 }
 
-// MARK: - Enhanced Participant Card
+// MARK: - Enhanced Participant Card (Animations Removed)
 
 struct ParticipantCard: View {
     let participant: Participant
     @AppStorage("currencySymbol") private var currencySymbol = "€"
-    @State private var animateBalance = false
+    // REMOVED: @State private var animateBalance = false
     
     var body: some View {
         VStack(spacing: 16) {
@@ -306,8 +281,7 @@ struct ParticipantCard: View {
                     Text(formatCurrency(participant.balance))
                         .font(.system(size: 20, weight: .bold, design: .rounded))
                         .foregroundColor(participant.balance >= 0 ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.error)
-                        .scaleEffect(animateBalance ? 1.05 : 1.0)
-                        .animation(AppDesignSystem.Animations.bouncy, value: animateBalance)
+                        // REMOVED: .scaleEffect and .animation
                     
                     VibrantStatusBadge(
                         balanceStatus,
@@ -317,20 +291,7 @@ struct ParticipantCard: View {
             }
         }
         .enhancedCard()
-        .onAppear {
-            // Animate balance on appear
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                withAnimation(AppDesignSystem.Animations.bouncy) {
-                    animateBalance = true
-                }
-                
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    withAnimation(AppDesignSystem.Animations.bouncy) {
-                        animateBalance = false
-                    }
-                }
-            }
-        }
+        // REMOVED: All .onAppear animation code
     }
     
     private var balanceStatus: String {
@@ -351,7 +312,7 @@ struct ParticipantCard: View {
     }
 }
 
-// MARK: - Enhanced Event Card
+// MARK: - Enhanced Event Card (kept as-is since no continuous animations)
 
 struct EventCard: View {
     let event: GameEvent

@@ -72,16 +72,6 @@ struct AssignPlayersView: View {
             endPoint: animateBackground ? .bottomTrailing : .topLeading
         )
         .ignoresSafeArea()
-        .overlay(
-            // Floating elements
-            ZStack {
-                if assignmentComplete {
-                    FloatingCelebrationElements()
-                } else {
-                    FloatingFootballElements()
-                }
-            }
-        )
     }
     
     // MARK: - Pre-Assignment View
@@ -106,7 +96,6 @@ struct AssignPlayersView: View {
                         )
                     )
                     .frame(width: 200, height: 200)
-                    .scaleEffect(pulseButton ? 1.1 : 1.0)
                 
                 Image(systemName: "shuffle")
                     .font(.system(size: 80, weight: .medium))
@@ -608,77 +597,3 @@ struct StatPreviewItem: View {
     }
 }
 
-// MARK: - Floating Elements
-
-struct FloatingFootballElements: View {
-    @State private var offset1 = CGSize.zero
-    @State private var offset2 = CGSize.zero
-    
-    var body: some View {
-        ZStack {
-            Image(systemName: "soccerball")
-                .font(.system(size: 20))
-                .foregroundColor(AppDesignSystem.Colors.primary.opacity(0.1))
-                .offset(offset1)
-                .animation(
-                    Animation.easeInOut(duration: 4).repeatForever(autoreverses: true),
-                    value: offset1
-                )
-            
-            Image(systemName: "sportscourt")
-                .font(.system(size: 16))
-                .foregroundColor(AppDesignSystem.Colors.secondary.opacity(0.1))
-                .offset(offset2)
-                .animation(
-                    Animation.easeInOut(duration: 5).repeatForever(autoreverses: true),
-                    value: offset2
-                )
-        }
-        .onAppear {
-            offset1 = CGSize(width: 80, height: 60)
-            offset2 = CGSize(width: -60, height: 80)
-        }
-    }
-}
-
-struct FloatingCelebrationElements: View {
-    @State private var offset1 = CGSize.zero
-    @State private var offset2 = CGSize.zero
-    @State private var offset3 = CGSize.zero
-    
-    var body: some View {
-        ZStack {
-            Image(systemName: "star.fill")
-                .font(.system(size: 16))
-                .foregroundColor(AppDesignSystem.Colors.goalYellow.opacity(0.3))
-                .offset(offset1)
-                .animation(
-                    Animation.easeInOut(duration: 3).repeatForever(autoreverses: true),
-                    value: offset1
-                )
-            
-            Image(systemName: "trophy.fill")
-                .font(.system(size: 14))
-                .foregroundColor(AppDesignSystem.Colors.success.opacity(0.2))
-                .offset(offset2)
-                .animation(
-                    Animation.easeInOut(duration: 4).repeatForever(autoreverses: true),
-                    value: offset2
-                )
-            
-            Image(systemName: "crown.fill")
-                .font(.system(size: 12))
-                .foregroundColor(AppDesignSystem.Colors.accent.opacity(0.2))
-                .offset(offset3)
-                .animation(
-                    Animation.easeInOut(duration: 5).repeatForever(autoreverses: true),
-                    value: offset3
-                )
-        }
-        .onAppear {
-            offset1 = CGSize(width: 100, height: 70)
-            offset2 = CGSize(width: -80, height: 90)
-            offset3 = CGSize(width: 60, height: -80)
-        }
-    }
-}

@@ -550,7 +550,6 @@ struct ManualPlayerEntryView: View {
     }
 }
 
-// MARK: - Color Extension for hex colors
 
 extension Color {
     init(hex: String) {

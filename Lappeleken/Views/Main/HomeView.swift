@@ -79,9 +79,6 @@ struct HomeView: View {
                 endPoint: animateGradient ? .bottomTrailing : .topLeading
             )
             .ignoresSafeArea()
-            
-            // Floating football elements
-            FloatingElementsView()
         }
     }
     
@@ -520,47 +517,3 @@ struct QuickActionCard: View {
     }
 }
 
-// MARK: - Floating Elements Background
-
-struct FloatingElementsView: View {
-    @State private var offset1 = CGSize.zero
-    @State private var offset2 = CGSize.zero
-    @State private var offset3 = CGSize.zero
-    
-    var body: some View {
-        ZStack {
-            // Floating football icons
-            Image(systemName: "soccerball")
-                .font(.system(size: 20))
-                .foregroundColor(AppDesignSystem.Colors.primary.opacity(0.1))
-                .offset(offset1)
-                .animation(
-                    Animation.easeInOut(duration: 4).repeatForever(autoreverses: true),
-                    value: offset1
-                )
-            
-            Image(systemName: "flag.fill")
-                .font(.system(size: 16))
-                .foregroundColor(AppDesignSystem.Colors.secondary.opacity(0.1))
-                .offset(offset2)
-                .animation(
-                    Animation.easeInOut(duration: 5).repeatForever(autoreverses: true),
-                    value: offset2
-                )
-            
-            Image(systemName: "star.fill")
-                .font(.system(size: 12))
-                .foregroundColor(AppDesignSystem.Colors.accent.opacity(0.1))
-                .offset(offset3)
-                .animation(
-                    Animation.easeInOut(duration: 6).repeatForever(autoreverses: true),
-                    value: offset3
-                )
-        }
-        .onAppear {
-            offset1 = CGSize(width: 100, height: 80)
-            offset2 = CGSize(width: -80, height: 120)
-            offset3 = CGSize(width: 60, height: -100)
-        }
-    }
-}

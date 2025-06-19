@@ -1,8 +1,8 @@
 //
-//  Enhanced GameView.swift
+//  Streamlined GameView.swift
 //  Lucky Football Slip
 //
-//  Vibrant game interface with enhanced design system
+//  Clean 4-tab interface with integrated stats
 //
 
 import SwiftUI
@@ -14,42 +14,33 @@ struct GameView: View {
     @State private var showingEventSheet = false
     @State private var showingSubstitutionSheet = false
     @State private var showingAutoSavePrompt = false
-    @State private var showingSettingsView = false
     @State private var autoSaveGameName = ""
-    @State private var animateGradient = false
-
     
     var body: some View {
         ZStack {
-            // Enhanced background
+            // Clean background
             backgroundView
             
             TabView {
-                participantsView
+                // Tab 1: Participants with integrated stats
+                participantsWithStatsView
                     .tabItem {
                         Label("Participants", systemImage: "person.3.fill")
                     }
                 
-                playersView
+                // Tab 2: Players with quick actions
+                enhancedPlayersView
                     .tabItem {
                         Label("Players", systemImage: "sportscourt.fill")
                     }
                 
-                eventsView
-                    .tabItem {
-                        Label("Events", systemImage: "list.bullet.circle.fill")
-                    }
-                
+                // Tab 3: Timeline (existing)
                 TimelineView(gameSession: gameSession)
                     .tabItem {
                         Label("Timeline", systemImage: "clock.arrow.circlepath")
                     }
                 
-                StatsView(gameSession: gameSession)
-                    .tabItem {
-                        Label("Stats", systemImage: "chart.bar.xaxis")
-                    }
-                
+                // Tab 4: Settings
                 SettingsView()
                     .environmentObject(gameSession)
                     .tabItem {
@@ -75,33 +66,9 @@ struct GameView: View {
                 }
             }
         }
-        .onAppear {
-            withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
-                animateGradient = true
-            }
-        }
-        .withSmartMonetization() // Mix of banners and upgrade prompts
-        .onAppear {
-            // Track that user is in main game view
-            AdManager.shared.recordViewTransition(from: "setup", to: "GameView")
-        }
     }
     
-    private func handleLiveMatchEvent(_ eventType: String) {
-        // Your existing event handling logic
-        
-        // NEW: Track for ads
-        let significantEvents: Set<String> = [
-            "goal", "own_goal", "penalty", "red_card", "yellow_card",
-            "substitution", "var_decision", "penalty_missed"
-        ]
-        
-        if significantEvents.contains(eventType.lowercased()) {
-            AdManager.shared.recordLiveMatchEvent(eventType: eventType)
-        }
-    }
-
-    // MARK: - Enhanced Background
+    // MARK: - Background
     
     private var backgroundView: some View {
         LinearGradient(
@@ -110,207 +77,296 @@ struct GameView: View {
                 Color(red: 0.98, green: 0.96, blue: 1.0),
                 Color(red: 0.96, green: 0.97, blue: 1.0)
             ],
-            startPoint: animateGradient ? .topLeading : .bottomTrailing,
-            endPoint: animateGradient ? .bottomTrailing : .topLeading
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
         )
         .ignoresSafeArea()
     }
     
-    // MARK: - Enhanced Auto Save Prompt
+    // MARK: - Enhanced Participants View with Stats
     
-    private var autoSaveGamePrompt: some View {
-        NavigationView {
-            VStack(spacing: 32) {
-                // Enhanced icon with glow
-                ZStack {
-                    Circle()
-                        .fill(
-                            RadialGradient(
-                                colors: [
-                                    AppDesignSystem.Colors.primary.opacity(0.3),
-                                    AppDesignSystem.Colors.primary.opacity(0.1),
-                                    Color.clear
-                                ],
-                                center: .center,
-                                startRadius: 20,
-                                endRadius: 60
-                            )
-                        )
-                        .frame(width: 120, height: 120)
-                    
-                    Image(systemName: "square.and.arrow.down")
-                        .font(.system(size: 50, weight: .medium))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [
-                                    AppDesignSystem.Colors.primary,
-                                    AppDesignSystem.Colors.secondary
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                }
-                
-                VStack(spacing: 16) {
-                    Text("Save Your Game?")
-                        .font(.system(size: 28, weight: .bold, design: .rounded))
-                        .foregroundColor(AppDesignSystem.Colors.primaryText)
-                    
-                    Text("Give your game a name so you don't lose your progress. You can always save it later from the game summary.")
-                        .font(.system(size: 16, weight: .medium, design: .rounded))
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                        .multilineTextAlignment(.center)
-                        .lineLimit(nil)
-                }
-                
-                // Enhanced text field
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Game Name (optional)")
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                        .foregroundColor(AppDesignSystem.Colors.primaryText)
-                    
-                    TextField("Enter a name for your game", text: $autoSaveGameName)
-                        .font(.system(size: 16, weight: .medium, design: .rounded))
-                        .padding(16)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Color.white)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(AppDesignSystem.Colors.primary.opacity(0.3), lineWidth: 1)
-                                )
-                        )
-                        .shadow(
-                            color: Color.black.opacity(0.05),
-                            radius: 4,
-                            x: 0,
-                            y: 2
-                        )
-                }
-                
-                // Enhanced buttons
-                HStack(spacing: 16) {
-                    Button("Skip") {
-                        showingAutoSavePrompt = false
-                        autoSaveGameName = ""
-                    }
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                    .padding(.vertical, 16)
-                    .padding(.horizontal, 24)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(Color.gray.opacity(0.1))
-                    )
-                    
-                    Button("Save & Continue") {
-                        let finalGameName = autoSaveGameName.isEmpty ?
-                            "Game \(Date().formatted(date: .abbreviated, time: .shortened))" :
-                            autoSaveGameName
-                        
-                        GameHistoryManager.shared.saveGameSession(gameSession, name: finalGameName)
-                        
-                        showingAutoSavePrompt = false
-                        autoSaveGameName = ""
-                    }
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
-                    .foregroundColor(.white)
-                    .padding(.vertical, 16)
-                    .padding(.horizontal, 24)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        AppDesignSystem.Colors.primary,
-                                        AppDesignSystem.Colors.primary.opacity(0.8)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                    )
-                    .vibrantButton()
-                }
-            }
-            .padding(24)
-            .background(AppDesignSystem.Colors.background)
-            .navigationTitle("Quick Save")
-            .navigationBarTitleDisplayMode(.inline)
-        }
-    }
-    
-    // MARK: - Enhanced Tab Views
-    
-    private var participantsView: some View {
+    private var participantsWithStatsView: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 24) {
-                // Enhanced action bar
-                HStack(spacing: 12) {
-                    EnhancedActionButton(
-                        title: "Substitute",
-                        icon: "arrow.left.arrow.right",
-                        color: AppDesignSystem.Colors.warning,
-                        style: .secondary
-                    ) {
-                        showingSubstitutionSheet = true
-                    }
-                    
-                    EnhancedActionButton(
-                        title: "Record Event",
-                        icon: "plus.circle.fill",
-                        color: AppDesignSystem.Colors.primary,
-                        style: .primary
-                    ) {
-                        showingEventSheet = true
-                    }
-                }
-                .padding(.horizontal, 20)
+                // Game Stats Overview
+                gameStatsOverview
                 
-                // Enhanced participant cards
-                ForEach(gameSession.participants) { participant in
-                    ParticipantCard(participant: participant)
-                        .padding(.horizontal, 20)
+                // Quick Actions Bar
+                quickActionsBar
+                
+                // Participants Standings
+                participantsStandings
+                
+                // Recent Activity (last 3 events)
+                if !gameSession.events.isEmpty {
+                    recentActivity
                 }
                 
                 Spacer(minLength: 100)
             }
+            .padding(.horizontal, 20)
             .padding(.top, 20)
         }
         .background(AppDesignSystem.Colors.background.ignoresSafeArea())
     }
     
-    private var playersView: some View {
+    // MARK: - Game Stats Overview
+    
+    private var gameStatsOverview: some View {
+        VStack(spacing: 16) {
+            HStack {
+                Text("Game Overview")
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                Spacer()
+                
+                // Live indicator if it's a live game
+                if gameSession.isLiveMode {
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(AppDesignSystem.Colors.success)
+                            .frame(width: 8, height: 8)
+                        
+                        Text("LIVE")
+                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .foregroundColor(AppDesignSystem.Colors.success)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(AppDesignSystem.Colors.success.opacity(0.1))
+                    .cornerRadius(8)
+                }
+            }
+            
+            // Stats Grid
+            LazyVGrid(columns: [
+                GridItem(.flexible()),
+                GridItem(.flexible()),
+                GridItem(.flexible())
+            ], spacing: 16) {
+                GameStatCard(
+                    title: "Total Events",
+                    value: "\(gameSession.events.count)",
+                    icon: "list.bullet.circle.fill",
+                    color: AppDesignSystem.Colors.primary
+                )
+                
+                GameStatCard(
+                    title: "Active Players",
+                    value: "\(gameSession.participants.flatMap { $0.selectedPlayers }.count)",
+                    icon: "person.3.fill",
+                    color: AppDesignSystem.Colors.success
+                )
+                
+                GameStatCard(
+                    title: "Money in Play",
+                    value: formatCurrency(totalMoneyInPlay),
+                    icon: "dollarsign.circle.fill",
+                    color: AppDesignSystem.Colors.warning
+                )
+            }
+            
+            // Event type breakdown
+            if !gameSession.events.isEmpty {
+                eventTypeBreakdown
+            }
+        }
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(AppDesignSystem.Colors.cardBackground)
+                .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 4)
+        )
+    }
+    
+    // MARK: - Event Type Breakdown
+    
+    private var eventTypeBreakdown: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Event Breakdown")
+                .font(.system(size: 16, weight: .semibold, design: .rounded))
+                .foregroundColor(AppDesignSystem.Colors.primaryText)
+            
+            let eventCounts = Dictionary(grouping: gameSession.events, by: { $0.eventType })
+                .mapValues { $0.count }
+                .sorted { $0.value > $1.value }
+            
+            LazyVGrid(columns: [
+                GridItem(.flexible()),
+                GridItem(.flexible())
+            ], spacing: 8) {
+                ForEach(eventCounts.prefix(4), id: \.key) { eventType, count in
+                    HStack(spacing: 8) {
+                        Image(systemName: eventIcon(eventType))
+                            .font(.system(size: 14))
+                            .foregroundColor(eventColor(eventType))
+                            .frame(width: 20)
+                        
+                        Text(eventType.rawValue)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(AppDesignSystem.Colors.primaryText)
+                        
+                        Spacer()
+                        
+                        Text("\(count)")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(eventColor(eventType))
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+        }
+    }
+    
+    // MARK: - Quick Actions Bar
+    
+    private var quickActionsBar: some View {
+        HStack(spacing: 12) {
+            Button(action: {
+                showingEventSheet = true
+            }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 16))
+                    Text("Record Event")
+                        .font(.system(size: 14, weight: .semibold))
+                }
+                .foregroundColor(.white)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(AppDesignSystem.Colors.primary)
+                .cornerRadius(10)
+            }
+            
+            Button(action: {
+                showingSubstitutionSheet = true
+            }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.left.arrow.right")
+                        .font(.system(size: 16))
+                    Text("Substitute")
+                        .font(.system(size: 14, weight: .semibold))
+                }
+                .foregroundColor(AppDesignSystem.Colors.warning)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(AppDesignSystem.Colors.warning.opacity(0.1))
+                .cornerRadius(10)
+            }
+            
+            if gameSession.canUndoLastEvent {
+                Button(action: {
+                    gameSession.undoLastEvent()
+                }) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.uturn.backward")
+                            .font(.system(size: 16))
+                        Text("Undo")
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    .foregroundColor(AppDesignSystem.Colors.error)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(AppDesignSystem.Colors.error.opacity(0.1))
+                    .cornerRadius(10)
+                }
+            }
+        }
+    }
+    
+    // MARK: - Participants Standings
+    
+    private var participantsStandings: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("Standings")
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                Spacer()
+                
+                Text("\(gameSession.participants.count) players")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+            }
+            
+            ForEach(gameSession.participants.sorted(by: { $0.balance > $1.balance })) { participant in
+                EnhancedParticipantStandingRow(
+                    participant: participant,
+                    position: gameSession.participants.sorted(by: { $0.balance > $1.balance })
+                        .firstIndex(where: { $0.id == participant.id })! + 1,
+                    gameSession: gameSession
+                )
+            }
+        }
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(AppDesignSystem.Colors.cardBackground)
+                .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 4)
+        )
+    }
+    
+    // MARK: - Recent Activity
+    
+    private var recentActivity: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Recent Activity")
+                .font(.system(size: 20, weight: .bold, design: .rounded))
+                .foregroundColor(AppDesignSystem.Colors.primaryText)
+            
+            ForEach(gameSession.events.suffix(3).reversed(), id: \.id) { event in
+                CompactEventRow(event: event)
+            }
+        }
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(AppDesignSystem.Colors.cardBackground)
+                .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 4)
+        )
+    }
+    
+    // MARK: - Enhanced Players View
+    
+    private var enhancedPlayersView: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 24) {
-                // Enhanced header
+                // Header with quick event button
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Assigned Players")
+                        Text("Player Assignments")
                             .font(.system(size: 24, weight: .bold, design: .rounded))
                             .foregroundColor(AppDesignSystem.Colors.primaryText)
                         
-                        Text("Track your team's performance")
-                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                        Text("Tap a player to record an event")
+                            .font(.system(size: 14, weight: .medium))
                             .foregroundColor(AppDesignSystem.Colors.secondaryText)
                     }
                     
                     Spacer()
                     
-                    EnhancedActionButton(
-                        title: "Event",
-                        icon: "plus.circle.fill",
-                        color: AppDesignSystem.Colors.primary,
-                        style: .compact
-                    ) {
+                    Button(action: {
                         showingEventSheet = true
+                    }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "plus.circle.fill")
+                                .font(.system(size: 16))
+                            Text("Event")
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(AppDesignSystem.Colors.primary)
+                        .cornerRadius(8)
                     }
                 }
                 .padding(.horizontal, 20)
                 
                 if gameSession.participants.flatMap({ $0.selectedPlayers + $0.substitutedPlayers }).isEmpty {
-                    // Enhanced empty state
+                    // Empty state
                     VStack(spacing: 16) {
                         Image(systemName: "person.3.sequence.fill")
                             .font(.system(size: 60))
@@ -320,81 +376,25 @@ struct GameView: View {
                             .font(.system(size: 20, weight: .semibold, design: .rounded))
                             .foregroundColor(AppDesignSystem.Colors.primaryText)
                         
-                        Text("Players will appear here once they're assigned to participants")
-                            .font(.system(size: 14, weight: .medium, design: .rounded))
+                        Text("Players will appear here once the game starts")
+                            .font(.system(size: 14, weight: .medium))
                             .foregroundColor(AppDesignSystem.Colors.secondaryText)
                             .multilineTextAlignment(.center)
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 80)
+                    .frame(maxWidth: .infinity, minHeight: 200)
+                    .padding(.horizontal, 20)
                 } else {
+                    // Player assignments by participant
                     ForEach(gameSession.participants) { participant in
-                        EnhancedPlayerSection(
-                            participant: participant,
-                            gameSession: gameSession
-                        )
-                        .padding(.horizontal, 20)
-                    }
-                }
-                
-                Spacer(minLength: 100)
-            }
-            .padding(.top, 20)
-        }
-        .background(AppDesignSystem.Colors.background.ignoresSafeArea())
-        .id("players-view-\(gameSession.events.count)-\(gameSession.substitutions.count)")
-    }
-    
-    private var eventsView: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 24) {
-                // Enhanced header
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Game Events")
-                            .font(.system(size: 24, weight: .bold, design: .rounded))
-                            .foregroundColor(AppDesignSystem.Colors.primaryText)
-                        
-                        Text("\(gameSession.events.count) events recorded")
-                            .font(.system(size: 14, weight: .medium, design: .rounded))
-                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                    }
-                    
-                    Spacer()
-                    
-                    EnhancedActionButton(
-                        title: "Record",
-                        icon: "plus.circle.fill",
-                        color: AppDesignSystem.Colors.primary,
-                        style: .compact
-                    ) {
-                        showingEventSheet = true
-                    }
-                }
-                .padding(.horizontal, 20)
-                
-                if gameSession.events.isEmpty {
-                    // Enhanced empty state
-                    VStack(spacing: 16) {
-                        Image(systemName: "calendar.badge.exclamationmark")
-                            .font(.system(size: 60))
-                            .foregroundColor(AppDesignSystem.Colors.secondary.opacity(0.6))
-                        
-                        Text("No Events Yet")
-                            .font(.system(size: 20, weight: .semibold, design: .rounded))
-                            .foregroundColor(AppDesignSystem.Colors.primaryText)
-                        
-                        Text("Start recording goals, cards, and other match events")
-                            .font(.system(size: 14, weight: .medium, design: .rounded))
-                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                            .multilineTextAlignment(.center)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 80)
-                } else {
-                    ForEach(gameSession.events.sorted(by: { $0.timestamp > $1.timestamp })) { event in
-                        EnhancedEventCard(event: event, gameSession: gameSession)
-                            .padding(.horizontal, 20)
+                        if !participant.selectedPlayers.isEmpty || !participant.substitutedPlayers.isEmpty {
+                            ParticipantPlayersSection(
+                                participant: participant,
+                                onPlayerTap: { player in
+                                    selectedPlayer = player
+                                    showingEventSheet = true
+                                }
+                            )
+                        }
                     }
                 }
                 
@@ -405,14 +405,22 @@ struct GameView: View {
         .background(AppDesignSystem.Colors.background.ignoresSafeArea())
     }
     
-    // MARK: - Record Event Sheet (Enhanced)
+    // MARK: - Helper Properties
+    
+    private var totalMoneyInPlay: Double {
+        let totalPositive = gameSession.participants.filter { $0.balance > 0 }.map { $0.balance }.reduce(0, +)
+        let totalNegative = abs(gameSession.participants.filter { $0.balance < 0 }.map { $0.balance }.reduce(0, +))
+        return max(totalPositive, totalNegative)
+    }
+    
+    // MARK: - Record Event Sheet
     
     private var recordEventView: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 24) {
                     if gameSession.participants.flatMap({ $0.selectedPlayers + $0.substitutedPlayers }).isEmpty {
-                        // Enhanced empty state
+                        // Empty state
                         VStack(spacing: 16) {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .font(.system(size: 60))
@@ -422,44 +430,36 @@ struct GameView: View {
                                 .font(.system(size: 20, weight: .semibold, design: .rounded))
                                 .foregroundColor(AppDesignSystem.Colors.primaryText)
                             
-                            Text("You need to assign players to participants first")
+                            Text("You need to assign players to participants before recording events")
                                 .font(.system(size: 14, weight: .medium, design: .rounded))
                                 .foregroundColor(AppDesignSystem.Colors.secondaryText)
                                 .multilineTextAlignment(.center)
                         }
-                        .padding(.top, 60)
+                        .frame(maxWidth: .infinity)
+                        .padding(.top, 80)
                     } else {
-                        // Player selection section
+                        // Player selection
                         VStack(alignment: .leading, spacing: 16) {
                             Text("Select Player")
                                 .font(.system(size: 20, weight: .bold, design: .rounded))
                                 .foregroundColor(AppDesignSystem.Colors.primaryText)
                             
                             ForEach(gameSession.participants) { participant in
-                                VStack(alignment: .leading, spacing: 12) {
-                                    Text(participant.name)
-                                        .font(.system(size: 16, weight: .semibold, design: .rounded))
-                                        .foregroundColor(AppDesignSystem.Colors.primary)
-                                    
-                                    // Active players
-                                    ForEach(participant.selectedPlayers) { player in
-                                        EnhancedPlayerSelectionCard(
-                                            player: player,
-                                            isSelected: selectedPlayer?.id == player.id,
-                                            isSubstituted: false
-                                        ) {
-                                            selectedPlayer = player
-                                        }
-                                    }
-                                    
-                                    // Substituted players
-                                    ForEach(participant.substitutedPlayers) { player in
-                                        EnhancedPlayerSelectionCard(
-                                            player: player,
-                                            isSelected: selectedPlayer?.id == player.id,
-                                            isSubstituted: true
-                                        ) {
-                                            selectedPlayer = player
+                                if !participant.selectedPlayers.isEmpty {
+                                    VStack(alignment: .leading, spacing: 12) {
+                                        Text(participant.name)
+                                            .font(.system(size: 16, weight: .semibold, design: .rounded))
+                                            .foregroundColor(AppDesignSystem.Colors.primary)
+                                        
+                                        LazyVGrid(columns: [GridItem(.flexible())], spacing: 8) {
+                                            ForEach(participant.selectedPlayers) { player in
+                                                PlayerSelectionCard(
+                                                    player: player,
+                                                    isSelected: selectedPlayer?.id == player.id
+                                                ) {
+                                                    selectedPlayer = player
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -478,7 +478,7 @@ struct GameView: View {
                                     GridItem(.flexible())
                                 ], spacing: 12) {
                                     ForEach(Bet.EventType.allCases, id: \.self) { eventType in
-                                        EnhancedEventTypeCard(
+                                        EventTypeSelectionCard(
                                             eventType: eventType,
                                             isSelected: selectedEventType == eventType
                                         ) {
@@ -505,328 +505,100 @@ struct GameView: View {
                                         .font(.system(size: 16, weight: .bold, design: .rounded))
                                 }
                                 .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
                                 .padding(.vertical, 16)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .fill(
-                                            LinearGradient(
-                                                colors: [
-                                                    AppDesignSystem.Colors.success,
-                                                    AppDesignSystem.Colors.success.opacity(0.8)
-                                                ],
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
-                                            )
-                                        )
-                                )
-                                .vibrantButton(color: AppDesignSystem.Colors.success)
+                                .frame(maxWidth: .infinity)
+                                .background(AppDesignSystem.Colors.success)
+                                .cornerRadius(12)
                             }
                         }
                     }
                 }
-                .padding(20)
+                .padding(24)
             }
-            .background(AppDesignSystem.Colors.background)
             .navigationTitle("Record Event")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Cancel") {
+                    Button("Close") {
                         showingEventSheet = false
                         selectedPlayer = nil
                         selectedEventType = nil
                     }
+                }
+            }
+        }
+    }
+    
+    // MARK: - Auto Save Prompt
+    
+    private var autoSaveGamePrompt: some View {
+        NavigationView {
+            VStack(spacing: 24) {
+                Image(systemName: "externaldrive.badge.plus")
+                    .font(.system(size: 60))
                     .foregroundColor(AppDesignSystem.Colors.primary)
-                }
-            }
-        }
-    }
-}
-
-// MARK: - Enhanced Components
-
-struct EnhancedActionButton: View {
-    let title: String
-    let icon: String
-    let color: Color
-    let style: Style
-    let action: () -> Void
-    
-    enum Style {
-        case primary, secondary, compact
-    }
-    
-    @State private var isPressed = false
-    
-    var body: some View {
-        Button(action: {
-            withAnimation(AppDesignSystem.Animations.quick) {
-                isPressed = true
-            }
-            
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                withAnimation(AppDesignSystem.Animations.quick) {
-                    isPressed = false
-                }
-                action()
-            }
-        }) {
-            HStack(spacing: style == .compact ? 6 : 8) {
-                Image(systemName: icon)
-                    .font(.system(size: style == .compact ? 16 : 18, weight: .medium))
                 
-                Text(title)
-                    .font(.system(size: style == .compact ? 14 : 16, weight: .semibold, design: .rounded))
-            }
-            .foregroundColor(style == .primary ? .white : color)
-            .padding(.vertical, style == .compact ? 8 : 12)
-            .padding(.horizontal, style == .compact ? 12 : 16)
-            .background(
-                RoundedRectangle(cornerRadius: style == .compact ? 8 : 12)
-                    .fill(
-                        style == .primary ?
-                        LinearGradient(
-                            colors: [color, color.opacity(0.8)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        ) :
-                        LinearGradient(
-                            colors: [color.opacity(0.1), color.opacity(0.05)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: style == .compact ? 8 : 12)
-                            .stroke(
-                                style == .secondary ? color.opacity(0.3) : Color.clear,
-                                lineWidth: 1
-                            )
-                    )
-            )
-            .scaleEffect(isPressed ? 0.95 : 1.0)
-        }
-        .buttonStyle(PlainButtonStyle())
-        .if(style == .primary) { view in
-            view.vibrantButton(color: color)
-        }
-    }
-}
-
-
-struct EnhancedPlayerSection: View {
-    let participant: Participant
-    let gameSession: GameSession
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Section header
-            HStack {
-                Text(participant.name)
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                Text("Quick Save Game")
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
                     .foregroundColor(AppDesignSystem.Colors.primaryText)
                 
-                Spacer()
+                Text("Save your game progress so you can continue later or share with friends.")
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    .multilineTextAlignment(.center)
                 
-                VibrantStatusBadge(
-                    "\(participant.selectedPlayers.count + participant.substitutedPlayers.count) players",
-                    color: AppDesignSystem.Colors.info
-                )
-            }
-            
-            // Active players
-            if !participant.selectedPlayers.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Active Players")
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                        .foregroundColor(AppDesignSystem.Colors.success)
+                TextField("Game name (optional)", text: $autoSaveGameName)
+                    .font(.system(size: 16, weight: .medium))
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.white)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(AppDesignSystem.Colors.primary.opacity(0.3), lineWidth: 1)
+                            )
+                    )
+                
+                Button("Save Game") {
+                    let finalGameName = autoSaveGameName.isEmpty ?
+                        "Game \\(Date().formatted(date: .abbreviated, time: .shortened))" :
+                        autoSaveGameName
                     
-                    ForEach(participant.selectedPlayers) { player in
-                        EnhancedPlayerStatsCard(gameSession: gameSession, player: player)
-                    }
+                    GameHistoryManager.shared.saveGameSession(gameSession, name: finalGameName)
+                    
+                    showingAutoSavePrompt = false
+                    autoSaveGameName = ""
                 }
-            }
-            
-            // Substituted players
-            if !participant.substitutedPlayers.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Substituted Players")
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                        .foregroundColor(AppDesignSystem.Colors.warning)
-                    
-                    ForEach(participant.substitutedPlayers) { player in
-                        EnhancedPlayerStatsCard(gameSession: gameSession, player: player, isSubstituted: true)
-                    }
-                }
-            }
-            
-            if participant.selectedPlayers.isEmpty && participant.substitutedPlayers.isEmpty {
-                VStack(spacing: 8) {
-                    Image(systemName: "person.slash")
-                        .font(.system(size: 24))
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText.opacity(0.5))
-                    
-                    Text("No players assigned")
-                        .font(.system(size: 14, weight: .medium, design: .rounded))
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 20)
-            }
-        }
-        .enhancedCard()
-    }
-}
-
-struct EnhancedPlayerStatsCard: View {
-    let gameSession: GameSession
-    let player: Player
-    var isSubstituted: Bool = false
-    
-    @State private var showDetails = false
-    
-    private var currentPlayerStats: (goals: Int, assists: Int, yellowCards: Int, redCards: Int) {
-        if let updatedPlayer = gameSession.availablePlayers.first(where: { $0.id == player.id }) {
-            return (updatedPlayer.goals, updatedPlayer.assists, updatedPlayer.yellowCards, updatedPlayer.redCards)
-        }
-        return (player.goals, player.assists, player.yellowCards, player.redCards)
-    }
-    
-    var body: some View {
-        VStack(spacing: 12) {
-            Button(action: {
-                withAnimation(AppDesignSystem.Animations.bouncy) {
-                    showDetails.toggle()
-                }
-            }) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(player.name)
-                            .font(.system(size: 16, weight: .semibold, design: .rounded))
-                            .foregroundColor(AppDesignSystem.Colors.primaryText)
-                        
-                        HStack(spacing: 8) {
-                            Text(player.team.name)
-                                .font(.system(size: 12, weight: .medium, design: .rounded))
-                                .foregroundColor(AppDesignSystem.TeamColors.getColor(for: player.team))
-                            
-                            Text("•")
-                                .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                            
-                            Text(player.position.rawValue)
-                                .font(.system(size: 12, weight: .medium, design: .rounded))
-                                .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                        }
-                    }
-                    
-                    Spacer()
-                    
-                    // Substitution status
-                    if isSubstituted {
-                        VibrantStatusBadge("Subbed Off", color: AppDesignSystem.Colors.warning)
-                    } else if case .substitutedOn = player.substitutionStatus {
-                        VibrantStatusBadge("Subbed On", color: AppDesignSystem.Colors.success)
-                    }
-                    
-                    Image(systemName: showDetails ? "chevron.up" : "chevron.down")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                }
-            }
-            .buttonStyle(PlainButtonStyle())
-            
-            // Stats display
-            let stats = currentPlayerStats
-            LazyVGrid(columns: [
-                GridItem(.flexible()),
-                GridItem(.flexible()),
-                GridItem(.flexible()),
-                GridItem(.flexible())
-            ], spacing: 8) {
-                EnhancedStatItem(label: "Goals", value: stats.goals, color: AppDesignSystem.Colors.success)
-                EnhancedStatItem(label: "Assists", value: stats.assists, color: AppDesignSystem.Colors.info)
-                EnhancedStatItem(label: "Yellow", value: stats.yellowCards, color: AppDesignSystem.Colors.warning)
-                EnhancedStatItem(label: "Red", value: stats.redCards, color: AppDesignSystem.Colors.error)
-            }
-        }
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(Color.white)
-                .overlay(
+                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .foregroundColor(.white)
+                .padding(.vertical, 16)
+                .padding(.horizontal, 24)
+                .background(
                     RoundedRectangle(cornerRadius: 12)
-                        .stroke(
-                            AppDesignSystem.TeamColors.getColor(for: player.team).opacity(0.2),
-                            lineWidth: 1
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    AppDesignSystem.Colors.primary,
+                                    AppDesignSystem.Colors.primary.opacity(0.8)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
                         )
                 )
-        )
-        .shadow(
-            color: Color.black.opacity(0.05),
-            radius: 4,
-            x: 0,
-            y: 2
-        )
-        .opacity(isSubstituted ? 0.8 : 1.0)
-    }
-}
-
-struct EnhancedStatItem: View {
-    let label: String
-    let value: Int
-    let color: Color
-    
-    var body: some View {
-        VStack(spacing: 4) {
-            Text("\(value)")
-                .font(.system(size: 18, weight: .bold, design: .rounded))
-                .foregroundColor(value > 0 ? color : AppDesignSystem.Colors.secondaryText.opacity(0.5))
-            
-            Text(label)
-                .font(.system(size: 10, weight: .medium, design: .rounded))
-                .foregroundColor(AppDesignSystem.Colors.secondaryText)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(value > 0 ? color.opacity(0.1) : Color.gray.opacity(0.05))
-        )
-    }
-}
-
-struct EnhancedEventCard: View {
-    let event: GameEvent
-    let gameSession: GameSession
-    
-    private let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .none
-        formatter.timeStyle = .short
-        return formatter
-    }()
-    
-    private func getParticipantName(for player: Player) -> String {
-        return gameSession.participants.first {
-            $0.selectedPlayers.contains { $0.id == player.id } ||
-            $0.substitutedPlayers.contains { $0.id == player.id }
-        }?.name ?? "Unknown"
-    }
-    
-    private func getEventColor(_ eventType: Bet.EventType) -> Color {
-        switch eventType {
-        case .goal, .assist: return AppDesignSystem.Colors.success
-        case .yellowCard: return AppDesignSystem.Colors.warning
-        case .redCard: return AppDesignSystem.Colors.error
-        case .ownGoal, .penaltyMissed: return AppDesignSystem.Colors.warning
-        case .penalty: return AppDesignSystem.Colors.primary
-        case .cleanSheet: return AppDesignSystem.Colors.info
-        case .custom: return AppDesignSystem.Colors.secondary
+                .vibrantButton()
+            }
+            .padding(24)
+            .background(AppDesignSystem.Colors.background)
+            .navigationTitle("Quick Save")
+            .navigationBarTitleDisplayMode(.inline)
         }
     }
     
-    private func getEventIcon(_ eventType: Bet.EventType) -> String {
+    // MARK: - Helper Functions
+    
+    private func eventIcon(_ eventType: Bet.EventType) -> String {
         switch eventType {
         case .goal: return "soccerball"
         case .assist: return "arrow.up.forward"
@@ -840,73 +612,16 @@ struct EnhancedEventCard: View {
         }
     }
     
-    var body: some View {
-        HStack(spacing: 16) {
-            // Event icon with enhanced styling
-            ZStack {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                getEventColor(event.eventType),
-                                getEventColor(event.eventType).opacity(0.7)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 44, height: 44)
-                
-                Image(systemName: getEventIcon(event.eventType))
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundColor(.white)
-            }
-            .shadow(
-                color: getEventColor(event.eventType).opacity(0.3),
-                radius: 6,
-                x: 0,
-                y: 3
-            )
-            
-            VStack(alignment: .leading, spacing: 6) {
-                Text(event.eventType.rawValue)
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
-                    .foregroundColor(AppDesignSystem.Colors.primaryText)
-                
-                Text(event.player.name)
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .foregroundColor(AppDesignSystem.TeamColors.getColor(for: event.player.team))
-                
-                HStack(spacing: 8) {
-                    Text(event.player.team.name)
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                    
-                    Text("•")
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                    
-                    Text("Owned by \(getParticipantName(for: event.player))")
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundColor(AppDesignSystem.Colors.primary)
-                }
-            }
-            
-            Spacer()
-            
-            VStack(alignment: .trailing, spacing: 4) {
-                Text(dateFormatter.string(from: event.timestamp))
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                
-                if let bet = gameSession.bets.first(where: { $0.eventType == event.eventType }) {
-                    VibrantStatusBadge(
-                        bet.amount >= 0 ? "+\(formatCurrency(bet.amount))" : "\(formatCurrency(bet.amount))",
-                        color: bet.amount >= 0 ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.error
-                    )
-                }
-            }
+    private func eventColor(_ eventType: Bet.EventType) -> Color {
+        switch eventType {
+        case .goal, .assist: return AppDesignSystem.Colors.success
+        case .yellowCard: return AppDesignSystem.Colors.warning
+        case .redCard: return AppDesignSystem.Colors.error
+        case .ownGoal, .penaltyMissed: return AppDesignSystem.Colors.warning
+        case .penalty: return AppDesignSystem.Colors.primary
+        case .cleanSheet: return AppDesignSystem.Colors.info
+        case .custom: return AppDesignSystem.Colors.secondary
         }
-        .enhancedCard()
     }
     
     private func formatCurrency(_ value: Double) -> String {
@@ -917,51 +632,320 @@ struct EnhancedEventCard: View {
     }
 }
 
-struct EnhancedPlayerSelectionCard: View {
-    let player: Player
-    let isSelected: Bool
-    let isSubstituted: Bool
-    let action: () -> Void
-    
-    @State private var isPressed = false
+// MARK: - Supporting Components
+
+struct GameStatCard: View {
+    let title: String
+    let value: String
+    let icon: String
+    let color: Color
     
     var body: some View {
-        Button(action: {
-            withAnimation(AppDesignSystem.Animations.quick) {
-                isPressed = true
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 24))
+                .foregroundColor(color)
+            
+            Text(value)
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .foregroundColor(AppDesignSystem.Colors.primaryText)
+            
+            Text(title)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
+        .background(color.opacity(0.1))
+        .cornerRadius(12)
+    }
+}
+
+struct EnhancedParticipantStandingRow: View {
+    let participant: Participant
+    let position: Int
+    let gameSession: GameSession
+    
+    private var positionColor: Color {
+        switch position {
+        case 1: return AppDesignSystem.Colors.warning
+        case 2: return AppDesignSystem.Colors.secondaryText
+        case 3: return AppDesignSystem.Colors.warning.opacity(0.7)
+        default: return AppDesignSystem.Colors.secondaryText.opacity(0.6)
+        }
+    }
+    
+    var body: some View {
+        HStack(spacing: 16) {
+            // Position indicator
+            ZStack {
+                Circle()
+                    .fill(position <= 3 ? positionColor.opacity(0.2) : Color.clear)
+                    .frame(width: 32, height: 32)
+                
+                Text("\(position)")
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundColor(positionColor)
             }
             
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                withAnimation(AppDesignSystem.Animations.quick) {
-                    isPressed = false
-                }
-                action()
-            }
-        }) {
+            // Participant info
             HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 8) {
-                        Text(player.name)
-                            .font(.system(size: 14, weight: .semibold, design: .rounded))
-                            .foregroundColor(AppDesignSystem.Colors.primaryText)
-                        
-                        if isSubstituted {
-                            VibrantStatusBadge("Subbed Off", color: AppDesignSystem.Colors.warning)
+                // Avatar
+                ZStack {
+                    Circle()
+                        .fill(AppDesignSystem.Colors.primary.opacity(0.8))
+                        .frame(width: 36, height: 36)
+                    
+                    if let firstLetter = participant.name.first {
+                        Text(String(firstLetter).uppercased())
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                }
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(participant.name)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
+                    
+                    Text("\(participant.selectedPlayers.count) players")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                }
+            }
+            
+            Spacer()
+            
+            // Balance
+            VStack(alignment: .trailing, spacing: 2) {
+                Text(formatCurrency(participant.balance))
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(participant.balance >= 0 ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.error)
+                
+                Text(participant.balance >= 0 ? "Winning" : "Losing")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(participant.balance >= 0 ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.error)
+            }
+        }
+        .padding(.vertical, 8)
+    }
+    
+    private func formatCurrency(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencySymbol = UserDefaults.standard.string(forKey: "currencySymbol") ?? "€"
+        return formatter.string(from: NSNumber(value: value)) ?? "€0.00"
+    }
+}
+
+struct CompactEventRow: View {
+    let event: GameEvent
+    
+    private let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
+        return formatter
+    }()
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Event icon
+            Circle()
+                .fill(eventColor.opacity(0.2))
+                .frame(width: 28, height: 28)
+                .overlay(
+                    Image(systemName: eventIcon)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(eventColor)
+                )
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(event.player.name)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                Text(event.eventType.rawValue)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+            }
+            
+            Spacer()
+            
+            Text(timeFormatter.string(from: event.timestamp))
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(AppDesignSystem.Colors.secondaryText)
+        }
+        .padding(.vertical, 4)
+    }
+    
+    private var eventColor: Color {
+        switch event.eventType {
+        case .goal, .assist: return AppDesignSystem.Colors.success
+        case .yellowCard: return AppDesignSystem.Colors.warning
+        case .redCard: return AppDesignSystem.Colors.error
+        case .ownGoal, .penaltyMissed: return AppDesignSystem.Colors.warning
+        case .penalty: return AppDesignSystem.Colors.primary
+        case .cleanSheet: return AppDesignSystem.Colors.info
+        case .custom: return AppDesignSystem.Colors.secondary
+        }
+    }
+    
+    private var eventIcon: String {
+        switch event.eventType {
+        case .goal: return "soccerball"
+        case .assist: return "arrow.up.forward"
+        case .yellowCard: return "square.fill"
+        case .redCard: return "square.fill"
+        case .ownGoal: return "arrow.uturn.backward"
+        case .penalty: return "p.circle"
+        case .penaltyMissed: return "p.circle.fill"
+        case .cleanSheet: return "lock.shield"
+        case .custom: return "star"
+        }
+    }
+}
+
+struct ParticipantPlayersSection: View {
+    let participant: Participant
+    let onPlayerTap: (Player) -> Void
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Participant header
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(AppDesignSystem.Colors.primary.opacity(0.8))
+                        .frame(width: 32, height: 32)
+                    
+                    if let firstLetter = participant.name.first {
+                        Text(String(firstLetter).uppercased())
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                }
+                
+                Text(participant.name)
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                Spacer()
+                
+                Text(formatCurrency(participant.balance))
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(participant.balance >= 0 ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.error)
+            }
+            
+            // Active players
+            if !participant.selectedPlayers.isEmpty {
+                LazyVGrid(columns: [GridItem(.flexible())], spacing: 8) {
+                    ForEach(participant.selectedPlayers) { player in
+                        CompactPlayerRow(player: player, isActive: true) {
+                            onPlayerTap(player)
                         }
                     }
-                    
-                    HStack(spacing: 8) {
-                        Text(player.team.name)
-                            .font(.system(size: 12, weight: .medium, design: .rounded))
-                            .foregroundColor(AppDesignSystem.TeamColors.getColor(for: player.team))
-                        
-                        Text("•")
-                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                        
-                        Text(player.position.rawValue)
-                            .font(.system(size: 12, weight: .medium, design: .rounded))
-                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                }
+            }
+            
+            // Substituted players
+            if !participant.substitutedPlayers.isEmpty {
+                Text("Substituted")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    .padding(.top, 8)
+                
+                LazyVGrid(columns: [GridItem(.flexible())], spacing: 8) {
+                    ForEach(participant.substitutedPlayers) { player in
+                        CompactPlayerRow(player: player, isActive: false) {
+                            onPlayerTap(player)
+                        }
                     }
+                }
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(AppDesignSystem.Colors.cardBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(AppDesignSystem.Colors.primary.opacity(0.2), lineWidth: 1)
+                )
+        )
+        .padding(.horizontal, 20)
+    }
+    
+    private func formatCurrency(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .currency
+        formatter.currencySymbol = UserDefaults.standard.string(forKey: "currencySymbol") ?? "€"
+        return formatter.string(from: NSNumber(value: value)) ?? "€0.00"
+    }
+}
+
+struct CompactPlayerRow: View {
+    let player: Player
+    let isActive: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                // Team color indicator
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(AppDesignSystem.TeamColors.getColor(for: player.team))
+                    .frame(width: 4, height: 28)
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(player.name)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(isActive ? AppDesignSystem.Colors.primaryText : AppDesignSystem.Colors.secondaryText)
+                    
+                    Text("\(player.team.shortName) • \(player.position.rawValue)")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                }
+                
+                Spacer()
+                
+                if !isActive {
+                    Image(systemName: "arrow.left.arrow.right")
+                        .font(.system(size: 12))
+                        .foregroundColor(AppDesignSystem.Colors.warning)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(isActive ? Color.white : AppDesignSystem.Colors.secondaryText.opacity(0.1))
+            .cornerRadius(8)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+}
+
+struct PlayerSelectionCard: View {
+    let player: Player
+    let isSelected: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                // Team color indicator
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(AppDesignSystem.TeamColors.getColor(for: player.team))
+                    .frame(width: 4, height: 40)
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(player.name)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
+                    
+                    Text("\(player.team.shortName) • \(player.position.rawValue)")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
                 }
                 
                 Spacer()
@@ -969,42 +953,32 @@ struct EnhancedPlayerSelectionCard: View {
                 if isSelected {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 20))
-                        .foregroundColor(AppDesignSystem.Colors.primary)
+                        .foregroundColor(AppDesignSystem.Colors.success)
                 }
             }
             .padding(12)
             .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(
-                        isSelected ?
-                        AppDesignSystem.Colors.primary.opacity(0.1) :
-                        Color.white
-                    )
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(isSelected ? AppDesignSystem.Colors.success.opacity(0.1) : Color.white)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
+                        RoundedRectangle(cornerRadius: 10)
                             .stroke(
-                                isSelected ?
-                                AppDesignSystem.Colors.primary :
-                                Color.gray.opacity(0.2),
+                                isSelected ? AppDesignSystem.Colors.success : Color.gray.opacity(0.3),
                                 lineWidth: isSelected ? 2 : 1
                             )
                     )
             )
-            .scaleEffect(isPressed ? 0.98 : 1.0)
-            .opacity(isSubstituted ? 0.7 : 1.0)
         }
         .buttonStyle(PlainButtonStyle())
     }
 }
 
-struct EnhancedEventTypeCard: View {
+struct EventTypeSelectionCard: View {
     let eventType: Bet.EventType
     let isSelected: Bool
     let action: () -> Void
     
-    @State private var isPressed = false
-    
-    private func getEventColor(_ eventType: Bet.EventType) -> Color {
+    private var eventColor: Color {
         switch eventType {
         case .goal, .assist: return AppDesignSystem.Colors.success
         case .yellowCard: return AppDesignSystem.Colors.warning
@@ -1016,7 +990,7 @@ struct EnhancedEventTypeCard: View {
         }
     }
     
-    private func getEventIcon(_ eventType: Bet.EventType) -> String {
+    private var eventIcon: String {
         switch eventType {
         case .goal: return "soccerball"
         case .assist: return "arrow.up.forward"
@@ -1031,100 +1005,24 @@ struct EnhancedEventTypeCard: View {
     }
     
     var body: some View {
-        Button(action: {
-            withAnimation(AppDesignSystem.Animations.quick) {
-                isPressed = true
-            }
-            
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                withAnimation(AppDesignSystem.Animations.quick) {
-                    isPressed = false
-                }
-                action()
-            }
-        }) {
+        Button(action: action) {
             VStack(spacing: 8) {
-                ZStack {
-                    Circle()
-                        .fill(
-                            isSelected ?
-                            LinearGradient(
-                                colors: [
-                                    getEventColor(eventType),
-                                    getEventColor(eventType).opacity(0.7)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            ) :
-                            LinearGradient(
-                                colors: [
-                                    getEventColor(eventType).opacity(0.2),
-                                    getEventColor(eventType).opacity(0.1)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 40, height: 40)
-                    
-                    Image(systemName: getEventIcon(eventType))
-                        .font(.system(size: 18, weight: .medium))
-                        .foregroundColor(
-                            isSelected ? .white : getEventColor(eventType)
-                        )
-                }
+                Image(systemName: eventIcon)
+                    .font(.system(size: 24))
+                    .foregroundColor(isSelected ? .white : eventColor)
                 
                 Text(eventType.rawValue)
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundColor(
-                        isSelected ?
-                        getEventColor(eventType) :
-                        AppDesignSystem.Colors.primaryText
-                    )
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(isSelected ? .white : AppDesignSystem.Colors.primaryText)
                     .multilineTextAlignment(.center)
-                    .lineLimit(2)
             }
             .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
+            .padding(.vertical, 16)
             .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(
-                        isSelected ?
-                        getEventColor(eventType).opacity(0.1) :
-                        Color.white
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(
-                                isSelected ?
-                                getEventColor(eventType) :
-                                Color.gray.opacity(0.2),
-                                lineWidth: isSelected ? 2 : 1
-                            )
-                    )
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(isSelected ? eventColor : eventColor.opacity(0.1))
             )
-            .scaleEffect(isPressed ? 0.95 : (isSelected ? 1.02 : 1.0))
         }
         .buttonStyle(PlainButtonStyle())
-        .if(isSelected) { view in
-            view.shadow(
-                color: getEventColor(eventType).opacity(0.3),
-                radius: 6,
-                x: 0,
-                y: 3
-            )
-        }
-    }
-}
-
-// MARK: - Helper Extensions
-
-extension View {
-    @ViewBuilder func `if`<Content: View>(_ condition: Bool, transform: (Self) -> Content) -> some View {
-        if condition {
-            transform(self)
-        } else {
-            self
-        }
     }
 }
