@@ -58,13 +58,4 @@ class APIRateLimiter {
             return (callTimestamps.count, maxCallsPerMinute, resetTime)
         }
     }
-    
-    #if DEBUG
-    func debugReset() {
-        queue.sync {
-            callTimestamps.removeAll()
-            print("🔄 Rate limiter reset")
-        }
-    }
-    #endif
 }

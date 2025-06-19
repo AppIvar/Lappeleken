@@ -65,12 +65,6 @@ struct AppConfig {
 #endif
     }
     
-#if DEBUG
-static var isTestModeEnabled: Bool {
-    return TestConfiguration.shared.isTestMode
-}
-#endif
-    
     // MARK: - Free Tier Limits
     
     static var maxFreeMatches: Int {
@@ -148,7 +142,7 @@ static var isTestModeEnabled: Bool {
         return AppPurchaseManager.shared.currentTier == .premium
     }
     
-    // MARK: - Validation and Debug
+    // MARK: - Validation
     
     @MainActor
     static func validateConfiguration() {
@@ -174,63 +168,4 @@ static var isTestModeEnabled: Bool {
     static let supportEmail = "support@lappeleken.com"
     static let privacyPolicyURL = "https://lappeleken.com/privacy"
     static let termsOfServiceURL = "https://lappeleken.com/terms"
-}
-
-extension AppConfig {
-    
-    #if DEBUG
-    /// Reset all app state for fresh testing
-    @MainActor static func debugResetAppState() {
-        print("🧹 DEBUG: Resetting all app state...")
-        
-        // Reset purchase state
-        AppPurchaseManager.shared.debugResetPurchaseState()
-        
-        // Reset ad tracking
-        let adKeys = [
-            "lastInterstitial_player_assignment",
-            "lastInterstitial_game_setup",
-            "lastInterstitial_game_summary",
-            "lastInterstitial_events",
-            "lastInterstitial_continue_game",
-            "lastInterstitial_game_complete",
-            "lastInterstitial_history_view",
-            "lastInterstitial_settings_view",
-            "totalEventsRecorded",
-            "completedGameCount",
-            "adImpressions_interstitial",
-            "adImpressions_rewarded",
-            "adImpressions_banner"
-        ]
-        
-        for key in adKeys {
-            UserDefaults.standard.removeObject(forKey: key)
-        }
-        
-        // Reset game state
-        UserDefaults.standard.removeObject(forKey: "isLiveMode")
-        UserDefaults.standard.removeObject(forKey: "savedGameSessions")
-        UserDefaults.standard.removeObject(forKey: "gameHistoryItems")
-        
-        print("✅ DEBUG: App state reset complete")
-    }
-    
-    /// Check if this is a fresh install/build
-    @MainActor static func checkForFreshInstall() {
-        let buildNumber = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"
-        let lastBuildKey = "lastKnownBuild"
-        let lastBuild = UserDefaults.standard.string(forKey: lastBuildKey)
-        
-        if lastBuild != buildNumber {
-            print("🆕 DEBUG: New build detected (\(lastBuild ?? "none") → \(buildNumber))")
-            
-            // Optionally auto-reset on new builds
-            #if DEBUG
-            debugResetAppState()
-            #endif
-            
-            UserDefaults.standard.set(buildNumber, forKey: lastBuildKey)
-        }
-    }
-    #endif
 }

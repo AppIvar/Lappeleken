@@ -5,13 +5,6 @@
 //  Created by Ivar Hovland on 08/05/2025.
 //
 
-//
-//  GameSession.swift
-//  Lappeleken
-//
-//  Created by Ivar Hovland on 08/05/2025.
-//
-
 import Foundation
 
 // Game session model
@@ -159,22 +152,11 @@ class GameSession: ObservableObject, Codable {
             
             print("🔄 GameSession mode updated: Live Mode = \(newLiveMode)")
         }
-        
-        #if DEBUG
-        // Update test bridge connection
-        if TestConfiguration.shared.isTestMode {
-            TestMonitoringBridge.shared.connectToGameSession(self)
-        } else {
-            TestMonitoringBridge.shared.disconnect()
-        }
-        #endif
     }
     
-
     func fetchAvailableMatches() async throws {
         try await fetchAvailableMatchesRobust()
     }
-
     
     func fetchMatchLineup(for matchId: String) async throws {
         guard isLiveMode, let matchService = matchService else {
@@ -186,18 +168,7 @@ class GameSession: ObservableObject, Codable {
         print("🔧 Using service type: \(type(of: matchService))")
         
         do {
-            let lineup: Lineup
-            
-            if let footballService = matchService as? FootballDataMatchService {
-                print("🌐 Using FootballDataMatchService to fetch lineup")
-                lineup = try await footballService.fetchMatchLineup(matchId: matchId)
-            } else if let mockService = matchService as? MockFootballDataService {
-                print("🧪 Using MockFootballDataService to fetch lineup")
-                lineup = try await mockService.fetchMatchLineup(matchId: matchId)
-            } else {
-                print("🔄 Using generic MatchService to fetch lineup")
-                lineup = try await matchService.fetchMatchLineup(matchId: matchId)
-            }
+            let lineup = try await matchService.fetchMatchLineup(matchId: matchId)
             
             await MainActor.run {
                 self.matchLineups[matchId] = lineup
@@ -250,19 +221,6 @@ class GameSession: ObservableObject, Codable {
                     }
                 }
             )
-        } else if let mockService = matchService as? MockFootballDataService {
-            print("🧪 Using MockFootballDataService monitoring")
-            matchMonitoringTask = mockService.startMonitoringMatch(
-                matchId: match.id,
-                updateInterval: 30,
-                onUpdate: { [weak self] update in
-                    guard let self = self else { return }
-                    
-                    Task { @MainActor in
-                        self.processEnhancedMatchUpdate(update)
-                    }
-                }
-            )
         } else {
             print("🔄 Using generic MatchService monitoring")
             // Fallback to regular monitoring
@@ -293,12 +251,12 @@ class GameSession: ObservableObject, Codable {
         
         // Use the SavedGameSession method from HistoryView
         let savedGame = SavedGameSession(from: self, name: name)
-        var savedGames = GameHistoryManager.shared.getSavedGameSessions() // Changed method name
+        var savedGames = GameHistoryManager.shared.getSavedGameSessions()
         savedGames.append(savedGame)
         
         // Save to UserDefaults using the working method
         if let encoded = try? JSONEncoder().encode(savedGames) {
-            UserDefaults.standard.set(encoded, forKey: "savedGameSessions") // Use different key to avoid conflicts
+            UserDefaults.standard.set(encoded, forKey: "savedGameSessions")
             print("✅ Game saved successfully: \(name)")
             
             // Update the published property
@@ -307,7 +265,6 @@ class GameSession: ObservableObject, Codable {
             print("❌ Failed to encode and save game")
         }
     }
-
 
     func debugSaveStatus() {
         print("🔍 Debug - Game Session Status:")
@@ -320,7 +277,6 @@ class GameSession: ObservableObject, Codable {
             print("  - Participant \(index): \(participant.name) - Balance: \(participant.balance)")
         }
     }
-
     
     // Add players to the available pool
     func addPlayers(_ players: [Player]) {
@@ -676,7 +632,6 @@ class GameSession: ObservableObject, Codable {
         default: return nil
         }
     }
-
     
     // Calculate payments when an event occurs
     private func calculatePayments(for event: GameEvent) {
@@ -917,7 +872,6 @@ class GameSession: ObservableObject, Codable {
         return bet.eventType.rawValue
     }
     
-    
     func reset() {
         participants = []
         bets = []
@@ -1119,13 +1073,10 @@ class GameSession: ObservableObject, Codable {
         do {
             var matches: [Match] = []
             
-            // Handle both real and mock services
+            // Handle real football service
             if let footballService = matchService as? FootballDataMatchService {
                 print("🌐 Using real FootballDataMatchService")
                 matches = try await footballService.fetchLiveMatchesWithFallback(competitionCode: nil)
-            } else if let mockService = matchService as? MockFootballDataService {
-                print("🧪 Using MockFootballDataService")
-                matches = try await mockService.fetchLiveMatchesWithFallback(competitionCode: nil)
             } else {
                 print("🔄 Using generic MatchService interface")
                 // Try live matches first, then fallback to upcoming
@@ -1140,8 +1091,6 @@ class GameSession: ObservableObject, Codable {
                     print("⚪ No upcoming matches, trying date range...")
                     if let footballService = matchService as? FootballDataMatchService {
                         matches = try await footballService.fetchMatchesInDateRange(days: 7)
-                    } else if let mockService = matchService as? MockFootballDataService {
-                        matches = try await mockService.fetchMatchesInDateRange(days: 7)
                     }
                 }
             }
@@ -1184,8 +1133,6 @@ class GameSession: ObservableObject, Codable {
             
             if let footballService = matchService as? FootballDataMatchService {
                 return try await footballService.fetchMatchPlayersWithCache(matchId: matchId)
-            } else if let mockService = matchService as? MockFootballDataService {
-                return try await mockService.fetchMatchPlayersWithCache(matchId: matchId)
             } else {
                 // Fallback to generic interface
                 return try await matchService.fetchMatchPlayers(matchId: matchId)
@@ -1260,18 +1207,7 @@ class GameSession: ObservableObject, Codable {
         if let footballService = matchService as? FootballDataMatchService {
             matchMonitoringTask = footballService.smartMatchMonitoring(
                 matchId: match.id,
-                onUpdate: { [weak self] update in
-                    guard let self = self else { return }
-                    
-                    Task { @MainActor in
-                        self.processEnhancedMatchUpdate(update)
-                    }
-                }
-            )
-        } else if let mockService = matchService as? MockFootballDataService {
-            matchMonitoringTask = mockService.smartMatchMonitoring(
-                matchId: match.id,
-                onUpdate: { [weak self] update in
+                onUpdate: { [weak self] (update: MatchUpdate) in
                     guard let self = self else { return }
                     
                     Task { @MainActor in
@@ -1284,7 +1220,7 @@ class GameSession: ObservableObject, Codable {
             matchMonitoringTask = matchService.startMonitoringMatch(
                 matchId: match.id,
                 updateInterval: 30,
-                onUpdate: { [weak self] update in
+                onUpdate: { [weak self] (update: MatchUpdate) in
                     guard let self = self else { return }
                     
                     Task { @MainActor in
@@ -1321,5 +1257,3 @@ class GameSession: ObservableObject, Codable {
         }
     }
 }
-
-

@@ -60,7 +60,7 @@ class AppPurchaseManager: ObservableObject {
             }
         }
     }
-
+    
     enum ProductID: String, CaseIterable {
         case premium = "HovlandGames.Lucky_Football_Slip.premium_monthly"
         
@@ -339,48 +339,6 @@ class AppPurchaseManager: ObservableObject {
             }
         }
     }
-    
-    // MARK: - Debug Methods (Keep for Testing)
-    
-    #if DEBUG
-    func debugResetPurchaseState() {
-        // Reset daily usage
-        let today = Calendar.current.startOfDay(for: Date())
-        let todayString = DateFormatter.yyyyMMdd.string(from: today)
-        UserDefaults.standard.removeObject(forKey: "dailyMatchesUsed_\(todayString)")
-        UserDefaults.standard.removeObject(forKey: "adRewardedMatches_\(todayString)")
-        
-        // Reset purchase state
-        UserDefaults.standard.removeObject(forKey: "purchaseTier")
-        
-        // Reset to default state
-        currentTier = .free
-        
-        print("🔄 DEBUG: Purchase state reset")
-        print("  - Daily matches used: \(dailyFreeMatchesUsed)")
-        print("  - Can use live features: \(canUseLiveFeatures)")
-        print("  - Remaining free matches today: \(remainingFreeMatchesToday)")
-        
-        objectWillChange.send()
-    }
-    
-    func debugGrantFreeMatches(count: Int = 3) {
-        adRewardedMatchesToday += count
-        
-        print("🎁 DEBUG: Granted \(count) free matches")
-        print("  - Ad rewarded matches today: \(adRewardedMatchesToday)")
-        print("  - Remaining: \(remainingFreeMatchesToday)")
-        
-        objectWillChange.send()
-    }
-    
-    func debugSetPremium(_ isPremium: Bool) {
-        currentTier = isPremium ? .premium : .free
-        savePurchaseState()
-        print("🔄 DEBUG: Set premium status to \(isPremium)")
-        objectWillChange.send()
-    }
-    #endif
 }
 
 // MARK: - Purchase Error

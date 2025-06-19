@@ -383,9 +383,9 @@ extension View {
 /*
 USAGE EXAMPLES:
 
-// For main navigation tabs (EventsTimelineView, StatsView, etc.)
-EventsTimelineView()
-    .withTabBanner(tabName: "EventsTimeline")
+// For main navigation tabs
+TimelineView()
+    .withTabBanner(tabName: "Timeline")
 
 // For general content views
 SomeContentView()

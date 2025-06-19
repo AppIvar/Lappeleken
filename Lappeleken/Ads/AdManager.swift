@@ -102,12 +102,12 @@ class AdManager: NSObject, ObservableObject {
         let requestConfiguration = MobileAds.shared.requestConfiguration
         
         // Add test device IDs for production testing
-        #if DEBUG
+#if DEBUG
         requestConfiguration.testDeviceIdentifiers = [
             "YOUR_TEST_DEVICE_ID" // Replace with your actual test device ID
         ]
         print("🔍 Test device IDs configured for debug mode")
-        #endif
+#endif
         
         // Start AdMob initialization using async/await
         do {
@@ -410,34 +410,8 @@ class AdManager: NSObject, ObservableObject {
         let adsShown = UserDefaults.standard.integer(forKey: "adImpressions_interstitial_live_event")
         return (liveMatchEventCount, eventsUntilNextAd, adsShown)
     }
-    
-    // MARK: - Debug Methods (Keep for Testing)
-    
-    #if DEBUG
-    func debugResetAdCounters() {
-        liveMatchEventCount = 0
-        eventsUntilNextAd = 0
-        UserDefaults.standard.removeObject(forKey: "completedGameCount")
-        print("🔄 DEBUG: Ad counters reset")
-    }
-    
-    func debugForceShowInterstitial() {
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let rootViewController = windowScene.windows.first?.rootViewController else {
-            print("❌ Cannot get root view controller for debug ad")
-            return
-        }
-        
-        showInterstitialAd(from: rootViewController) { success in
-            print("🧪 DEBUG: Force interstitial result: \(success)")
-        }
-    }
-    
-    func debugSimulateLiveEvent() {
-        recordLiveMatchEvent(eventType: "debug_goal")
-    }
-    #endif
 }
+
 
 // MARK: - FullScreenContentDelegate
 

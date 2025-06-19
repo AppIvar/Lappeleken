@@ -11,10 +11,6 @@ import SwiftUI
 struct LappelekenApp: App {
     
     init() {
-        #if DEBUG
-        AppConfig.checkForFreshInstall()
-        #endif
-        
         // Validate app configuration
         Task { @MainActor in
             AppConfig.validateConfiguration()

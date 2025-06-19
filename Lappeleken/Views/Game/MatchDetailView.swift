@@ -725,7 +725,7 @@ struct EnhancedEventsTimelineView: View {
     @ObservedObject var gameSession: GameSession
     
     var body: some View {
-        EventsTimelineView(gameSession: gameSession)
+        TimelineView(gameSession: gameSession)
     }
 }
 

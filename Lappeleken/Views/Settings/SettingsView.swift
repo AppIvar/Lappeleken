@@ -65,17 +65,6 @@ struct SettingsView: View {
                             currencySettingsContent
                         }
                         
-                        // Debug Section (only in DEBUG builds)
-                        #if DEBUG
-                        EnhancedSettingsSection(
-                            title: "🐛 Debug Tools",
-                            icon: "ant.fill",
-                            color: AppDesignSystem.Colors.error
-                        ) {
-                            debugContent
-                        }
-                        #endif
-                        
                         // About Section
                         EnhancedSettingsSection(
                             title: "About",
@@ -123,84 +112,7 @@ struct SettingsView: View {
         .withSmartMonetization()
     }
 
-    // Add this new debug content section:
-    #if DEBUG
-    private var debugContent: some View {
-        VStack(spacing: 16) {
-            EnhancedSettingsRow(
-                title: "Reset Purchase State",
-                subtitle: "Reset all purchase data",
-                icon: "arrow.clockwise.circle.fill",
-                color: AppDesignSystem.Colors.warning
-            ) {
-                AppPurchaseManager.shared.debugResetPurchaseState()
-            }
-            
-            EnhancedSettingsRow(
-                title: "Grant 3 Free Matches",
-                subtitle: "Add 3 free live matches",
-                icon: "gift.fill",
-                color: AppDesignSystem.Colors.success
-            ) {
-                AppPurchaseManager.shared.debugGrantFreeMatches(count: 3)
-            }
-            
-            EnhancedSettingsRow(
-                title: "Toggle Premium Status",
-                subtitle: "Switch between free and premium",
-                icon: "crown.fill",
-                color: AppDesignSystem.Colors.warning
-            ) {
-                let isPremium = AppPurchaseManager.shared.currentTier == .premium
-                AppPurchaseManager.shared.debugSetPremium(!isPremium)
-            }
-            
-            // Debug info display
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Current State:")
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundColor(AppDesignSystem.Colors.primaryText)
-                
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Daily matches used: \(AppPurchaseManager.shared.dailyFreeMatchesUsed)")
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                    
-                    Text("Can use live: \(AppPurchaseManager.shared.canUseLiveFeatures ? "Yes" : "No")")
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                    
-                    Text("Remaining today: \(AppPurchaseManager.shared.remainingFreeMatchesToday)")
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                    
-                    Text("Current tier: \(AppPurchaseManager.shared.currentTier.displayName)")
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                }
-            }
-            .padding(16)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.gray.opacity(0.1))
-            )
-            
-            // Test Mode Section
-            testModeSection
-        }
-    }
 
-    // Add the test mode section
-    var testModeSection: some View {
-        EnhancedSettingsSection(
-            title: "🧪 Test Mode",
-            icon: "flask.fill",
-            color: .orange
-        ) {
-            TestModeDebugView()
-        }
-    }
-    #endif
     // MARK: - Background
     
     private var backgroundView: some View {
