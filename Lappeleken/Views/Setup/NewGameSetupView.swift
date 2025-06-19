@@ -390,7 +390,7 @@ struct NewGameSetupView: View {
     
     private var setBetsView: some View {
         VStack(spacing: 24) {
-            // Enhanced header with custom bet action
+            // Enhanced header with custom event action
             VStack(spacing: 16) {
                 HStack {
                     VStack(alignment: .leading, spacing: 8) {
@@ -426,7 +426,7 @@ struct NewGameSetupView: View {
                                 .font(.system(size: 24))
                                 .foregroundColor(AppDesignSystem.Colors.accent)
                             
-                            Text("Custom Bet")
+                            Text("Custom Event")
                                 .font(.system(size: 11, weight: .semibold, design: .rounded))
                                 .foregroundColor(AppDesignSystem.Colors.accent)
                         }
@@ -459,8 +459,8 @@ struct NewGameSetupView: View {
             }
             .enhancedCard()
             
-            // Enhanced bet settings
-            ForEach(Bet.EventType.allCases, id: \.self) { eventType in
+            // Enhanced bet settings - excluding .custom from allCases
+            ForEach(Bet.EventType.allCases.filter { $0 != .custom }, id: \.self) { eventType in
                 EnhancedBetSettingsRow(
                     eventType: eventType,
                     betAmount: Binding(
@@ -481,6 +481,147 @@ struct NewGameSetupView: View {
                     )
                 )
             }
+            
+            // Custom events section
+            if !gameSession.getCustomEvents().isEmpty {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("Custom Events")
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
+                    
+                    ForEach(gameSession.getCustomEvents(), id: \.id) { customEvent in
+                        EnhancedCustomEventRow(
+                            name: customEvent.name,
+                            amount: customEvent.amount,
+                            onDelete: {
+                                gameSession.removeCustomEvent(id: customEvent.id)
+                            }
+                        )
+                    }
+                }
+                .enhancedCard()
+            }
+        }
+    }
+    
+    struct EnhancedCustomEventRow: View {
+        let name: String
+        let amount: Double
+        let onDelete: () -> Void
+        
+        private var currencySymbol: String {
+            UserDefaults.standard.string(forKey: "currencySymbol") ?? "€"
+        }
+        
+        private var isNegative: Bool {
+            amount < 0
+        }
+        
+        var body: some View {
+            VStack(spacing: 16) {
+                HStack {
+                    // Custom event icon with gradient
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 20))
+                        .foregroundStyle(
+                            LinearGradient(
+                                colors: [
+                                    AppDesignSystem.Colors.accent,
+                                    AppDesignSystem.Colors.accent.opacity(0.7)
+                                ],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                    
+                    Text(name)
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
+                    
+                    Spacer()
+                    
+                    // Delete button
+                    Button(action: onDelete) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 14))
+                            .foregroundColor(AppDesignSystem.Colors.error)
+                            .padding(8)
+                            .background(AppDesignSystem.Colors.error.opacity(0.1))
+                            .clipShape(Circle())
+                    }
+                }
+                
+                HStack {
+                    // Type indicator with enhanced styling
+                    HStack(spacing: 8) {
+                        Image(systemName: isNegative ? "minus.circle.fill" : "plus.circle.fill")
+                            .font(.system(size: 20))
+                            .foregroundColor(isNegative ? AppDesignSystem.Colors.error : AppDesignSystem.Colors.success)
+                        
+                        Text(isNegative ? "Negative" : "Positive")
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            .foregroundColor(isNegative ? AppDesignSystem.Colors.error : AppDesignSystem.Colors.success)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(
+                        Capsule()
+                            .fill((isNegative ? AppDesignSystem.Colors.error : AppDesignSystem.Colors.success).opacity(0.1))
+                    )
+                    
+                    Spacer()
+                    
+                    // Amount with enhanced styling
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text("\(currencySymbol)\(String(format: "%.2f", abs(amount)))")
+                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                            .foregroundColor(AppDesignSystem.Colors.primaryText)
+                        
+                        Text("Amount")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    }
+                }
+                
+                // Enhanced description
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Event Description")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    
+                    Text(eventDescription)
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(AppDesignSystem.Colors.accent.opacity(0.05))
+                        )
+                }
+            }
+            .padding(20)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(AppDesignSystem.Colors.cardBackground)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(AppDesignSystem.Colors.accent.opacity(0.3), lineWidth: 1)
+                    )
+            )
+            .shadow(
+                color: AppDesignSystem.Colors.accent.opacity(0.1),
+                radius: 8,
+                x: 0,
+                y: 4
+            )
+        }
+        
+        private var eventDescription: String {
+            let amountString = String(format: "%.2f", abs(amount))
+            return isNegative ?
+            "Players WITH this event pay \(currencySymbol)\(amountString) to those without it" :
+            "Players WITHOUT this event pay \(currencySymbol)\(amountString) to those with it"
         }
     }
     
@@ -541,7 +682,7 @@ struct NewGameSetupView: View {
                 icon: "dollarsign.circle.fill",
                 color: AppDesignSystem.Colors.warning,
                 content: createBetsReviewText(),
-                count: betAmounts.count
+                count: totalBetsCount
             )
             
             // Ready message
@@ -687,7 +828,6 @@ struct NewGameSetupView: View {
         if currentStep == 0 {
             let trimmedName = participantName.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmedName.isEmpty {
-                // REMOVED: withAnimation wrapper
                 gameSession.addParticipant(trimmedName)
                 participantName = ""
             }
@@ -699,13 +839,10 @@ struct NewGameSetupView: View {
             }
             
             if currentStep == 2 {
-                gameSession.bets = []
-                for (eventType, amount) in betAmounts {
-                    gameSession.addBet(eventType: eventType, amount: amount)
-                }
+                // FIXED: Preserve custom events while recreating standard bets
+                gameSession.preserveCustomEventsAndRecreateStandardBets(standardBetAmounts: betAmounts)
             }
             
-            // REMOVED: withAnimation wrapper
             currentStep += 1
         } else {
             // Final step - assign players
@@ -730,11 +867,32 @@ struct NewGameSetupView: View {
     }
     
     private func createBetsReviewText() -> String {
-        return betAmounts.map { eventType, amount in
-            let formattedAmount = formatCurrency(abs(amount))
-            let prefix = amount >= 0 ? "+" : "-"
-            return "\(eventType.rawValue): \(prefix)\(formattedAmount)"
-        }.joined(separator: "\n")
+        var reviewItems: [String] = []
+        
+        // Add standard event types
+        for (eventType, amount) in betAmounts {
+            if eventType != .custom {
+                let formattedAmount = formatCurrency(abs(amount))
+                let prefix = amount >= 0 ? "+" : "-"
+                reviewItems.append("\(eventType.rawValue): \(prefix)\(formattedAmount)")
+            }
+        }
+        
+        // Add custom events with their actual names
+        let customEvents = gameSession.getCustomEvents()
+        for customEvent in customEvents {
+            let formattedAmount = formatCurrency(abs(customEvent.amount))
+            let prefix = customEvent.amount >= 0 ? "+" : "-"
+            reviewItems.append("\(customEvent.name): \(prefix)\(formattedAmount)")
+        }
+        
+        return reviewItems.joined(separator: "\n")
+    }
+
+    private var totalBetsCount: Int {
+        let standardBetsCount = betAmounts.filter { $0.key != .custom }.count
+        let customEventsCount = gameSession.getCustomEvents().count
+        return standardBetsCount + customEventsCount
     }
     
     private func formatCurrency(_ value: Double) -> String {

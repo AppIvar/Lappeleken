@@ -30,6 +30,8 @@ class GameSession: ObservableObject, Codable {
     @Published var matchLineups: [String: Lineup] = [:]
     @Published var matchEvents: [MatchEvent] = []
     @Published var canUndoLastEvent: Bool = false
+    @Published var customEventMappings: [UUID: String] = [:]
+
     private var dataService: GameDataService
     private var matchMonitoringTask: Task<Void, Never>?
     private var matchService: MatchService?
@@ -55,7 +57,7 @@ class GameSession: ObservableObject, Codable {
     }
     
     enum CodingKeys: CodingKey {
-        case id, participants, bets, events, availablePlayers, selectedPlayers, substitutions, customBetNames
+        case id, participants, bets, events, availablePlayers, selectedPlayers, substitutions, customBetNames, customEventMappings
         case selectedMatchId, isLiveMode
     }
     
@@ -71,11 +73,11 @@ class GameSession: ObservableObject, Codable {
         try container.encode(substitutions, forKey: .substitutions)
         try container.encode(isLiveMode, forKey: .isLiveMode)
         
-        // Fix the dictionary encoding
-        let customBetNamesArray = customBetNames.map { (key, value) in
+        // Encode custom event mappings
+        let customMappingsArray = customEventMappings.map { (key, value) in
             ["id": key.uuidString, "name": value]
         }
-        try container.encode(customBetNamesArray, forKey: .customBetNames)
+        try container.encode(customMappingsArray, forKey: .customEventMappings)
         
         // Store selected match ID if available
         if let selectedMatch = selectedMatch {
@@ -98,39 +100,40 @@ class GameSession: ObservableObject, Codable {
         substitutions = try container.decode([Substitution].self, forKey: .substitutions)
         isLiveMode = try container.decodeIfPresent(Bool.self, forKey: .isLiveMode) ?? false
         
-        // Decode custom bet names
-        let customBetNamesArray = try container.decode([[String: String]].self, forKey: .customBetNames)
-        var decodedCustomBetNames: [UUID: String] = [:]
-        
-        for item in customBetNamesArray {
-            if let idString = item["id"], let uuid = UUID(uuidString: idString),
-               let name = item["name"] {
-                decodedCustomBetNames[uuid] = name
-            }
+        // Decode custom event mappings
+        if let customMappingsArray = try container.decodeIfPresent([[String: String]].self, forKey: .customEventMappings) {
+            customEventMappings = Dictionary(uniqueKeysWithValues:
+                customMappingsArray.compactMap { dict in
+                    guard let idString = dict["id"],
+                          let name = dict["name"],
+                          let uuid = UUID(uuidString: idString) else { return nil }
+                    return (uuid, name)
+                }
+            )
+        } else {
+            customEventMappings = [:]
         }
-        customBetNames = decodedCustomBetNames
         
-        // Initialize other properties that aren't codable
-        availableMatches = []
-        selectedMatch = nil
-        matchLineups = [:]
-        matchEvents = []
-        matchMonitoringTask = nil
-        matchService = nil
+        // Handle legacy custom bet names if needed
+        if let customBetNamesArray = try container.decodeIfPresent([[String: String]].self, forKey: .customBetNames) {
+            customBetNames = Dictionary(uniqueKeysWithValues:
+                customBetNamesArray.compactMap { dict in
+                    guard let idString = dict["id"],
+                          let name = dict["name"],
+                          let uuid = UUID(uuidString: idString) else { return nil }
+                    return (uuid, name)
+                }
+            )
+        } else {
+            customBetNames = [:]
+        }
         
-        // Initialize match service if in live mode
+        // Load match service if in live mode
         if isLiveMode {
             self.matchService = ServiceProvider.shared.getMatchService()
         }
         
-        #if DEBUG
-        // Connect to test monitoring bridge if in test mode
-        if TestConfiguration.shared.isTestMode {
-            TestMonitoringBridge.shared.connectToGameSession(self)
-        }
-        #endif
-        
-        // Set up the observer
+        // Set up the observer for app mode changes
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleModeChange),
@@ -337,8 +340,53 @@ class GameSession: ObservableObject, Codable {
     
     // Add a bet
     func addBet(eventType: Bet.EventType, amount: Double) {
+        // Don't add another custom bet if we already have custom events
+        if eventType == .custom && !getCustomEvents().isEmpty {
+            print("⚠️ Skipping duplicate custom bet - custom events already exist")
+            return
+        }
+        
         let bet = Bet(eventType: eventType, amount: amount)
         bets.append(bet)
+        print("✅ Added bet: \(eventType.rawValue) = \(amount)")
+    }
+    
+    func recreateBetsWithPreservation(newBetAmounts: [Bet.EventType: Double]) {
+        print("🔄 Recreating bets while preserving custom events...")
+        
+        // Backup custom events
+        let customEventsBackup = getCustomEvents()
+        print("📦 Backing up \(customEventsBackup.count) custom events")
+        
+        // Clear existing bets and mappings
+        bets.removeAll()
+        customEventMappings.removeAll()
+        
+        // Add standard bets (excluding custom)
+        for (eventType, amount) in newBetAmounts {
+            if eventType != .custom {
+                let bet = Bet(eventType: eventType, amount: amount)
+                bets.append(bet)
+            }
+        }
+        
+        // Restore custom events
+        for customEvent in customEventsBackup {
+            addCustomEvent(name: customEvent.name, amount: customEvent.amount)
+        }
+        
+        print("✅ Bet recreation complete. Total bets: \(bets.count), Custom events: \(getCustomEvents().count)")
+    }
+    
+    func autoFixCustomEventsOnGameStart() {
+        let customEvents = bets.filter { $0.eventType == .custom }
+        let orphanedMappings = customEventMappings.filter { (betId, _) in
+            !bets.contains { $0.id == betId }
+        }
+        
+        if !customEvents.isEmpty && !orphanedMappings.isEmpty {
+            debugAndFixCustomEventMappings()
+        }
     }
     
     // Record an event
@@ -684,19 +732,191 @@ class GameSession: ObservableObject, Codable {
         }
     }
     
-    func addCustomBet(name: String, amount: Double) {
-        customBetNames[UUID()] = name
-        
+    func addCustomEvent(name: String, amount: Double) {
         let bet = Bet(eventType: .custom, amount: amount)
         bets.append(bet)
+        customEventMappings[bet.id] = name
+        objectWillChange.send()
+    }
+    
+    func getEventDisplayName(for event: GameEvent) -> String {
+        if event.eventType == .custom {
+            return event.customEventName ?? "Custom Event"
+        }
+        return event.eventType.rawValue
+    }
+    
+    func getCustomEvents() -> [(id: UUID, name: String, amount: Double)] {
+        return bets.compactMap { bet -> (id: UUID, name: String, amount: Double)? in
+            if bet.eventType == .custom {
+                if let customName = customEventMappings[bet.id] {
+                    return (id: bet.id, name: customName, amount: bet.amount)
+                }
+            }
+            return nil
+        }
+    }
+    
+    // Method to remove custom events
+    func removeCustomEvent(id: UUID) {
+        // Remove the bet
+        bets.removeAll { bet in
+            bet.id == id && bet.eventType == .custom
+        }
+        
+        // Remove from mappings
+        customEventMappings.removeValue(forKey: id)
+    }
+    
+    @MainActor func recordCustomEvent(player: Player, eventName: String) {
+        // Find the custom bet that matches this event name
+        guard let customBet = bets.first(where: { bet in
+            bet.eventType == .custom && customEventMappings[bet.id] == eventName
+        }) else {
+            print("❌ Could not find custom bet for event: \(eventName)")
+            return
+        }
+        
+        // Create the event WITH the custom event name stored
+        let event = GameEvent(
+            player: player,
+            eventType: .custom,
+            timestamp: Date(),
+            customEventName: eventName  // Store the actual event name
+        )
+        
+        // Store backup for undo
+        let participantBalanceBackup = participants.reduce(into: [UUID: Double]()) { result, participant in
+            result[participant.id] = participant.balance
+        }
+        lastEventBackup = (event: event, participantBalances: participantBalanceBackup)
+        canUndoLastEvent = true
+        
+        // Add the event
+        events.append(event)
+        
+        // Process betting logic
+        processCustomEventBetting(event: event, customBet: customBet, eventName: eventName)
+        
+        print("✅ Recorded custom event: \(eventName) for \(player.name)")
+        
+        // Force UI update
+        objectWillChange.send()
+    }
+
+    private func processCustomEventBetting(event: GameEvent, customBet: Bet, eventName: String) {
+        // Determine which participants have the player who triggered the event
+        let participantsWithPlayer = participants.enumerated().compactMap { (index, participant) in
+            let hasPlayer = participant.selectedPlayers.contains { $0.id == event.player.id } ||
+                           participant.substitutedPlayers.contains { $0.id == event.player.id }
+            return hasPlayer ? index : nil
+        }
+        
+        let participantsWithoutPlayer = participants.enumerated().compactMap { (index, participant) in
+            let hasPlayer = participant.selectedPlayers.contains { $0.id == event.player.id } ||
+                           participant.substitutedPlayers.contains { $0.id == event.player.id }
+            return hasPlayer ? nil : index
+        }
+        
+        // Apply the betting logic based on whether it's positive or negative
+        if customBet.amount > 0 {
+            // Positive bet: participants WITHOUT player pay those WITH player
+            let payAmount = customBet.amount
+            
+            for i in 0..<participants.count {
+                let hasPlayer = participantsWithPlayer.contains(i)
+                
+                if hasPlayer {
+                    participants[i].balance += payAmount * Double(participantsWithoutPlayer.count)
+                } else {
+                    participants[i].balance -= payAmount
+                }
+            }
+        } else {
+            // Negative bet: participants WITH player pay those WITHOUT player
+            let payAmount = abs(customBet.amount)
+            
+            for i in 0..<participants.count {
+                let hasPlayer = participantsWithPlayer.contains(i)
+                
+                if hasPlayer {
+                    participants[i].balance -= payAmount * Double(participantsWithoutPlayer.count)
+                } else {
+                    participants[i].balance += payAmount * Double(participantsWithPlayer.count)
+                }
+            }
+        }
+        
+        print("💰 Processed betting for custom event '\(eventName)': \(customBet.amount > 0 ? "Positive" : "Negative") bet of \(abs(customBet.amount))")
+    }
+    
+    func debugAndFixCustomEventMappings() {
+        // Find custom bets without mappings
+        var unmappedCustomBets: [Bet] = []
+        
+        for bet in bets where bet.eventType == .custom {
+            if customEventMappings[bet.id] == nil {
+                unmappedCustomBets.append(bet)
+            }
+        }
+        
+        // Remove mappings for bets that no longer exist
+        let existingBetIds = Set(bets.map { $0.id })
+        for (betId, _) in customEventMappings {
+            if !existingBetIds.contains(betId) {
+                customEventMappings.removeValue(forKey: betId)
+            }
+        }
+        
+        // Fix unmapped custom bets
+        for (index, bet) in unmappedCustomBets.enumerated() {
+            let recoveredName = "Custom Event \(index + 1)"
+            customEventMappings[bet.id] = recoveredName
+        }
+        
+        objectWillChange.send()
+    }
+    
+    func preserveCustomEventsAndRecreateStandardBets(standardBetAmounts: [Bet.EventType: Double]) {
+        print("🔄 Preserving custom events during bet recreation...")
+        
+        // Store existing custom events
+        let existingCustomEvents = getCustomEvents()
+        print("📦 Found \(existingCustomEvents.count) existing custom events to preserve")
+        
+        // Clear all bets
+        bets.removeAll()
+        customEventMappings.removeAll()
+        
+        // Recreate standard bets
+        for (eventType, amount) in standardBetAmounts {
+            if eventType != .custom {
+                let bet = Bet(eventType: eventType, amount: amount)
+                bets.append(bet)
+                print("✅ Recreated standard bet: \(eventType.rawValue) = \(amount)")
+            }
+        }
+        
+        // Restore custom events with proper new IDs
+        for customEvent in existingCustomEvents {
+            addCustomEvent(name: customEvent.name, amount: customEvent.amount)
+            print("✅ Restored custom event: \(customEvent.name) with amount \(customEvent.amount)")
+        }
+        
+        print("🎯 Final bet count after preservation: \(bets.count)")
+        print("🗂️ Final custom mappings: \(customEventMappings)")
+        
+        // Force UI update
+        objectWillChange.send()
     }
     
     func getBetDisplayName(for bet: Bet) -> String {
         if bet.eventType == .custom {
-            return customBetNames.values.first ?? "Custom Event"
+            return customEventMappings[bet.id] ?? "Custom Event"
         }
         return bet.eventType.rawValue
     }
+    
     
     func reset() {
         participants = []

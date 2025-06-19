@@ -15,6 +15,7 @@ struct GameView: View {
     @State private var showingSubstitutionSheet = false
     @State private var showingAutoSavePrompt = false
     @State private var autoSaveGameName = ""
+    @State private var selectedCustomEventName: String? = nil
     
     var body: some View {
         ZStack {
@@ -66,7 +67,13 @@ struct GameView: View {
                 }
             }
         }
+        .onAppear {
+            // Ensure custom events are properly mapped
+            gameSession.autoFixCustomEventsOnGameStart()
+        }
     }
+    
+
     
     // MARK: - Background
     
@@ -188,22 +195,29 @@ struct GameView: View {
                 .font(.system(size: 16, weight: .semibold, design: .rounded))
                 .foregroundColor(AppDesignSystem.Colors.primaryText)
             
-            let eventCounts = Dictionary(grouping: gameSession.events, by: { $0.eventType })
-                .mapValues { $0.count }
-                .sorted { $0.value > $1.value }
+            // Group events by their display name (not just eventType)
+            let eventCounts = Dictionary(grouping: gameSession.events) { event in
+                gameSession.getEventDisplayName(for: event)
+            }.mapValues { $0.count }
+             .sorted { $0.value > $1.value }
             
             LazyVGrid(columns: [
                 GridItem(.flexible()),
                 GridItem(.flexible())
             ], spacing: 8) {
-                ForEach(eventCounts.prefix(4), id: \.key) { eventType, count in
+                ForEach(eventCounts.prefix(4), id: \.key) { eventName, count in
+                    // Get the first event with this name to determine color/icon
+                    let sampleEvent = gameSession.events.first {
+                        gameSession.getEventDisplayName(for: $0) == eventName
+                    }!
+                    
                     HStack(spacing: 8) {
-                        Image(systemName: eventIcon(eventType))
+                        Image(systemName: eventIcon(sampleEvent.eventType))
                             .font(.system(size: 14))
-                            .foregroundColor(eventColor(eventType))
+                            .foregroundColor(eventColor(sampleEvent.eventType))
                             .frame(width: 20)
                         
-                        Text(eventType.rawValue)
+                        Text(eventName)  // Use the display name instead of rawValue
                             .font(.system(size: 13, weight: .medium))
                             .foregroundColor(AppDesignSystem.Colors.primaryText)
                         
@@ -211,7 +225,7 @@ struct GameView: View {
                         
                         Text("\(count)")
                             .font(.system(size: 13, weight: .bold))
-                            .foregroundColor(eventColor(eventType))
+                            .foregroundColor(eventColor(sampleEvent.eventType))
                     }
                     .padding(.vertical, 4)
                 }
@@ -317,7 +331,7 @@ struct GameView: View {
                 .foregroundColor(AppDesignSystem.Colors.primaryText)
             
             ForEach(gameSession.events.suffix(3).reversed(), id: \.id) { event in
-                CompactEventRow(event: event)
+                CompactEventRow(event: event, gameSession: gameSession) // Add gameSession parameter
             }
         }
         .padding(20)
@@ -477,12 +491,37 @@ struct GameView: View {
                                     GridItem(.flexible()),
                                     GridItem(.flexible())
                                 ], spacing: 12) {
-                                    ForEach(Bet.EventType.allCases, id: \.self) { eventType in
+                                    // Standard event types (excluding custom)
+                                    ForEach(Bet.EventType.allCases.filter { $0 != .custom }, id: \.self) { eventType in
                                         EventTypeSelectionCard(
                                             eventType: eventType,
                                             isSelected: selectedEventType == eventType
                                         ) {
                                             selectedEventType = eventType
+                                        }
+                                    }
+                                }
+                                
+                                // Custom events section (within the same sheet)
+                                if !gameSession.getCustomEvents().isEmpty {
+                                    VStack(alignment: .leading, spacing: 12) {
+                                        Text("Custom Events")
+                                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                                            .foregroundColor(AppDesignSystem.Colors.accent)
+                                            .padding(.top, 16)
+                                        
+                                        LazyVGrid(columns: [GridItem(.flexible())], spacing: 8) {
+                                            ForEach(gameSession.getCustomEvents(), id: \.id) { customEvent in
+                                                CustomEventInlineCard(
+                                                    name: customEvent.name,
+                                                    amount: customEvent.amount,
+                                                    isSelected: selectedCustomEventName == customEvent.name,
+                                                    onTap: {
+                                                        selectedCustomEventName = customEvent.name
+                                                        selectedEventType = .custom
+                                                    }
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -492,16 +531,25 @@ struct GameView: View {
                         // Record button
                         if let player = selectedPlayer, let eventType = selectedEventType {
                             Button {
-                                gameSession.recordEvent(player: player, eventType: eventType)
+                                if eventType == .custom, let customEventName = selectedCustomEventName {
+                                    gameSession.recordCustomEvent(player: player, eventName: customEventName)
+                                } else {
+                                    gameSession.recordEvent(player: player, eventType: eventType)
+                                }
                                 showingEventSheet = false
                                 selectedPlayer = nil
                                 selectedEventType = nil
+                                selectedCustomEventName = nil
                             } label: {
                                 HStack {
                                     Image(systemName: "checkmark.circle.fill")
                                         .font(.system(size: 20))
                                     
-                                    Text("Record \(eventType.rawValue) for \(player.name)")
+                                    let eventText = eventType == .custom ?
+                                        (selectedCustomEventName ?? "Custom Event") :
+                                        eventType.rawValue
+                                    
+                                    Text("Record \(eventText) for \(player.name)")
                                         .font(.system(size: 16, weight: .bold, design: .rounded))
                                 }
                                 .foregroundColor(.white)
@@ -523,9 +571,81 @@ struct GameView: View {
                         showingEventSheet = false
                         selectedPlayer = nil
                         selectedEventType = nil
+                        selectedCustomEventName = nil
                     }
                 }
             }
+        }
+    }
+    
+    struct CustomEventInlineCard: View {
+        let name: String
+        let amount: Double
+        let isSelected: Bool
+        let onTap: () -> Void
+        
+        private var currencySymbol: String {
+            UserDefaults.standard.string(forKey: "currencySymbol") ?? "€"
+        }
+        
+        private var isNegative: Bool {
+            amount < 0
+        }
+        
+        var body: some View {
+            Button(action: onTap) {
+                HStack(spacing: 12) {
+                    // Custom event icon
+                    Circle()
+                        .fill(isSelected ? AppDesignSystem.Colors.accent : AppDesignSystem.Colors.accent.opacity(0.2))
+                        .frame(width: 32, height: 32)
+                        .overlay(
+                            Image(systemName: "star.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(isSelected ? .white : AppDesignSystem.Colors.accent)
+                        )
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(name)
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            .foregroundColor(AppDesignSystem.Colors.primaryText)
+                            .lineLimit(1)
+                        
+                        HStack(spacing: 6) {
+                            // Type indicator
+                            Image(systemName: isNegative ? "minus.circle.fill" : "plus.circle.fill")
+                                .font(.system(size: 10))
+                                .foregroundColor(isNegative ? AppDesignSystem.Colors.error : AppDesignSystem.Colors.success)
+                            
+                            Text("\(currencySymbol)\(String(format: "%.2f", abs(amount)))")
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                        }
+                    }
+                    
+                    Spacer()
+                    
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundColor(AppDesignSystem.Colors.success)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(isSelected ? AppDesignSystem.Colors.accent.opacity(0.1) : Color.white)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 10)
+                                .stroke(
+                                    isSelected ? AppDesignSystem.Colors.accent : AppDesignSystem.Colors.accent.opacity(0.3),
+                                    lineWidth: isSelected ? 2 : 1
+                                )
+                        )
+                )
+            }
+            .buttonStyle(PlainButtonStyle())
         }
     }
     
@@ -741,6 +861,7 @@ struct EnhancedParticipantStandingRow: View {
 
 struct CompactEventRow: View {
     let event: GameEvent
+    @ObservedObject var gameSession: GameSession
     
     private let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -766,7 +887,8 @@ struct CompactEventRow: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(AppDesignSystem.Colors.primaryText)
                 
-                Text(event.eventType.rawValue)
+                // Use the proper event display name instead of rawValue
+                Text(gameSession.getEventDisplayName(for: event))
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(AppDesignSystem.Colors.secondaryText)
             }

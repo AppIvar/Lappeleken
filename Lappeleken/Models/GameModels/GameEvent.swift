@@ -7,17 +7,17 @@
 
 import Foundation
 
-// Game event model
 struct GameEvent: Identifiable, Codable {
-    let id: UUID
+    let id = UUID()
     let player: Player
     let eventType: Bet.EventType
     let timestamp: Date
+    let customEventName: String? 
     
-    init(id: UUID = UUID(), player: Player, eventType: Bet.EventType, timestamp: Date) {
-        self.id = id
+    init(player: Player, eventType: Bet.EventType, timestamp: Date, customEventName: String? = nil) {
         self.player = player
         self.eventType = eventType
         self.timestamp = timestamp
+        self.customEventName = customEventName
     }
 }

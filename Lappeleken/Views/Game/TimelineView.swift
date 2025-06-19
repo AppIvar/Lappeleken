@@ -106,7 +106,7 @@ struct TimelineView: View {
             }
         } message: {
             if let event = selectedEvent {
-                Text("Are you sure you want to delete '\(event.eventType.rawValue)' for \(event.player.name)? This will reverse all balance changes.")
+                Text("Are you sure you want to delete '\(gameSession.getEventDisplayName(for: event))' for \(event.player.name)? This will reverse all balance changes.")
             }
         }
         .sheet(isPresented: $showingEditEvent) {
@@ -398,7 +398,8 @@ struct EditableTimelineEventRow: View {
                                 .font(.system(size: 16, weight: .medium))
                                 .foregroundColor(eventColor)
                             
-                            Text(event.eventType.rawValue)
+                            // FIXED: Use proper display name instead of rawValue
+                            Text(gameSession.getEventDisplayName(for: event))
                                 .font(.system(size: 16, weight: .bold))
                                 .foregroundColor(AppDesignSystem.Colors.primaryText)
                         }
@@ -539,78 +540,112 @@ struct EditEventView: View {
         self._selectedPlayer = State(initialValue: event.player)
     }
     
+    // MARK: - Player Selection Section
+    private var playerSelectionSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Player")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundColor(AppDesignSystem.Colors.primaryText)
+            
+            participantPlayersList
+        }
+    }
+    
+    private var participantPlayersList: some View {
+        ForEach(gameSession.participants) { participant in
+            if !participant.selectedPlayers.isEmpty {
+                participantPlayersGroup(participant)
+            }
+        }
+    }
+    
+    private func participantPlayersGroup(_ participant: Participant) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(participant.name)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(AppDesignSystem.Colors.primary)
+            
+            playerGridForParticipant(participant)
+        }
+    }
+    
+    private func playerGridForParticipant(_ participant: Participant) -> some View {
+        LazyVGrid(columns: [GridItem(.flexible())], spacing: 8) {
+            ForEach(participant.selectedPlayers) { player in
+                PlayerSelectionCard(
+                    player: player,
+                    isSelected: selectedPlayer.id == player.id
+                ) {
+                    selectedPlayer = player
+                }
+            }
+        }
+    }
+    
+    // MARK: - Event Type Selection Section
+    private var eventTypeSelectionSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Event Type")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundColor(AppDesignSystem.Colors.primaryText)
+            
+            eventTypeGrid
+        }
+    }
+    
+    private var eventTypeGrid: some View {
+        LazyVGrid(columns: [
+            GridItem(.flexible()),
+            GridItem(.flexible())
+        ], spacing: 12) {
+            ForEach(Bet.EventType.allCases, id: \.self) { eventType in
+                EventTypeSelectionCard(
+                    eventType: eventType,
+                    isSelected: selectedEventType == eventType
+                ) {
+                    selectedEventType = eventType
+                }
+            }
+        }
+    }
+    
+    // MARK: - Save Button Section
+    private var saveButtonSection: some View {
+        Button("Save Changes") {
+            saveEditedEvent()
+        }
+        .font(.system(size: 16, weight: .bold))
+        .foregroundColor(.white)
+        .padding(.vertical, 16)
+        .frame(maxWidth: .infinity)
+        .background(AppDesignSystem.Colors.primary)
+        .cornerRadius(12)
+        .disabled(isButtonDisabled)
+    }
+    
+    private var isButtonDisabled: Bool {
+        selectedPlayer.id == event.player.id && selectedEventType == event.eventType
+    }
+    
+    private func saveEditedEvent() {
+        let editedEvent = GameEvent(
+            player: selectedPlayer,
+            eventType: selectedEventType,
+            timestamp: event.timestamp // Keep same timestamp
+        )
+        
+        onSave(editedEvent)
+        presentationMode.wrappedValue.dismiss()
+    }
+    
+    // MARK: - Updated Main Body
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 24) {
-                    // Player selection
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("Player")
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundColor(AppDesignSystem.Colors.primaryText)
-                        
-                        ForEach(gameSession.participants) { participant in
-                            if !participant.selectedPlayers.isEmpty {
-                                VStack(alignment: .leading, spacing: 12) {
-                                    Text(participant.name)
-                                        .font(.system(size: 16, weight: .semibold))
-                                        .foregroundColor(AppDesignSystem.Colors.primary)
-                                    
-                                    LazyVGrid(columns: [GridItem(.flexible())], spacing: 8) {
-                                        ForEach(participant.selectedPlayers) { player in
-                                            PlayerSelectionCard(
-                                                player: player,
-                                                isSelected: selectedPlayer.id == player.id
-                                            ) {
-                                                selectedPlayer = player
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Event type selection
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("Event Type")
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundColor(AppDesignSystem.Colors.primaryText)
-                        
-                        LazyVGrid(columns: [
-                            GridItem(.flexible()),
-                            GridItem(.flexible())
-                        ], spacing: 12) {
-                            ForEach(Bet.EventType.allCases, id: \.self) { eventType in
-                                EventTypeSelectionCard(
-                                    eventType: eventType,
-                                    isSelected: selectedEventType == eventType
-                                ) {
-                                    selectedEventType = eventType
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Save button
-                    Button("Save Changes") {
-                        let editedEvent = GameEvent(
-                            id: event.id, // Keep same ID
-                            player: selectedPlayer,
-                            eventType: selectedEventType,
-                            timestamp: event.timestamp // Keep same timestamp
-                        )
-                        
-                        onSave(editedEvent)
-                        presentationMode.wrappedValue.dismiss()
-                    }
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(.white)
-                    .padding(.vertical, 16)
-                    .frame(maxWidth: .infinity)
-                    .background(AppDesignSystem.Colors.primary)
-                    .cornerRadius(12)
-                    .disabled(selectedPlayer.id == event.player.id && selectedEventType == event.eventType)
+                    playerSelectionSection
+                    eventTypeSelectionSection
+                    saveButtonSection
                 }
                 .padding(24)
             }

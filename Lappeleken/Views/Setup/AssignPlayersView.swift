@@ -425,7 +425,19 @@ struct AssignPlayersView: View {
     }
     
     private func startGame() {
+        // IMPORTANT: Preserve custom events before any transitions
+        let existingCustomEvents = gameSession.getCustomEvents()
+        print("🔄 Starting game with \(existingCustomEvents.count) custom events to preserve")
+        
+        // Force update to ensure UI reflects current state
         gameSession.objectWillChange.send()
+        
+        // Auto-fix custom event mappings before starting
+        if !existingCustomEvents.isEmpty {
+            gameSession.debugAndFixCustomEventMappings()
+        }
+        
+        // Post the start game notification
         NotificationCenter.default.post(name: Notification.Name("StartGame"), object: nil)
         presentationMode.wrappedValue.dismiss()
     }

@@ -473,17 +473,11 @@ struct LiveGameSetupView: View {
             HStack {
                 Text("Set Betting Amounts")
                     .font(AppDesignSystem.Typography.headingFont)
-                    .foregroundColor(AppDesignSystem.Colors.primaryText)
                 
                 Spacer()
                 
-                Button(action: {
-                    showingCustomBetSheet = true
-                }) {
-                    Label("Custom Bet", systemImage: "plus.circle")
-                        .font(AppDesignSystem.Typography.bodyFont)
-                        .foregroundColor(AppDesignSystem.Colors.primary)
-                }
+                // Don't show custom event button in live mode
+                // Since live API won't track custom events
             }
             
             Text("Set how much participants will pay for each event type.")
@@ -495,7 +489,29 @@ struct LiveGameSetupView: View {
                 .foregroundColor(AppDesignSystem.Colors.primary)
                 .padding(.bottom)
             
-            ForEach(Bet.EventType.allCases, id: \.self) { eventType in
+            // Info about live mode limitations
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 8) {
+                    Image(systemName: "info.circle.fill")
+                        .font(.system(size: 16))
+                        .foregroundColor(AppDesignSystem.Colors.info)
+                    
+                    Text("Live Mode Events")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(AppDesignSystem.Colors.info)
+                }
+                
+                Text("In live mode, only standard football events from the API are available. Custom events are not supported as they cannot be automatically detected.")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+            }
+            .padding(12)
+            .background(AppDesignSystem.Colors.info.opacity(0.1))
+            .cornerRadius(8)
+            .padding(.bottom)
+            
+            // Standard event types only (no custom events in live mode)
+            ForEach(Bet.EventType.allCases.filter { $0 != .custom }, id: \.self) { eventType in
                 BetSettingsRow(
                     eventType: eventType,
                     betAmount: Binding(
@@ -516,6 +532,85 @@ struct LiveGameSetupView: View {
                     )
                 )
             }
+        }
+    }
+    
+    struct CustomEventRow: View {
+        let name: String
+        let amount: Double
+        let onDelete: () -> Void
+        
+        private var currencySymbol: String {
+            UserDefaults.standard.string(forKey: "currencySymbol") ?? "€"
+        }
+        
+        private var isNegative: Bool {
+            amount < 0
+        }
+        
+        var body: some View {
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
+                    // Custom event icon
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 16))
+                        .foregroundColor(AppDesignSystem.Colors.accent)
+                    
+                    Text(name)
+                        .font(.system(size: 16, weight: .semibold, design: .rounded))
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
+                    
+                    Spacer()
+                    
+                    // Delete button
+                    Button(action: onDelete) {
+                        Image(systemName: "trash")
+                            .font(.system(size: 14))
+                            .foregroundColor(AppDesignSystem.Colors.error)
+                    }
+                }
+                
+                HStack {
+                    // Type indicator
+                    HStack(spacing: 6) {
+                        Image(systemName: isNegative ? "minus.circle.fill" : "plus.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundColor(isNegative ? AppDesignSystem.Colors.error : AppDesignSystem.Colors.success)
+                        
+                        Text(isNegative ? "Negative" : "Positive")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(isNegative ? AppDesignSystem.Colors.error : AppDesignSystem.Colors.success)
+                    }
+                    
+                    Spacer()
+                    
+                    // Amount
+                    Text("\(currencySymbol)\(String(format: "%.2f", abs(amount)))")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
+                }
+                
+                // Description
+                Text(eventDescription)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+            }
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(AppDesignSystem.Colors.accent.opacity(0.1))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(AppDesignSystem.Colors.accent.opacity(0.3), lineWidth: 1)
+                    )
+            )
+        }
+        
+        private var eventDescription: String {
+            let amountString = String(format: "%.2f", abs(amount))
+            return isNegative ?
+            "Players WITH this event pay \(currencySymbol)\(amountString)" :
+            "Players WITHOUT this event pay \(currencySymbol)\(amountString)"
         }
     }
     
