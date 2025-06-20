@@ -115,6 +115,8 @@ struct GameView: View {
             .padding(.top, 20)
         }
         .background(AppDesignSystem.Colors.background.ignoresSafeArea())
+        
+        .withSmartMonetization()
     }
     
     // MARK: - Game Stats Overview
@@ -417,6 +419,8 @@ struct GameView: View {
             .padding(.top, 20)
         }
         .background(AppDesignSystem.Colors.background.ignoresSafeArea())
+        
+        .withSmartMonetization()
     }
     
     // MARK: - Helper Properties

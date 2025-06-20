@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import Network
 
 struct LiveGameSetupView: View {
     @ObservedObject var gameSession: GameSession
@@ -25,6 +26,10 @@ struct LiveGameSetupView: View {
     @State private var unavailableMatchesMessage = ""
     @State private var temporaryStep: Int? = nil
     @State private var isPresentingAlert = false
+    @StateObject private var networkMonitor = NetworkMonitor()
+    @State private var isConnected = true
+    @State private var showingRateLimit = false
+    @State private var nextUpdateTime = 90
 
     
     private let steps = ["Matches", "Participants", "Set Bets", "Select Players", "Review"]
@@ -32,6 +37,16 @@ struct LiveGameSetupView: View {
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
+                if !networkMonitor.isConnected {
+                    connectionStatusBar
+                }
+                
+                if showingRateLimit {
+                    RateLimitWarning()
+                        .padding(.horizontal)
+                        .transition(.slide)
+                }
+                
                 // Enhanced progress indicator
                 progressIndicator
                 
@@ -95,6 +110,20 @@ struct LiveGameSetupView: View {
                 }
             )
         }
+    }
+    
+    private var connectionStatusBar: some View {
+        HStack {
+            LiveConnectionStatus(isConnected: networkMonitor.isConnected)
+            
+            Spacer()
+            
+            if networkMonitor.isConnected && currentStep == 0 {
+                NextUpdateTimer()
+            }
+        }
+        .padding()
+        .background(networkMonitor.isConnected ? AppDesignSystem.Colors.success.opacity(0.1) : AppDesignSystem.Colors.error.opacity(0.1))
     }
     
     // MARK: - Progress Indicator
@@ -883,18 +912,32 @@ struct LiveGameSetupView: View {
     private func loadMatches() {
         isLoading = true
         error = nil
+        showingRateLimit = false
         
         Task {
             do {
                 try await gameSession.fetchAvailableMatches()
-                
                 await MainActor.run {
                     isLoading = false
                 }
             } catch {
                 await MainActor.run {
                     isLoading = false
-                    self.error = "There was a problem connecting to the football data service: \(error.localizedDescription)"
+                    
+                    // Enhanced error handling
+                    let errorMessage = error.localizedDescription.lowercased()
+                    if errorMessage.contains("network") || errorMessage.contains("connection") {
+                        self.error = "No internet connection. Please check your network and try again."
+                    } else if errorMessage.contains("rate") || errorMessage.contains("limit") {
+                        self.showingRateLimit = true
+                        self.error = "Too many requests. Please wait a moment before trying again."
+                    } else if errorMessage.contains("timeout") {
+                        self.error = "Request timed out. Please try again."
+                    } else if errorMessage.contains("unauthorized") || errorMessage.contains("403") {
+                        self.error = "Service temporarily unavailable. Please try again later."
+                    } else {
+                        self.error = "Unable to load matches. Please try again in a few moments."
+                    }
                 }
             }
         }
@@ -1421,5 +1464,71 @@ struct MatchSelectionCard: View {
         case .unknown:
             return ("Unknown", AppDesignSystem.Colors.error)
         }
+    }
+}
+
+// MARK: - Error handling
+
+struct RateLimitWarning: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "clock.fill")
+                .foregroundColor(AppDesignSystem.Colors.warning)
+            Text("Rate limit reached. Updates paused temporarily.")
+                .font(AppDesignSystem.Typography.captionFont)
+                .foregroundColor(AppDesignSystem.Colors.secondaryText)
+        }
+        .padding(8)
+        .background(AppDesignSystem.Colors.warning.opacity(0.1))
+        .cornerRadius(6)
+    }
+}
+
+struct LiveConnectionStatus: View {
+    let isConnected: Bool
+    
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(isConnected ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.error)
+                .frame(width: 8, height: 8)
+            
+            Text(isConnected ? "Connected" : "Disconnected")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(isConnected ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.error)
+        }
+    }
+}
+
+struct NextUpdateTimer: View {
+    @State private var timeRemaining: Int = 90
+    
+    var body: some View {
+        Text("Next update in \(timeRemaining)s")
+            .font(.system(size: 11))
+            .foregroundColor(AppDesignSystem.Colors.secondaryText)
+            .onAppear {
+                Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
+                    if timeRemaining > 0 {
+                        timeRemaining -= 1
+                    } else {
+                        timeRemaining = 90 // Reset
+                    }
+                }
+            }
+    }
+}
+
+class NetworkMonitor: ObservableObject {
+    @Published var isConnected = true
+    private let monitor = NWPathMonitor()
+    
+    init() {
+        monitor.pathUpdateHandler = { path in
+            DispatchQueue.main.async {
+                self.isConnected = path.status == .satisfied
+            }
+        }
+        monitor.start(queue: DispatchQueue.global())
     }
 }

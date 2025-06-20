@@ -76,7 +76,31 @@ struct AppDesignSystem {
         static let bouncy = Animation.spring(response: 0.4, dampingFraction: 0.6)
         static let smooth = Animation.easeInOut(duration: 0.3)
     }
+    
+    // MARK: - Beta badge
+
+    struct BetaBadge: View {
+        var body: some View {
+            HStack(spacing: 4) {
+                Text("BETA")
+                    .font(.system(size: 10, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(AppDesignSystem.Colors.warning)
+                    )
+                
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 8))
+                    .foregroundColor(AppDesignSystem.Colors.warning)
+            }
+        }
+    }
 }
+
+
 
 // MARK: - Enhanced Team Colors (keeping same structure)
 extension AppDesignSystem {

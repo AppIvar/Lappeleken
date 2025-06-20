@@ -52,7 +52,7 @@ struct HowToPlayView: View {
             description: "When a football player scores or gets a card, record it in the app.",
             icon: "plus.circle.fill",
             color: AppDesignSystem.Colors.success,
-            details: "Tap events as they happen. The app automatically calculates who wins and loses money for each event."
+            details: "Register events as they happen. The app automatically calculates who wins and loses money for each event."
         ),
         TutorialStep(
             number: "6",

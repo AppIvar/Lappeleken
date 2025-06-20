@@ -7,6 +7,7 @@
 
 import SwiftUI
 
+
 struct MatchSelectionView: View {
     @ObservedObject var gameSession: GameSession
     @Environment(\.presentationMode) var presentationMode
@@ -15,6 +16,7 @@ struct MatchSelectionView: View {
     @State private var selectedMatchId: String? = nil
     @State private var error: String? = nil
     @State private var animateGradient = false
+    @StateObject private var networkMonitor = NetworkMonitor()
     
     var body: some View {
         NavigationView {
@@ -154,6 +156,38 @@ struct MatchSelectionView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
+    }
+    
+    // MARK: - Connection info
+    
+    private var liveConnectionInfo: some View {
+        VStack(spacing: 8) {
+            HStack {
+                LiveConnectionStatus(isConnected: networkMonitor.isConnected)
+                
+                Spacer()
+                
+                if gameSession.availableMatches.isEmpty && !isLoading {
+                    Button("Refresh") {
+                        loadMatches()
+                    }
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(AppDesignSystem.Colors.primary)
+                }
+            }
+            
+            if networkMonitor.isConnected && !gameSession.availableMatches.isEmpty {
+                HStack {
+                    Image(systemName: "clock")
+                        .foregroundColor(AppDesignSystem.Colors.info)
+                    Text("Matches update automatically")
+                        .font(.system(size: 12))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    Spacer()
+                }
+            }
+        }
+        .padding(.vertical, 8)
     }
     
     // MARK: - Empty State View

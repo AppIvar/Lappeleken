@@ -120,6 +120,7 @@ struct TimelineView: View {
                 )
             }
         }
+        .withSmartMonetization()
     }
     
     // MARK: - Event Management

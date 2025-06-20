@@ -161,7 +161,8 @@ struct HomeView: View {
                     icon: "gamecontroller.fill",
                     color: AppDesignSystem.Colors.secondary,
                     isSelected: !isLiveMode,
-                    features: ["Custom players", "Offline play", "Unlimited games", "Full control"]
+                    features: ["Custom players", "Offline play", "Unlimited games", "Full control"],
+                    badge: nil
                 ) {
                     withAnimation(AppDesignSystem.Animations.bouncy) {
                         isLiveMode = false
@@ -180,7 +181,8 @@ struct HomeView: View {
                     icon: "globe",
                     color: AppDesignSystem.Colors.primary,
                     isSelected: isLiveMode,
-                    features: ["Real matches", "Live updates", "Auto events", "Team lineups"]
+                    features: ["Real matches", "Live updates", "Auto events", "Team lineups"],
+                    badge: AppDesignSystem.BetaBadge()
                 ) {
                     withAnimation(AppDesignSystem.Animations.bouncy) {
                         handleLiveModeSelection()
@@ -330,6 +332,7 @@ struct EnhancedModeCard: View {
     let color: Color
     let isSelected: Bool
     let features: [String]
+    let badge: (any View)?
     let action: () -> Void
     
     @State private var isPressed = false
@@ -373,9 +376,16 @@ struct EnhancedModeCard: View {
                     )
                     
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(title)
-                            .font(.system(size: 20, weight: .bold, design: .rounded))
-                            .foregroundColor(AppDesignSystem.Colors.primaryText)
+                        HStack {
+                            Text(title)
+                                .font(.system(size: 20, weight: .bold, design: .rounded))
+                                .foregroundColor(AppDesignSystem.Colors.primaryText)
+                            
+                            // Add badge here if provided
+                            if let badge = badge {
+                                AnyView(badge)
+                            }
+                        }
                         
                         Text(subtitle)
                             .font(.system(size: 14, weight: .medium, design: .rounded))
@@ -442,7 +452,6 @@ struct EnhancedModeCard: View {
         .buttonStyle(PlainButtonStyle())
     }
 }
-
 // MARK: - Quick Action Card
 
 struct QuickActionCard: View {
