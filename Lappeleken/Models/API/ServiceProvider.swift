@@ -23,7 +23,7 @@ class ServiceProvider {
         offlineService = OfflineGameDataService()
         liveService = LiveGameDataService(apiClient: apiClient)
         
-        // Init football data service
+        // Init football data service with proper API client
         let footballDataAPIClient = APIClient(baseURL: "https://api.football-data.org/v4")
         footballDataService = FootballDataMatchService(
             apiClient: footballDataAPIClient,
@@ -36,6 +36,7 @@ class ServiceProvider {
         return isLiveMode ? liveService : offlineService
     }
     
+    // Updated to return FootballDataMatchService for event-driven monitoring
     func getMatchService() -> MatchService {
         return footballDataService
     }

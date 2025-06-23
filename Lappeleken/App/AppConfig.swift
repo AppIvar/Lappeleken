@@ -51,7 +51,7 @@ struct AppConfig {
     // Production settings
     static var useStubData: Bool {
 #if DEBUG
-        return false // Set to false even in debug for TestFlight
+        return true // Set to false even in debug for TestFlight
 #else
         return false
 #endif

@@ -1,14 +1,16 @@
 //
-//  MatcCacheManager.swift
+//  MatchCacheManager.swift
 //  Lucky Football Slip
 //
-//  Created by Ivar Hovland on 03/06/2025.
+//  Clean version without problematic event caching
 //
 
 import Foundation
 
 class MatchCacheManager {
     static let shared = MatchCacheManager()
+    
+    // MARK: - Cache Structures
     
     private struct CachedMatch {
         let data: Match
@@ -44,6 +46,8 @@ class MatchCacheManager {
         }
     }
     
+    // MARK: - Cache Storage
+    
     private var matchCache: [String: CachedMatch] = [:]
     private var matchListCache: [String: CachedMatchList] = [:]
     private var playerCache: [String: (players: [Player], timestamp: Date)] = [:]
@@ -52,7 +56,7 @@ class MatchCacheManager {
     
     private init() {}
     
-    // MARK: - Match Caching
+    // MARK: - Match Caching Methods
     
     func cacheMatch(_ match: Match) {
         queue.async(flags: .barrier) {
@@ -73,8 +77,6 @@ class MatchCacheManager {
             return cached.data
         }
     }
-    
-    // MARK: - Match List Caching
     
     func cacheMatchList(_ matches: [Match], for query: String) {
         queue.async(flags: .barrier) {
@@ -105,8 +107,6 @@ class MatchCacheManager {
         }
     }
     
-    // MARK: - Player Caching
-    
     func cachePlayers(_ players: [Player], for matchId: String) {
         queue.async(flags: .barrier) {
             self.playerCache[matchId] = (players, Date())
@@ -117,9 +117,8 @@ class MatchCacheManager {
         return queue.sync {
             guard let cached = playerCache[matchId] else { return nil }
             
-            // Players cache for 30 minutes (lineups don't change often)
-            let cacheLifetime: TimeInterval = 1800
-            if Date().timeIntervalSince(cached.timestamp) > cacheLifetime {
+            let cacheAge = Date().timeIntervalSince(cached.timestamp)
+            if cacheAge > 3600 { // 1 hour
                 playerCache.removeValue(forKey: matchId)
                 return nil
             }
@@ -130,97 +129,47 @@ class MatchCacheManager {
     
     // MARK: - Cache Management
     
-    func clearExpiredCache() {
-        queue.async(flags: .barrier) {
-            // Clear expired matches
-            self.matchCache = self.matchCache.filter { !$1.isExpired }
-            
-            // Clear expired match lists
-            self.matchListCache = self.matchListCache.filter { !$1.isExpired }
-            
-            // Clear expired players
-            let now = Date()
-            self.playerCache = self.playerCache.filter { _, cached in
-                now.timeIntervalSince(cached.timestamp) <= 1800 // 30 minutes
-            }
-        }
-    }
-    
     func clearAllCache() {
         queue.async(flags: .barrier) {
             self.matchCache.removeAll()
             self.matchListCache.removeAll()
             self.playerCache.removeAll()
+            print("🧹 All caches cleared")
         }
     }
     
-    // MARK: - Debug Info
+    func optimizeCache() {
+        queue.async(flags: .barrier) {
+            let now = Date()
+            
+            // Remove expired caches
+            self.matchCache = self.matchCache.filter { !$1.isExpired }
+            self.matchListCache = self.matchListCache.filter { !$1.isExpired }
+            
+            // Clean old player caches
+            self.playerCache = self.playerCache.filter { (_, cached) in
+                return now.timeIntervalSince(cached.timestamp) < 3600 // 1 hour
+            }
+            
+            print("🔧 Optimized caches")
+        }
+    }
     
-    func getCacheStats() -> (matches: Int, lists: Int, players: Int) {
+    // MARK: - Cache Statistics
+    
+    func getCacheStats() -> (matches: Int, matchLists: Int, players: Int) {
         return queue.sync {
             return (matchCache.count, matchListCache.count, playerCache.count)
         }
     }
-}
-
-// Enhanced FootballDataMatchService with caching
-extension FootballDataMatchService {
     
-    func fetchLiveMatchesWithCache(competitionCode: String? = nil) async throws -> [Match] {
-        let cacheKey = "live_\(competitionCode ?? "all")"
-        
-        // Check cache first
-        if let cachedMatches = MatchCacheManager.shared.getCachedMatchList(for: cacheKey) {
-            print("📦 Using cached live matches (\(cachedMatches.count) matches)")
-            return cachedMatches
-        }
-        
-        print("🌐 Fetching fresh live matches from API")
-        let matches = try await fetchLiveMatches(competitionCode: competitionCode)
-        
-        // Cache the results
-        MatchCacheManager.shared.cacheMatchList(matches, for: cacheKey)
-        
-        return matches
-    }
-    
-    func fetchMatchDetailsWithCache(matchId: String) async throws -> MatchDetail {
-        // Check cache first
-        if let cachedMatch = MatchCacheManager.shared.getCachedMatch(matchId) {
-            print("📦 Using cached match details for \(matchId)")
-            // Convert to MatchDetail - you might need to adjust this based on your models
-            return MatchDetail(
-                match: cachedMatch,
-                venue: nil,
-                attendance: nil,
-                referee: nil,
-                homeScore: 0,
-                awayScore: 0
-            )
-        }
-        
-        print("🌐 Fetching fresh match details from API for \(matchId)")
-        let matchDetail = try await fetchMatchDetails(matchId: matchId)
-        
-        // Cache the match
-        MatchCacheManager.shared.cacheMatch(matchDetail.match)
-        
-        return matchDetail
-    }
-    
-    func fetchMatchPlayersWithCache(matchId: String) async throws -> [Player] {
-        // Check cache first
-        if let cachedPlayers = MatchCacheManager.shared.getCachedPlayers(for: matchId) {
-            print("📦 Using cached players for match \(matchId) (\(cachedPlayers.count) players)")
-            return cachedPlayers
-        }
-        
-        print("🌐 Fetching fresh players from API for match \(matchId)")
-        let players = try await fetchMatchPlayers(matchId: matchId)
-        
-        // Cache the players
-        MatchCacheManager.shared.cachePlayers(players, for: matchId)
-        
-        return players
+    func printCacheStatus() {
+        let stats = getCacheStats()
+        print("""
+        📊 Cache Status:
+        - Matches: \(stats.matches)
+        - Match Lists: \(stats.matchLists)
+        - Players: \(stats.players)
+        """)
     }
 }

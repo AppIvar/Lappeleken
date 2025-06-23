@@ -15,10 +15,10 @@ class CacheMaintenanceManager {
     
     func startPeriodicCleanup() {
         cleanupTimer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { _ in
-            MatchCacheManager.shared.clearExpiredCache()
+            MatchCacheManager.shared.optimizeCache()
             
             let stats = MatchCacheManager.shared.getCacheStats()
-            print("🧹 Cache cleanup: \(stats.matches) matches, \(stats.lists) lists, \(stats.players) players")
+            print("🧹 Cache cleanup: \(stats.matches) matches, \(stats.matchLists) lists, \(stats.players) players")
         }
     }
     

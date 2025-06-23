@@ -339,6 +339,36 @@ class AppPurchaseManager: ObservableObject {
             }
         }
     }
+    
+    // MARK: - Development/Testing Methods
+
+    #if DEBUG
+    /// Sets the user to premium tier for testing purposes (Debug builds only)
+    func setToPremiumForTesting() {
+        currentTier = .premium
+        savePurchaseState()
+        print("🧪 User set to premium for testing")
+        objectWillChange.send()
+    }
+
+    /// Resets the user to free tier for testing purposes (Debug builds only)
+    func setToFreeForTesting() {
+        currentTier = .free
+        savePurchaseState()
+        print("🧪 User set to free for testing")
+        objectWillChange.send()
+    }
+
+    /// Resets daily match usage for testing
+    func resetDailyMatchUsageForTesting() {
+        let today = Calendar.current.startOfDay(for: Date())
+        let todayString = DateFormatter.yyyyMMdd.string(from: today)
+        UserDefaults.standard.removeObject(forKey: "dailyMatchesUsed_\(todayString)")
+        UserDefaults.standard.removeObject(forKey: "adRewardedMatches_\(todayString)")
+        print("🧪 Daily match usage reset for testing")
+        objectWillChange.send()
+    }
+    #endif
 }
 
 // MARK: - Purchase Error
@@ -376,3 +406,4 @@ extension DateFormatter {
         return formatter
     }()
 }
+

@@ -8,5 +8,11 @@
 	<string>ca-app-pub-5153687741487701~1320799419</string>
 	<key>SKAdNetworkItems</key>
 	<array/>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>processing</string>
+		<string>fetch</string>
+		<string>remote-notification</string>
+	</array>
 </dict>
 </plist>

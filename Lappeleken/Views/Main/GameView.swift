@@ -754,6 +754,13 @@ struct GameView: View {
         formatter.currencySymbol = UserDefaults.standard.string(forKey: "currencySymbol") ?? "€"
         return formatter.string(from: NSNumber(value: value)) ?? "€0.00"
     }
+    
+    private func cleanupGame() {
+        // NEW: Cleanup event-driven monitoring when game ends
+        if gameSession.isLiveMode {
+            gameSession.cleanupEventDrivenMode()
+        }
+    }
 }
 
 // MARK: - Supporting Components

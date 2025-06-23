@@ -367,6 +367,10 @@ struct SettingsView: View {
                 hasAction: false
             )
             
+            #if DEBUG
+            debugTestingSection
+            #endif
+            
             EnhancedSettingsRow(
                 title: "Data by Football-Data.org",
                 subtitle: "Live match data provider",
@@ -404,6 +408,74 @@ struct SettingsView: View {
             }
         }
     }
+    
+    #if DEBUG
+    // MARK: - Debug Testing Section
+
+    private var debugTestingSection: some View {
+        VStack(spacing: 12) {
+            // Section header
+            HStack {
+                Image(systemName: "wrench.and.screwdriver.fill")
+                    .font(.system(size: 16))
+                    .foregroundColor(AppDesignSystem.Colors.warning)
+                
+                Text("Debug & Testing")
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .foregroundColor(AppDesignSystem.Colors.warning)
+                
+                Spacer()
+            }
+            .padding(.horizontal, 4)
+            
+            // Premium testing buttons
+            EnhancedSettingsRow(
+                title: "Set to Premium",
+                subtitle: "Unlock all features for testing",
+                icon: "crown.fill",
+                color: AppDesignSystem.Colors.success
+            ) {
+                AppPurchaseManager.shared.setToPremiumForTesting()
+            }
+            
+            EnhancedSettingsRow(
+                title: "Set to Free",
+                subtitle: "Reset to free tier for testing",
+                icon: "person.circle.fill",
+                color: AppDesignSystem.Colors.primary
+            ) {
+                AppPurchaseManager.shared.setToFreeForTesting()
+            }
+            
+            EnhancedSettingsRow(
+                title: "Reset Daily Usage",
+                subtitle: "Reset daily match limits",
+                icon: "arrow.clockwise.circle.fill",
+                color: AppDesignSystem.Colors.info
+            ) {
+                AppPurchaseManager.shared.resetDailyMatchUsageForTesting()
+            }
+            
+            // Current status display
+            EnhancedSettingsRow(
+                title: "Current Tier: \(purchaseManager.currentTier.displayName)",
+                subtitle: "Remaining matches: \(purchaseManager.remainingFreeMatchesToday)",
+                icon: "info.circle.fill",
+                color: AppDesignSystem.Colors.secondary,
+                hasAction: false
+            )
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(AppDesignSystem.Colors.warning.opacity(0.1))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(AppDesignSystem.Colors.warning.opacity(0.3), lineWidth: 1)
+                )
+        )
+    }
+    #endif
     
     // MARK: - Computed Properties
     

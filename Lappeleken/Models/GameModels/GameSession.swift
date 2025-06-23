@@ -1132,7 +1132,7 @@ class GameSession: ObservableObject, Codable {
             print("🔧 Fetching players using service type: \(type(of: matchService))")
             
             if let footballService = matchService as? FootballDataMatchService {
-                return try await footballService.fetchMatchPlayersWithCache(matchId: matchId)
+                return try await footballService.fetchMatchPlayers(matchId: matchId)
             } else {
                 // Fallback to generic interface
                 return try await matchService.fetchMatchPlayers(matchId: matchId)
@@ -1257,3 +1257,4 @@ class GameSession: ObservableObject, Codable {
         }
     }
 }
+

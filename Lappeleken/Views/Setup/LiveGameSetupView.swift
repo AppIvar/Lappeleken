@@ -1168,32 +1168,47 @@ struct LiveGameSetupView: View {
     }
     
     private func startGame() {
-        // Check if user can access live features
-        guard AppPurchaseManager.shared.canUseLiveFeatures else {
-            showNoMoreMatchesDialog()
-            return
+        if AppPurchaseManager.shared.currentTier == .free {
+            if !AppPurchaseManager.shared.canUseLiveFeatures {
+                showNoMoreMatchesDialog()
+                return
+            }
         }
-        
+
         // Use a match if they're a free user
         if AppPurchaseManager.shared.currentTier == .free {
             AppPurchaseManager.shared.useFreeLiveMatch()
         }
-        
+
         // Initialize ad session for event tracking
         AdManager.shared.startNewLiveMatchSession()
-        
+
         // Add bets to game session
         gameSession.bets = []
         for (eventType, amount) in betAmounts {
             gameSession.addBet(eventType: eventType, amount: amount)
         }
-        
+
+        // *** FIX: Set the selected match ***
+        if let firstSelectedMatchId = selectedMatchIds.first,
+           let selectedMatch = gameSession.availableMatches.first(where: { $0.id == firstSelectedMatchId }) {
+            gameSession.selectedMatch = selectedMatch
+            print("✅ Selected match set: \(selectedMatch.homeTeam.name) vs \(selectedMatch.awayTeam.name)")
+        } else {
+            print("❌ Warning: No match selected for live mode")
+        }
+
         // Randomly assign players to participants
         gameSession.assignPlayersRandomly()
-        
+
+        // Set up event-driven mode for live games
+        if gameSession.isLiveMode {
+            gameSession.setupEventDrivenMode()
+        }
+
         // Close the setup view
         presentationMode.wrappedValue.dismiss()
-        
+
         // Notify that game should start
         NotificationCenter.default.post(name: Notification.Name("StartGameWithSelectedMatch"), object: nil)
     }

@@ -86,8 +86,8 @@ class LiveGameDataService: GameDataService {
     // Helper methods for the Live Match functionality
     func fetchLiveMatches(competitionCode: String? = nil) async throws -> [Match] {
         if AppConfig.useStubData || UserDefaults.standard.bool(forKey: "useBackupData") {
-            // Return some dummy matches
-            return createDummyMatches()
+            // Use the same mock matches that EventDrivenManager uses
+            return await EventDrivenManager.createMockMatches()
         }
         
         do {
@@ -98,13 +98,8 @@ class LiveGameDataService: GameDataService {
             let response: MatchesResponse = try await apiClient.footballDataRequest(endpoint: endpoint)
             return response.matches.map { $0.toAppModel() }
         } catch {
-            print("Error fetching live matches: \(error)")
-            
-            // Set flag to use backup data on subsequent calls
-            UserDefaults.standard.set(true, forKey: "useBackupData")
-            
-            // Return fallback data
-            return createDummyMatches()
+            print("⚠️ API failed, using mock data for testing")
+            return await EventDrivenManager.createMockMatches()
         }
     }
     

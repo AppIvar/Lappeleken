@@ -26,9 +26,12 @@ struct ContentView: View {
             if activeGame {
                 GameView(gameSession: gameSession)
                     .toolbar {
-                        
                         ToolbarItem(placement: .navigationBarTrailing) {
                             Button("End Game") {
+                                // Add cleanup before showing summary
+                                if gameSession.isLiveMode {
+                                    gameSession.cleanupEventDrivenMode()
+                                }
                                 showSummaryView = true
                             }
                         }
