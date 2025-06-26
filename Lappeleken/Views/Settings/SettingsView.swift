@@ -17,6 +17,8 @@ struct SettingsView: View {
     @State private var showingLiveSetupInfo = false
     @State private var showingMatchSelection = false
     @State private var animateGradient = false
+    @State private var showingBackgroundSetup = false
+
     
     @Environment(\.presentationMode) var presentationMode
     @ObservedObject private var purchaseManager = AppPurchaseManager.shared
@@ -104,6 +106,11 @@ struct SettingsView: View {
         .sheet(isPresented: $showingMatchSelection) {
             MatchSelectionView(gameSession: gameSession)
         }
+        
+        .sheet(isPresented: $showingBackgroundSetup) {
+            BackgroundSetupGuideView()
+        }
+        
         .onAppear {
             withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
                 animateGradient = true
@@ -170,6 +177,15 @@ struct SettingsView: View {
                     color: AppDesignSystem.Colors.secondary
                 ) {
                     showingLiveSetupInfo = true
+                }
+                
+                EnhancedSettingsRow(
+                    title: "Background Monitoring Setup",
+                    subtitle: "Configure notifications and background updates",
+                    icon: "bell.badge.fill",
+                    color: AppDesignSystem.Colors.warning
+                ) {
+                    showingBackgroundSetup = true
                 }
             }
         }
@@ -464,6 +480,65 @@ struct SettingsView: View {
                 color: AppDesignSystem.Colors.secondary,
                 hasAction: false
             )
+            
+            EnhancedSettingsRow(
+                title: "Event Sync Mode",
+                subtitle: AppConfig.useStubData ? "Using mock events" : "Using real API",
+                icon: AppConfig.useStubData ? "flask.fill" : "globe.fill",
+                color: AppConfig.useStubData ? AppDesignSystem.Colors.warning : AppDesignSystem.Colors.success,
+                hasAction: false
+            )
+
+            EnhancedSettingsRow(
+                title: "Force Event Sync",
+                subtitle: "Manually check for missed events",
+                icon: "arrow.clockwise.circle.fill",
+                color: AppDesignSystem.Colors.info
+            ) {
+                Task {
+                    await EventSyncManager.shared.syncMissedEvents()
+                }
+            }
+            
+            EnhancedSettingsRow(
+                title: "Test Missed Events Banner (3 events)",
+                subtitle: "Manually trigger banner for testing",
+                icon: "bell.badge.fill",
+                color: AppDesignSystem.Colors.info
+            ) {
+                // Test with different numbers
+                NotificationCenter.default.post(
+                    name: Notification.Name("MissedEventsFound"),
+                    object: nil,
+                    userInfo: [
+                        "eventCount": 3, // Different number each time
+                        "matchName": "Real Test Match",
+                        "gameId": UUID().uuidString
+                    ]
+                )
+            }
+
+            
+            EnhancedSettingsRow(
+                title: "Simulate Background/Foreground",
+                subtitle: "Test app background/foreground cycle",
+                icon: "arrow.up.and.down.circle.fill",
+                color: AppDesignSystem.Colors.secondary
+            ) {
+                // Simulate going to background
+                NotificationCenter.default.post(
+                    name: UIApplication.didEnterBackgroundNotification,
+                    object: nil
+                )
+                
+                // Wait 180 seconds then simulate returning to foreground
+                DispatchQueue.main.asyncAfter(deadline: .now() + 180) {
+                    NotificationCenter.default.post(
+                        name: UIApplication.didBecomeActiveNotification,
+                        object: nil
+                    )
+                }
+            }
         }
         .padding(12)
         .background(

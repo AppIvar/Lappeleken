@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.hovlandgames.luckyfootball.matchupdate</string>
+	</array>
 	<key>FOOTBALL_DATA_API_KEY</key>
 	<string>23b9a294b92a48d3b50444a6ee280aca</string>
 	<key>GADApplicationIdentifier</key>

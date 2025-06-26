@@ -87,6 +87,8 @@ class EventDrivenManager: ObservableObject {
         monitor.start()
         
         print("✅ Event monitoring started for game \(gameSession.id)")
+        
+        BackgroundTaskManager.shared.startBackgroundMonitoring(for: gameSession)
     }
     
     func stopMonitoring(for gameSession: GameSession) {
@@ -95,6 +97,8 @@ class EventDrivenManager: ObservableObject {
         print("🛑 Stopping event monitoring for game \(gameSession.id)")
         monitor.stop()
         activeGames.removeValue(forKey: gameSession.id)
+        
+        BackgroundTaskManager.shared.stopBackgroundMonitoring(for: gameSession)
     }
     
     private func processEventUpdate(_ update: LiveMatchUpdate, for gameSession: GameSession) {

@@ -16,39 +16,56 @@ struct GameView: View {
     @State private var showingAutoSavePrompt = false
     @State private var autoSaveGameName = ""
     @State private var selectedCustomEventName: String? = nil
+    @State private var showMissedEventsBanner = false
+    @State private var missedEventsInfo: (count: Int, matchName: String) = (0, "")
     
     var body: some View {
-        ZStack {
-            // Clean background
-            backgroundView
-            
-            TabView {
-                // Tab 1: Participants with integrated stats
-                participantsWithStatsView
-                    .tabItem {
-                        Label("Participants", systemImage: "person.3.fill")
-                    }
-                
-                // Tab 2: Players with quick actions
-                enhancedPlayersView
-                    .tabItem {
-                        Label("Players", systemImage: "sportscourt.fill")
-                    }
-                
-                // Tab 3: Timeline (existing)
-                TimelineView(gameSession: gameSession)
-                    .tabItem {
-                        Label("Timeline", systemImage: "clock.arrow.circlepath")
-                    }
-                
-                // Tab 4: Settings
-                SettingsView()
-                    .environmentObject(gameSession)
-                    .tabItem {
-                        Label("Settings", systemImage: "gear")
-                    }
+        VStack(spacing: 0) {
+            // Missed events banner
+            if showMissedEventsBanner {
+                MissedEventsBanner(
+                    eventCount: missedEventsInfo.count,
+                    matchName: missedEventsInfo.matchName
+                ) {
+                    showMissedEventsBanner = false
+                }
+                .padding(.horizontal)
+                .padding(.top, 8)
             }
-            .accentColor(AppDesignSystem.Colors.primary)
+            
+            // Your existing TabView content
+            ZStack {
+                // Clean background
+                backgroundView
+                
+                TabView {
+                    // Tab 1: Participants with integrated stats
+                    participantsWithStatsView
+                        .tabItem {
+                            Label("Participants", systemImage: "person.3.fill")
+                        }
+                    
+                    // Tab 2: Players with quick actions
+                    enhancedPlayersView
+                        .tabItem {
+                            Label("Players", systemImage: "sportscourt.fill")
+                        }
+                    
+                    // Tab 3: Timeline (existing)
+                    TimelineView(gameSession: gameSession)
+                        .tabItem {
+                            Label("Timeline", systemImage: "clock.arrow.circlepath")
+                        }
+                    
+                    // Tab 4: Settings
+                    SettingsView()
+                        .environmentObject(gameSession)
+                        .tabItem {
+                            Label("Settings", systemImage: "gear")
+                        }
+                }
+                .accentColor(AppDesignSystem.Colors.primary)
+            }
         }
         .navigationTitle("Lucky Football Slip")
         .sheet(isPresented: $showingEventSheet) {
@@ -59,6 +76,34 @@ struct GameView: View {
         }
         .sheet(isPresented: $showingAutoSavePrompt) {
             autoSaveGamePrompt
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("MissedEventsFound"))) { notification in
+            print("🔔 Received MissedEventsFound notification")
+            print("🔔 Notification userInfo: \(notification.userInfo ?? [:])")
+            
+            if let userInfo = notification.userInfo,
+               let count = userInfo["eventCount"] as? Int,
+               let matchName = userInfo["matchName"] as? String {
+                print("🔔 Parsed: \(count) events for \(matchName)")
+                
+                DispatchQueue.main.async {
+                    self.missedEventsInfo = (count, matchName)
+                    withAnimation(.easeInOut(duration: 0.5)) {
+                        self.showMissedEventsBanner = true
+                    }
+                    print("🔔 Banner should now be visible: \(self.showMissedEventsBanner)")
+                }
+                
+                // Auto-hide after 8 seconds (longer for testing)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
+                    withAnimation(.easeInOut(duration: 0.5)) {
+                        self.showMissedEventsBanner = false
+                    }
+                    print("🔔 Banner auto-hidden after 8 seconds")
+                }
+            } else {
+                print("❌ Failed to parse notification userInfo")
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("StartGame"))) { _ in
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
@@ -759,6 +804,68 @@ struct GameView: View {
         // NEW: Cleanup event-driven monitoring when game ends
         if gameSession.isLiveMode {
             gameSession.cleanupEventDrivenMode()
+        }
+    }
+}
+
+// MARK: - Missed Events Banner
+
+struct MissedEventsBanner: View {
+    let eventCount: Int
+    let matchName: String
+    let onDismiss: () -> Void
+    
+    @State private var isVisible = true
+    
+    var body: some View {
+        if isVisible {
+            HStack(spacing: 12) {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.system(size: 20))
+                    .foregroundColor(.white)
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Caught up on \(eventCount) events!")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.white)
+                    
+                    Text("Events from \(matchName) while you were away")
+                        .font(.system(size: 14))
+                        .foregroundColor(.white.opacity(0.9))
+                }
+                
+                Spacer()
+                
+                Button(action: {
+                    withAnimation {
+                        isVisible = false
+                    }
+                    onDismiss()
+                }) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14))
+                        .foregroundColor(.white)
+                }
+            }
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                AppDesignSystem.Colors.info,
+                                AppDesignSystem.Colors.info.opacity(0.8)
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+            )
+            .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
+            .transition(.move(edge: .top).combined(with: .opacity))
+            .onAppear {
+                print("🎨 MissedEventsBanner appeared on screen")
+            }
         }
     }
 }

@@ -6,20 +6,23 @@
 //
 
 import SwiftUI
+import BackgroundTasks
 
 @main
-struct LappelekenApp: App {
+struct LuckyFootballSlipApp: App {
     
     init() {
-        // Validate app configuration
-        Task { @MainActor in
-            AppConfig.validateConfiguration()
-        }
+        // Register background tasks on app launch
+        BackgroundTaskManager.shared.registerBackgroundTasks()
     }
     
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
+                    // Clear badge when app comes to foreground
+                    UIApplication.shared.applicationIconBadgeNumber = 0
+                }
         }
     }
 }
