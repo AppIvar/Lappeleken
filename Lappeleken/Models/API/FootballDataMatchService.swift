@@ -450,6 +450,16 @@ class FootballDataMatchService: MatchService {
         case .unknown:
             // Conservative interval for unknown status
             return 180 // 3 minutes
+        case .finished:
+            return 0
+        case .postponed:
+            return 0
+        case .cancelled:
+            return 0
+        case .paused:
+            return 300
+        case .suspended:
+            return 300
         }
     }
     

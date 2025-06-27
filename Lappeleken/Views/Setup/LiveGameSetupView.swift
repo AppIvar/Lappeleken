@@ -1478,6 +1478,16 @@ struct MatchSelectionCard: View {
             return ("Finished", AppDesignSystem.Colors.secondary)
         case .unknown:
             return ("Unknown", AppDesignSystem.Colors.error)
+        case .finished:
+            return ("Finished", AppDesignSystem.Colors.accent)
+        case .postponed:
+            return ("Postponed", AppDesignSystem.Colors.error)
+        case .cancelled:
+            return ("Cancelled", AppDesignSystem.Colors.error)
+        case .paused:
+            return ("Paused", AppDesignSystem.Colors.warning)
+        case .suspended:
+            return ("Suspended", AppDesignSystem.Colors.warning)
         }
     }
 }

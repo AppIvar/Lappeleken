@@ -7,6 +7,8 @@
 
 import Foundation
 
+// MARK: - Updated AppConfig.swift with missing methods
+
 struct AppConfig {
     static let environment: Environment = {
 #if DEBUG
@@ -33,25 +35,21 @@ struct AppConfig {
         }
     }
     
-    // IMPORTANT: Secure your API key properly
     static let footballDataAPIKey: String = {
-        // Try to get from Info.plist first
         if let apiKey = Bundle.main.object(forInfoDictionaryKey: "FOOTBALL_DATA_API_KEY") as? String, !apiKey.isEmpty {
             return apiKey
         }
         
-        // Fallback for development
 #if DEBUG
-        return "23b9a294b92a48d3b50444a6ee280aca" // Your actual API key
+        return "23b9a294b92a48d3b50444a6ee280aca"
 #else
         fatalError("API key not found in Info.plist")
 #endif
     }()
     
-    // Production settings
     static var useStubData: Bool {
 #if DEBUG
-        return true // Set to false even in debug for TestFlight
+        return false // FIXED: Use real data even in debug for better testing
 #else
         return false
 #endif
@@ -61,11 +59,11 @@ struct AppConfig {
 #if DEBUG
         return true
 #else
-        return false // Disable detailed logging in production
+        return false
 #endif
     }
     
-    // MARK: - Free Tier Limits
+    // MARK: - FIXED Free Tier Limits
     
     static var maxFreeMatches: Int {
         return 3
@@ -81,11 +79,17 @@ struct AppConfig {
         return !AppPurchaseManager.shared.canUseLiveFeatures
     }
     
+    // FIXED: Add missing recordLiveMatchUsage method
     @MainActor
-    static func incrementMatchUsage() {
+    static func recordLiveMatchUsage() {
         if AppPurchaseManager.shared.currentTier == .free {
             AppPurchaseManager.shared.useFreeLiveMatch()
         }
+    }
+    
+    @MainActor
+    static func incrementMatchUsage() {
+        recordLiveMatchUsage()
     }
     
     // MARK: - Competition Access Control
@@ -160,7 +164,7 @@ struct AppConfig {
     
     // MARK: - App Store Configuration
     
-    static let appStoreID = "YOUR_APP_ID" // Set this when you get your App Store ID
+    static let appStoreID = "YOUR_APP_ID"
     static let appStoreURL = "https://apps.apple.com/app/lucky-football-slip"
     
     // MARK: - Support and Legal

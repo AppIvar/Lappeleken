@@ -345,6 +345,32 @@ class GameSession: ObservableObject, Codable {
         }
     }
     
+    @MainActor func startRealEventDrivenMode() {
+        guard isLiveMode else {
+            print("⚠️ Not in live mode, skipping event-driven setup")
+            return
+        }
+        
+        print("🎯 Setting up REAL event-driven mode for game \(id)")
+        
+        // Track usage for free users
+        AppConfig.recordLiveMatchUsage()
+        
+        // Start real monitoring
+        EventDrivenManager.shared.startMonitoring(for: self)
+    }
+    
+    @MainActor func getRealEventDrivenStats() -> String {
+        return """
+        Live Mode Stats:
+        - Active Monitoring: \(EventDrivenManager.shared.getActiveGamesCount() > 0 ? "YES" : "NO")
+        - Match: \(selectedMatch?.homeTeam.shortName ?? "NONE") vs \(selectedMatch?.awayTeam.shortName ?? "NONE")
+        - Players: \(selectedPlayers.count)
+        - Live Events: \(events.count)
+        """
+    }
+
+    
     // Record an event
     @MainActor func recordEvent(player: Player, eventType: Bet.EventType) {
         let event = GameEvent(player: player, eventType: eventType, timestamp: Date())
@@ -417,7 +443,7 @@ class GameSession: ObservableObject, Codable {
         
         canUndoLastEvent = true
         
-        // NEW: Check if we should show interstitial ad after every 3rd event
+        // Check if we should show interstitial ad after every 3rd event
         checkAndShowInterstitialAfterEvent()
         
         // Notify observers of the changes

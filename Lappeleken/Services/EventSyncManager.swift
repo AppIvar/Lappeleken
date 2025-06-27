@@ -154,7 +154,7 @@ class EventSyncManager: ObservableObject {
                 // Filter events that happened after the background time
                 let recentEvents = matchEvents.filter { event in
                     // Fix: Use Date() as fallback since timestamp might not exist
-                    let eventTime = Date() // You'll need to check your MatchEvent structure for the actual timestamp field
+                    let eventTime = Date()
                     return eventTime > backgroundTime
                 }
                 

@@ -28,7 +28,7 @@ class AdManager: NSObject, ObservableObject {
         static let rewardedTest = "ca-app-pub-3940256099942544/5224354917"
         static let bannerTest = "ca-app-pub-3940256099942544/6300978111"
         
-        // Your production IDs
+        // Production IDs
         static let interstitialProd = "ca-app-pub-5153687741487701/9783120087"
         static let rewardedProd = "ca-app-pub-5153687741487701/5916027268"
         static let bannerProd = "ca-app-pub-5153687741487701/5033356288"
@@ -104,7 +104,7 @@ class AdManager: NSObject, ObservableObject {
         // Add test device IDs for production testing
 #if DEBUG
         requestConfiguration.testDeviceIdentifiers = [
-            "YOUR_TEST_DEVICE_ID" // Replace with your actual test device ID
+            "YOUR_TEST_DEVICE_ID" // Replace with actual test device ID
         ]
         print("🔍 Test device IDs configured for debug mode")
 #endif

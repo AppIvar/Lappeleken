@@ -40,4 +40,14 @@ class ServiceProvider {
     func getMatchService() -> MatchService {
         return footballDataService
     }
+    
+    func getAPIClient() -> APIClient {
+        return apiClient
+    }
+    
+    // Also add a method to get the football data API client specifically
+    func getFootballDataAPIClient() -> APIClient {
+        let footballDataAPIClient = APIClient(baseURL: "https://api.football-data.org/v4")
+        return footballDataAPIClient
+    }
 }

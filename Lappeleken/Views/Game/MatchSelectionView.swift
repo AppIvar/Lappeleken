@@ -553,6 +553,16 @@ struct EnhancedMatchCard: View {
             return ("Finished", AppDesignSystem.Colors.secondary)
         case .unknown:
             return ("Unknown", AppDesignSystem.Colors.error)
+        case .finished:
+            return ("Finished", AppDesignSystem.Colors.accent)
+        case .postponed:
+            return ("Postponed", AppDesignSystem.Colors.error)
+        case .cancelled:
+            return ("Cancelled", AppDesignSystem.Colors.error)
+        case .paused:
+            return ("Paused", AppDesignSystem.Colors.warning)
+        case .suspended:
+            return ("Suspended", AppDesignSystem.Colors.warning)
         }
     }
     
@@ -568,6 +578,16 @@ struct EnhancedMatchCard: View {
             return "Full-time"
         case .unknown:
             return "Unknown"
+        case .finished:
+            return "Finished"
+        case .postponed:
+            return "Postponed"
+        case .cancelled:
+            return "Cancelled"
+        case .paused:
+            return "Paused"
+        case .suspended:
+            return "Suspended"
         }
     }
 }

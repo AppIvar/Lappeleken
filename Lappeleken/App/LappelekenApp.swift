@@ -12,7 +12,6 @@ import BackgroundTasks
 struct LuckyFootballSlipApp: App {
     
     init() {
-        // Register background tasks on app launch
         BackgroundTaskManager.shared.registerBackgroundTasks()
     }
     

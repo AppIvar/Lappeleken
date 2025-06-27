@@ -7,7 +7,7 @@
 
 import Foundation
 
-// API client for future live functionality
+// API client for live functionality
 class FootballAPIClient {
     // API endpoints
     private enum Endpoint {

@@ -7,13 +7,39 @@
 
 import Foundation
 
-// Define match status enum
-enum MatchStatus {
-    case upcoming
-    case inProgress
-    case halftime
-    case completed
-    case unknown
+enum MatchStatus: String, Codable, CaseIterable {
+    case upcoming = "SCHEDULED"
+    case inProgress = "IN_PLAY"
+    case halftime = "HALFTIME"
+    case completed = "COMPLETED"
+    case finished = "FINISHED"      // ADDED - alias for completed
+    case postponed = "POSTPONED"    // ADDED
+    case cancelled = "CANCELLED"    // ADDED
+    case paused = "PAUSED"          // ADDED
+    case suspended = "SUSPENDED"    // ADDED
+    case unknown = "UNKNOWN"
+    
+    var displayName: String {
+        switch self {
+        case .upcoming: return "Upcoming"
+        case .inProgress: return "Live"
+        case .halftime: return "Half Time"
+        case .completed, .finished: return "Finished"
+        case .postponed: return "Postponed"
+        case .cancelled: return "Cancelled"
+        case .paused: return "Paused"
+        case .suspended: return "Suspended"
+        case .unknown: return "Unknown"
+        }
+    }
+    
+    var isLive: Bool {
+        return self == .inProgress || self == .paused || self == .halftime
+    }
+    
+    var isActive: Bool {
+        return self == .inProgress || self == .halftime || self == .paused
+    }
 }
 
 // Basic match structure

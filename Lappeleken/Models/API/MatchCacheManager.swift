@@ -30,6 +30,16 @@ class MatchCacheManager {
                 cacheLifetime = 900  // 15 minutes for upcoming
             case .unknown:
                 cacheLifetime = 300  // 5 minutes for unknown
+            case .finished:
+                cacheLifetime = 3600
+            case .postponed:
+                cacheLifetime = 3600
+            case .cancelled:
+                cacheLifetime = 3600
+            case .paused:
+                cacheLifetime = 300
+            case .suspended:
+                cacheLifetime = 300
             }
             
             return now.timeIntervalSince(timestamp) > cacheLifetime
