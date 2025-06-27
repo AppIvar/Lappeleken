@@ -24,6 +24,9 @@ struct ManualPlayerEntryView: View {
     @State private var newTeamShortName = ""
     @State private var selectedTeamColor = "#1a73e8"
     
+    // FIXED: Add a flag to prevent automatic sheet showing
+    
+    
     // Available team colors
     private let teamColors = [
         "#EF0107", "#034694", "#C8102E", "#6CABDD", "#DA020E",
@@ -135,7 +138,8 @@ struct ManualPlayerEntryView: View {
     // MARK: - Enhanced Team Selection Section
     
     private var teamSelectionSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 12) {
+            // Header row
             HStack {
                 Text("Team")
                     .font(.subheadline)
@@ -143,41 +147,80 @@ struct ManualPlayerEntryView: View {
                 
                 Spacer()
                 
-                // NEW: Create Team Button
-                Button("Create New") {
-                    showCreateTeamSheet = true
-                }
-                .font(.caption)
-                .foregroundColor(.green)
-                .padding(.trailing, 8)
-                
                 if selectedTeam != nil {
                     Button("Change") {
                         showTeamPicker = true
                     }
                     .font(.caption)
                     .foregroundColor(.blue)
+                    .buttonStyle(PlainButtonStyle())
                 }
             }
             
-            if let team = selectedTeam {
-                selectedTeamView(team: team)
-            } else {
-                Button("Select Team") {
-                    showTeamPicker = true
+            // Content area - completely separate
+            Group {
+                if let team = selectedTeam {
+                    // Selected team display
+                    HStack {
+                        Circle()
+                            .fill(AppDesignSystem.TeamColors.getColor(for: team))
+                            .frame(width: 12, height: 12)
+                        
+                        Text(team.name)
+                            .font(.subheadline)
+                            .foregroundColor(.primary)
+                        
+                        Text("(\(team.shortName))")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        Spacer()
+                    }
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 12)
+                    .background(Color.gray.opacity(0.1))
+                    .cornerRadius(8)
+                } else {
+                    // Team selection buttons in VStack for better isolation
+                    VStack(spacing: 8) {
+                        Button(action: {
+                            print("🔘 Select Existing Team tapped")
+                            showTeamPicker = true
+                        }) {
+                            Label("Select Existing Team", systemImage: "list.bullet")
+                                .font(.subheadline)
+                                .foregroundColor(.blue)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(Color.blue.opacity(0.1))
+                                .cornerRadius(8)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                        
+                        Button(action: {
+                            print("🔘 Create New Team tapped")
+                            showCreateTeamSheet = true
+                        }) {
+                            Label("Create New Team", systemImage: "plus.circle")
+                                .font(.subheadline)
+                                .foregroundColor(.green)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(Color.green.opacity(0.1))
+                                .cornerRadius(8)
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
                 }
-                .foregroundColor(.blue)
-                .padding(.vertical, 8)
             }
         }
         .sheet(isPresented: $showTeamPicker) {
-            teamPickerSheet
+            teamPickerSheetSimplified
         }
         .sheet(isPresented: $showCreateTeamSheet) {
             createTeamSheet
         }
     }
-    
     private func selectedTeamView(team: Team) -> some View {
         HStack {
             Circle()
@@ -195,9 +238,6 @@ struct ManualPlayerEntryView: View {
         }
         .padding(.vertical, 4)
         .contentShape(Rectangle())
-        .onTapGesture {
-            showTeamPicker = true
-        }
     }
     
     // MARK: - NEW: Create Team Sheet
@@ -246,7 +286,7 @@ struct ManualPlayerEntryView: View {
                                         Image(systemName: "checkmark")
                                             .foregroundColor(.white)
                                             .font(.system(size: 16, weight: .bold)) :
-                                        nil
+                                            nil
                                     )
                             }
                             .buttonStyle(PlainButtonStyle())
@@ -284,15 +324,15 @@ struct ManualPlayerEntryView: View {
                 trailing: Button("Save") {
                     createNewTeam()
                 }
-                .disabled(newTeamName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-                          newTeamShortName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .disabled(newTeamName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+                              newTeamShortName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             )
         }
     }
     
     // MARK: - Team Picker Sheet (Enhanced)
     
-    private var teamPickerSheet: some View {
+    private var teamPickerSheetSimplified: some View {
         NavigationView {
             VStack {
                 // Search bar
@@ -315,14 +355,14 @@ struct ManualPlayerEntryView: View {
                         ForEach(teamsByLeague.keys.sorted(), id: \.self) { league in
                             Section(header: Text(league)) {
                                 ForEach(teamsByLeague[league] ?? [], id: \.id) { team in
-                                    teamRowView(team: team)
+                                    teamRowViewSimplified(team: team)
                                 }
                             }
                         }
                     } else {
                         // Flat list when searching
                         ForEach(availableTeams, id: \.id) { team in
-                            teamRowView(team: team)
+                            teamRowViewSimplified(team: team)
                         }
                     }
                 }
@@ -333,21 +373,21 @@ struct ManualPlayerEntryView: View {
             .navigationBarItems(
                 leading: Button("Cancel") {
                     showTeamPicker = false
-                },
-                trailing: Button("Create New") {
-                    showTeamPicker = false
-                    showCreateTeamSheet = true
+                    searchText = ""
                 }
-                .foregroundColor(.green)
+                // REMOVED: Create New button from here to avoid conflicts
             )
         }
     }
     
-    private func teamRowView(team: Team) -> some View {
+    private func teamRowViewSimplified(team: Team) -> some View {
         Button(action: {
             selectedTeam = team
             showTeamPicker = false
             searchText = ""
+            
+            print("✅ Selected team: \(team.name)")
+            // NO automatic sheet showing - completely clean selection
         }) {
             HStack {
                 Circle()
@@ -366,7 +406,6 @@ struct ManualPlayerEntryView: View {
                 
                 Spacer()
                 
-                // Show player count for this team
                 let playerCount = gameSession.availablePlayers.filter { $0.team.id == team.id }.count
                 if playerCount > 0 {
                     Text("\(playerCount) players")
@@ -503,7 +542,6 @@ struct ManualPlayerEntryView: View {
     // MARK: - Helper Methods (enhanced)
     
     private func addPlayer() {
-        // Trim whitespace
         let cleanPlayerName = playerName.trimmingCharacters(in: .whitespaces)
         
         guard let team = selectedTeam else {
@@ -512,7 +550,6 @@ struct ManualPlayerEntryView: View {
             return
         }
         
-        // Check if player already exists
         if gameSession.availablePlayers.contains(where: {
             $0.name.lowercased() == cleanPlayerName.lowercased() &&
             $0.team.id == team.id
@@ -522,17 +559,15 @@ struct ManualPlayerEntryView: View {
             return
         }
         
-        // Create the player with the selected team
         let player = Player(
             name: cleanPlayerName,
             team: team,
             position: selectedPosition
         )
         
-        // Add player to available players
         gameSession.availablePlayers.append(player)
+        gameSession.saveCustomPlayers()
         
-        // Provide haptic feedback
         let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
         impactFeedback.impactOccurred()
         
@@ -541,12 +576,7 @@ struct ManualPlayerEntryView: View {
         selectedTeam = nil
         selectedPosition = .midfielder
         
-        // Show success message briefly
-        withAnimation {
-            // Could add a success state here
-        }
-        
-        print("✅ Added new player: \(player.name) to \(player.team.name)")
+        print("✅ Added and saved new player: \(player.name) to \(player.team.name)")
     }
 }
 

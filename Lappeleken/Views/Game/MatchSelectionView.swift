@@ -57,7 +57,7 @@ struct MatchSelectionView: View {
                 }
             }
         }
-        .withSmartBanner()
+        .withMinimalBanner()
     }
     
     // MARK: - Background

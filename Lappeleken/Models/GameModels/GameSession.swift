@@ -1256,5 +1256,205 @@ class GameSession: ObservableObject, Codable {
             return "An unexpected error occurred. Please try again."
         }
     }
+    
+    // MARK: - Player Persistence
+    
+    private static let userPlayersKey = "userCustomPlayers"
+    private static let userTeamsKey = "userCustomTeams"
+    
+    /// Save user's custom players to UserDefaults for persistence
+    func saveCustomPlayers() {
+        do {
+            let playersData = try JSONEncoder().encode(availablePlayers)
+            UserDefaults.standard.set(playersData, forKey: Self.userPlayersKey)
+            
+            // Extract and save unique teams
+            let uniqueTeams = Array(Set(availablePlayers.map { $0.team }))
+            let teamsData = try JSONEncoder().encode(uniqueTeams)
+            UserDefaults.standard.set(teamsData, forKey: Self.userTeamsKey)
+            
+            print("💾 Saved \(availablePlayers.count) players and \(uniqueTeams.count) teams")
+        } catch {
+            print("❌ Failed to save custom players: \(error)")
+        }
+    }
+    
+    /// Load user's custom players from UserDefaults
+    func loadCustomPlayers() {
+        do {
+            if let playersData = UserDefaults.standard.data(forKey: Self.userPlayersKey) {
+                let players = try JSONDecoder().decode([Player].self, from: playersData)
+                availablePlayers = players
+                print("📂 Loaded \(players.count) custom players")
+            } else {
+                // First time - initialize with empty array
+                availablePlayers = []
+                print("🆕 No saved players found - starting fresh")
+            }
+        } catch {
+            print("❌ Failed to load custom players: \(error)")
+            availablePlayers = []
+        }
+    }
+    
+    /// Load saved teams for team selection
+    func loadCustomTeams() -> [Team] {
+        do {
+            if let teamsData = UserDefaults.standard.data(forKey: Self.userTeamsKey) {
+                let teams = try JSONDecoder().decode([Team].self, from: teamsData)
+                return teams
+            }
+        } catch {
+            print("❌ Failed to load custom teams: \(error)")
+        }
+        return []
+    }
+    
+    /// Clear all saved player data
+    func clearAllSavedData() {
+        UserDefaults.standard.removeObject(forKey: Self.userPlayersKey)
+        UserDefaults.standard.removeObject(forKey: Self.userTeamsKey)
+        availablePlayers = []
+        selectedPlayers = []
+        print("🗑️ Cleared all saved player data")
+    }
+    
+    // MARK: - Performance Optimizations
+    
+    /// Efficient player search by team
+    func getPlayersByTeam() -> [UUID: [Player]] {
+        return Dictionary(grouping: availablePlayers) { $0.team.id }
+    }
+    
+    /// Get teams sorted by player count (most players first)
+    func getTeamsSortedByPlayerCount() -> [(team: Team, playerCount: Int)] {
+        let teamGroups = Dictionary(grouping: availablePlayers) { $0.team }
+        return teamGroups.map { (team: $0.key, playerCount: $0.value.count) }
+                         .sorted { $0.playerCount > $1.playerCount }
+    }
+    
+    /// Memory-efficient player addition with automatic saving
+    func addPlayerWithPersistence(_ player: Player) {
+        // Check for duplicates before adding
+        guard !availablePlayers.contains(where: { $0.id == player.id }) else {
+            print("⚠️ Player \(player.name) already exists")
+            return
+        }
+        
+        availablePlayers.append(player)
+        saveCustomPlayers() // Auto-save after each addition
+        print("✅ Added and saved player: \(player.name)")
+    }
+    
+    /// Memory-efficient player removal with automatic saving
+    func removePlayerWithPersistence(_ playerId: UUID) {
+        if let index = availablePlayers.firstIndex(where: { $0.id == playerId }) {
+            let removedPlayer = availablePlayers.remove(at: index)
+            saveCustomPlayers() // Auto-save after removal
+            print("🗑️ Removed and saved: \(removedPlayer.name)")
+        }
+    }
+    
+    /// Batch add players with single save operation
+    func addPlayersWithPersistence(_ players: [Player]) {
+        let initialCount = availablePlayers.count
+        
+        for player in players {
+            // Only add if not already present
+            if !availablePlayers.contains(where: { $0.id == player.id }) {
+                availablePlayers.append(player)
+            }
+        }
+        
+        let addedCount = availablePlayers.count - initialCount
+        if addedCount > 0 {
+            saveCustomPlayers() // Single save operation
+            print("✅ Batch added \(addedCount) players")
+        }
+    }
+    
+    // MARK: - Data Validation and Cleanup
+    
+    /// Validate and clean up player data
+    func validateAndCleanupPlayerData() {
+        let initialCount = availablePlayers.count
+        
+        // Remove players with empty names or invalid teams
+        availablePlayers = availablePlayers.filter { player in
+            !player.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
+            !player.team.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }
+        
+        // Remove duplicate players (same name and team)
+        var seen = Set<String>()
+        availablePlayers = availablePlayers.filter { player in
+            let key = "\(player.name.lowercased())_\(player.team.id)"
+            if seen.contains(key) {
+                return false
+            } else {
+                seen.insert(key)
+                return true
+            }
+        }
+        
+        let finalCount = availablePlayers.count
+        let removedCount = initialCount - finalCount
+        
+        if removedCount > 0 {
+            saveCustomPlayers()
+            print("🧹 Cleaned up \(removedCount) invalid/duplicate players")
+        }
+    }
+    
+    /// Get statistics about current player data
+    func getPlayerStatistics() -> PlayerStatistics {
+        let teamGroups = Dictionary(grouping: availablePlayers) { $0.team }
+        let positionGroups = Dictionary(grouping: availablePlayers) { $0.position }
+        
+        return PlayerStatistics(
+            totalPlayers: availablePlayers.count,
+            totalTeams: teamGroups.count,
+            averagePlayersPerTeam: teamGroups.isEmpty ? 0 : Double(availablePlayers.count) / Double(teamGroups.count),
+            positionBreakdown: positionGroups.mapValues { $0.count },
+            largestTeam: teamGroups.max(by: { $0.value.count < $1.value.count }),
+            memoryUsageEstimate: estimateMemoryUsage()
+        )
+    }
+    
+    private func estimateMemoryUsage() -> String {
+        // Rough estimate: each player ~200 bytes (name, team, position, IDs)
+        let estimatedBytes = availablePlayers.count * 200
+        if estimatedBytes < 1024 {
+            return "\(estimatedBytes) bytes"
+        } else if estimatedBytes < 1024 * 1024 {
+            return String(format: "%.1f KB", Double(estimatedBytes) / 1024.0)
+        } else {
+            return String(format: "%.1f MB", Double(estimatedBytes) / (1024.0 * 1024.0))
+        }
+    }
 }
 
+// MARK: - Supporting Structures
+
+struct PlayerStatistics {
+    let totalPlayers: Int
+    let totalTeams: Int
+    let averagePlayersPerTeam: Double
+    let positionBreakdown: [Player.Position: Int]
+    let largestTeam: (key: Team, value: [Player])?
+    let memoryUsageEstimate: String
+    
+    var summary: String {
+        var parts: [String] = []
+        parts.append("\(totalPlayers) players")
+        parts.append("\(totalTeams) teams")
+        parts.append("~\(String(format: "%.1f", averagePlayersPerTeam)) players/team")
+        parts.append("Memory: \(memoryUsageEstimate)")
+        
+        if let largest = largestTeam {
+            parts.append("Largest: \(largest.key.name) (\(largest.value.count))")
+        }
+        
+        return parts.joined(separator: ", ")
+    }
+}

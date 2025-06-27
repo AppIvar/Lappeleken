@@ -18,7 +18,7 @@ struct LuckyFootballSlipApp: App {
     
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            MainAppView()
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
                     // Clear badge when app comes to foreground
                     UIApplication.shared.applicationIconBadgeNumber = 0

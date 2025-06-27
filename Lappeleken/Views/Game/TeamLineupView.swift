@@ -61,7 +61,7 @@ struct TeamLineupView: View {
         .cornerRadius(AppDesignSystem.Layout.cornerRadius)
         .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
         
-        .withSmartBanner()
+        .withMinimalBanner()
     }
 }
 

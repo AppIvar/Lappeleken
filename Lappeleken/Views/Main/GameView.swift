@@ -161,7 +161,7 @@ struct GameView: View {
         }
         .background(AppDesignSystem.Colors.background.ignoresSafeArea())
         
-        .withSmartMonetization()
+        .withMinimalBanner()
     }
     
     // MARK: - Game Stats Overview
@@ -465,7 +465,7 @@ struct GameView: View {
         }
         .background(AppDesignSystem.Colors.background.ignoresSafeArea())
         
-        .withSmartMonetization()
+        .withMinimalBanner()
     }
     
     // MARK: - Helper Properties
@@ -536,23 +536,25 @@ struct GameView: View {
                                     .font(.system(size: 20, weight: .bold, design: .rounded))
                                     .foregroundColor(AppDesignSystem.Colors.primaryText)
                                 
+                                // Standard events
                                 LazyVGrid(columns: [
                                     GridItem(.flexible()),
                                     GridItem(.flexible())
                                 ], spacing: 12) {
-                                    // Standard event types (excluding custom)
                                     ForEach(Bet.EventType.allCases.filter { $0 != .custom }, id: \.self) { eventType in
                                         EventTypeSelectionCard(
                                             eventType: eventType,
-                                            isSelected: selectedEventType == eventType
+                                            isSelected: selectedEventType == eventType && selectedCustomEventName == nil
                                         ) {
                                             selectedEventType = eventType
+                                            selectedCustomEventName = nil // Clear custom selection
                                         }
                                     }
                                 }
                                 
-                                // Custom events section (within the same sheet)
-                                if !gameSession.getCustomEvents().isEmpty {
+                                // FIXED: Custom events section - always show if there are custom events
+                                let customEvents = gameSession.getCustomEvents()
+                                if !customEvents.isEmpty {
                                     VStack(alignment: .leading, spacing: 12) {
                                         Text("Custom Events")
                                             .font(.system(size: 18, weight: .bold, design: .rounded))
@@ -560,7 +562,7 @@ struct GameView: View {
                                             .padding(.top, 16)
                                         
                                         LazyVGrid(columns: [GridItem(.flexible())], spacing: 8) {
-                                            ForEach(gameSession.getCustomEvents(), id: \.id) { customEvent in
+                                            ForEach(customEvents, id: \.id) { customEvent in
                                                 CustomEventInlineCard(
                                                     name: customEvent.name,
                                                     amount: customEvent.amount,
@@ -568,44 +570,68 @@ struct GameView: View {
                                                     onTap: {
                                                         selectedCustomEventName = customEvent.name
                                                         selectedEventType = .custom
+                                                        print("Selected custom event: \(customEvent.name)")
                                                     }
                                                 )
                                             }
                                         }
+                                    }
+                                } else {
+                                    // Debug section to show why custom events aren't appearing
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        Text("Custom Events")
+                                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                                            .foregroundColor(AppDesignSystem.Colors.accent)
+                                            .padding(.top, 16)
+                                        
+                                        Text("No custom events available")
+                                            .font(.system(size: 14))
+                                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                                        
+                                        Text("Debug: Total bets: \(gameSession.bets.count), Custom bets: \(gameSession.bets.filter { $0.eventType == .custom }.count)")
+                                            .font(.system(size: 10))
+                                            .foregroundColor(.gray)
                                     }
                                 }
                             }
                         }
                         
                         // Record button
-                        if let player = selectedPlayer, let eventType = selectedEventType {
-                            Button {
-                                if eventType == .custom, let customEventName = selectedCustomEventName {
-                                    gameSession.recordCustomEvent(player: player, eventName: customEventName)
-                                } else {
-                                    gameSession.recordEvent(player: player, eventType: eventType)
+                        if let player = selectedPlayer {
+                            let canRecord = (selectedEventType != nil && selectedEventType != .custom) ||
+                                          (selectedEventType == .custom && selectedCustomEventName != nil)
+                            
+                            if canRecord {
+                                Button {
+                                    if selectedEventType == .custom, let customEventName = selectedCustomEventName {
+                                        print("Recording custom event: \(customEventName) for \(player.name)")
+                                        gameSession.recordCustomEvent(player: player, eventName: customEventName)
+                                    } else if let eventType = selectedEventType {
+                                        print("Recording standard event: \(eventType) for \(player.name)")
+                                        gameSession.recordEvent(player: player, eventType: eventType)
+                                    }
+                                    showingEventSheet = false
+                                    selectedPlayer = nil
+                                    selectedEventType = nil
+                                    selectedCustomEventName = nil
+                                } label: {
+                                    HStack {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.system(size: 20))
+                                        
+                                        let eventText = selectedEventType == .custom ?
+                                            (selectedCustomEventName ?? "Custom Event") :
+                                            (selectedEventType?.rawValue ?? "Event")
+                                        
+                                        Text("Record \(eventText) for \(player.name)")
+                                            .font(.system(size: 16, weight: .bold, design: .rounded))
+                                    }
+                                    .foregroundColor(.white)
+                                    .padding(.vertical, 16)
+                                    .frame(maxWidth: .infinity)
+                                    .background(AppDesignSystem.Colors.success)
+                                    .cornerRadius(12)
                                 }
-                                showingEventSheet = false
-                                selectedPlayer = nil
-                                selectedEventType = nil
-                                selectedCustomEventName = nil
-                            } label: {
-                                HStack {
-                                    Image(systemName: "checkmark.circle.fill")
-                                        .font(.system(size: 20))
-                                    
-                                    let eventText = eventType == .custom ?
-                                        (selectedCustomEventName ?? "Custom Event") :
-                                        eventType.rawValue
-                                    
-                                    Text("Record \(eventText) for \(player.name)")
-                                        .font(.system(size: 16, weight: .bold, design: .rounded))
-                                }
-                                .foregroundColor(.white)
-                                .padding(.vertical, 16)
-                                .frame(maxWidth: .infinity)
-                                .background(AppDesignSystem.Colors.success)
-                                .cornerRadius(12)
                             }
                         }
                     }
@@ -622,6 +648,13 @@ struct GameView: View {
                         selectedEventType = nil
                         selectedCustomEventName = nil
                     }
+                }
+            }
+            .onAppear {
+                print("🎯 Record Event Sheet opened")
+                print("🎯 Available custom events: \(gameSession.getCustomEvents().count)")
+                for event in gameSession.getCustomEvents() {
+                    print("🎯 Custom event: \(event.name) - \(event.amount)")
                 }
             }
         }

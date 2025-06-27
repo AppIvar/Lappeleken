@@ -19,6 +19,9 @@ struct ContentView: View {
     @State private var showSaveGameSheet = false
     @State private var gameName = ""
     @State private var showAutoSavePrompt = false
+    
+    // NEW: Loading state
+    @State private var isLoadingGame = false
 
     
     var body: some View {
