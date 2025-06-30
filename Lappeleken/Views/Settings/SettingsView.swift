@@ -106,11 +106,9 @@ struct SettingsView: View {
         .sheet(isPresented: $showingMatchSelection) {
             MatchSelectionView(gameSession: gameSession)
         }
-        
         .sheet(isPresented: $showingBackgroundSetup) {
             BackgroundSetupGuideView()
         }
-        
         .onAppear {
             withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
                 animateGradient = true
@@ -118,7 +116,6 @@ struct SettingsView: View {
         }
         .withSmartMonetization()
     }
-
 
     // MARK: - Background
     
@@ -426,7 +423,7 @@ struct SettingsView: View {
     }
     
     #if DEBUG
-    // MARK: - Debug Testing Section
+    // MARK: - Debug Testing Section (FIXED)
 
     private var debugTestingSection: some View {
         VStack(spacing: 12) {
@@ -443,6 +440,9 @@ struct SettingsView: View {
                 Spacer()
             }
             .padding(.horizontal, 4)
+            
+            // FREE TESTING CONTROLS (NEW)
+            freeTestingDebugSection
             
             // Premium testing buttons
             EnhancedSettingsRow(
@@ -490,17 +490,6 @@ struct SettingsView: View {
             )
 
             EnhancedSettingsRow(
-                title: "Force Event Sync",
-                subtitle: "Manually check for missed events",
-                icon: "arrow.clockwise.circle.fill",
-                color: AppDesignSystem.Colors.info
-            ) {
-                Task {
-                    await EventSyncManager.shared.syncMissedEvents()
-                }
-            }
-            
-            EnhancedSettingsRow(
                 title: "Test Missed Events Banner (3 events)",
                 subtitle: "Manually trigger banner for testing",
                 icon: "bell.badge.fill",
@@ -511,33 +500,11 @@ struct SettingsView: View {
                     name: Notification.Name("MissedEventsFound"),
                     object: nil,
                     userInfo: [
-                        "eventCount": 3, // Different number each time
+                        "eventCount": 3,
                         "matchName": "Real Test Match",
                         "gameId": UUID().uuidString
                     ]
                 )
-            }
-
-            
-            EnhancedSettingsRow(
-                title: "Simulate Background/Foreground",
-                subtitle: "Test app background/foreground cycle",
-                icon: "arrow.up.and.down.circle.fill",
-                color: AppDesignSystem.Colors.secondary
-            ) {
-                // Simulate going to background
-                NotificationCenter.default.post(
-                    name: UIApplication.didEnterBackgroundNotification,
-                    object: nil
-                )
-                
-                // Wait 180 seconds then simulate returning to foreground
-                DispatchQueue.main.asyncAfter(deadline: .now() + 180) {
-                    NotificationCenter.default.post(
-                        name: UIApplication.didBecomeActiveNotification,
-                        object: nil
-                    )
-                }
             }
         }
         .padding(12)
@@ -549,6 +516,136 @@ struct SettingsView: View {
                         .stroke(AppDesignSystem.Colors.warning.opacity(0.3), lineWidth: 1)
                 )
         )
+    }
+    
+    // MARK: - Free Testing Debug Section (NEW)
+    
+    private var freeTestingDebugSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Header
+            HStack {
+                Image(systemName: "gift.fill")
+                    .foregroundColor(AppDesignSystem.Colors.success)
+                
+                Text("Free Live Mode Testing")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                Spacer()
+            }
+            
+            // Status display
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Status: \(AppConfig.isFreeLiveTestingActive ? "ACTIVE ✅" : "INACTIVE ❌")")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(AppConfig.isFreeLiveTestingActive ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.error)
+                
+                if AppConfig.isFreeLiveTestingActive, let startDate = AppConfig.freeTestingStartDate {
+                    Text("Started: \(formatStartDate(startDate))") // Fixed: moved formatting to helper method
+                        .font(.system(size: 12))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                }
+            }
+            .padding(.horizontal, 4)
+            
+            // Control buttons
+            HStack(spacing: 12) {
+                Button(action: {
+                    if AppConfig.isFreeLiveTestingActive {
+                        FreeLiveModeTesting.endFreeTesting()
+                    } else {
+                        FreeLiveModeTesting.startFreeTesting()
+                    }
+                }) {
+                    HStack(spacing: 8) {
+                        Image(systemName: AppConfig.isFreeLiveTestingActive ? "stop.fill" : "play.fill")
+                            .font(.system(size: 14))
+                        
+                        Text(AppConfig.isFreeLiveTestingActive ? "End Testing" : "Start Testing")
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(AppConfig.isFreeLiveTestingActive ? Color.red : Color.green)
+                    .cornerRadius(8)
+                }
+                
+                Button("Export Analytics") {
+                    Task { @MainActor in
+                        FreeLiveModeTesting.saveAnalyticsToFile()
+                    }
+                }
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.blue)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(Color.blue.opacity(0.1))
+                .cornerRadius(8)
+            }
+            
+            // Analytics preview
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Analytics Preview:")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                Text(getTestingStatusText())
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    .padding(8)
+                    .background(Color.gray.opacity(0.1))
+                    .cornerRadius(4)
+            }
+            
+            // Test buttons
+            HStack(spacing: 8) {
+                Button("Test Live Event Ad") {
+                    AdManager.shared.recordLiveMatchEvent(eventType: "test_goal")
+                }
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.orange)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color.orange.opacity(0.1))
+                .cornerRadius(6)
+                
+                Button("Reset Event Count") {
+                    AdManager.shared.startNewLiveMatchSession()
+                }
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.purple)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color.purple.opacity(0.1))
+                .cornerRadius(6)
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(AppConfig.isFreeLiveTestingActive ? Color.green.opacity(0.1) : Color.gray.opacity(0.1))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(AppConfig.isFreeLiveTestingActive ? Color.green.opacity(0.3) : Color.gray.opacity(0.3), lineWidth: 1)
+                )
+        )
+    }
+
+    // Add these helper methods:
+    @MainActor
+    private func getTestingStatusText() -> String {
+        if AppConfig.isFreeLiveTestingActive {
+            return "🎁 FREE TESTING ACTIVE\nUnlimited matches enabled"
+        } else {
+            return "🔒 FREE TESTING INACTIVE\n1 match per day limit"
+        }
+    }
+
+    private func formatStartDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        return formatter.string(from: date)
     }
     #endif
     
@@ -571,7 +668,7 @@ struct SettingsView: View {
     }
 }
 
-// MARK: - Enhanced Components
+// MARK: - Enhanced Components (keeping your existing ones)
 
 struct EnhancedSettingsSection<Content: View>: View {
     let title: String
@@ -815,7 +912,7 @@ struct EnhancedUpgradeRow: View {
                                 .font(.system(size: 12, weight: .semibold, design: .rounded))
                                 .foregroundColor(AppDesignSystem.Colors.secondaryText)
                             
-                            ProgressView(value: Double(remainingMatches), total: Double(AppConfig.maxFreeMatches))
+                            ProgressView(value: Double(remainingMatches), total: Double(1))
                                 .progressViewStyle(LinearProgressViewStyle(tint: AppDesignSystem.Colors.success))
                                 .scaleEffect(y: 2)
                         }
@@ -870,87 +967,6 @@ struct EnhancedUpgradeRow: View {
                 }
             }
         }
-    }
-}
-
-struct EnhancedFreeMatchesRow: View {
-    let remaining: Int
-    let total: Int
-    
-    private var progress: Double {
-        guard total > 0 else { return 0 }
-        return Double(remaining) / Double(total)
-    }
-    
-    private var statusColor: Color {
-        if remaining > total * 2 / 3 {
-            return AppDesignSystem.Colors.success
-        } else if remaining > total / 3 {
-            return AppDesignSystem.Colors.warning
-        } else {
-            return AppDesignSystem.Colors.error
-        }
-    }
-    
-    var body: some View {
-        VStack(spacing: 12) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Free Live Matches")
-                        .font(.system(size: 15, weight: .semibold, design: .rounded))
-                        .foregroundColor(AppDesignSystem.Colors.primaryText)
-                    
-                    Text("Watch ads to earn more matches")
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                }
-                
-                Spacer()
-                
-                VStack(alignment: .trailing, spacing: 4) {
-                    Text("\(remaining)")
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
-                        .foregroundColor(statusColor)
-                    
-                    Text("remaining")
-                        .font(.system(size: 11, weight: .medium, design: .rounded))
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                }
-            }
-            
-            VStack(spacing: 6) {
-                ProgressView(value: progress)
-                    .progressViewStyle(LinearProgressViewStyle(tint: statusColor))
-                    .scaleEffect(y: 3)
-                
-                HStack {
-                    Text("0")
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                    
-                    Spacer()
-                    
-                    Text("\(total)")
-                        .font(.system(size: 10, weight: .medium, design: .rounded))
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                }
-            }
-        }
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(
-                    LinearGradient(
-                        colors: [statusColor.opacity(0.1), Color.white],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(statusColor.opacity(0.2), lineWidth: 1)
-                )
-        )
     }
 }
 
@@ -1053,254 +1069,16 @@ struct EnhancedCurrencyRow: View {
     }
 }
 
-// MARK: - Live Mode Info View (Enhanced)
 
-struct LiveModeInfoView: View {
-    @Environment(\.presentationMode) var presentationMode
-    var onGetStarted: () -> Void
-    
-    @State private var animateFeatures = false
-    
-    private var remainingFreeMatches: Int {
-        let used = UserDefaults.standard.integer(forKey: "usedLiveMatchCount")
-        let adRewarded = UserDefaults.standard.integer(forKey: "adRewardedLiveMatches")
-        let total = AppConfig.maxFreeMatches + adRewarded
-        return max(0, total - used)
-    }
-    
-    var body: some View {
-        NavigationView {
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 32) {
-                    // Enhanced header
-                    VStack(spacing: 20) {
-                        ZStack {
-                            Circle()
-                                .fill(
-                                    RadialGradient(
-                                        colors: [
-                                            AppDesignSystem.Colors.primary.opacity(0.3),
-                                            AppDesignSystem.Colors.primary.opacity(0.1),
-                                            Color.clear
-                                        ],
-                                        center: .center,
-                                        startRadius: 30,
-                                        endRadius: 80
-                                    )
-                                )
-                                .frame(width: 160, height: 160)
-                            
-                            Image(systemName: "globe.europe.africa.fill")
-                                .font(.system(size: 70, weight: .medium))
-                                .foregroundStyle(
-                                    LinearGradient(
-                                        colors: [
-                                            AppDesignSystem.Colors.primary,
-                                            AppDesignSystem.Colors.info
-                                        ],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                                .shadow(
-                                    color: AppDesignSystem.Colors.primary.opacity(0.3),
-                                    radius: 12,
-                                    x: 0,
-                                    y: 6
-                                )
-                        }
-                        
-                        VStack(spacing: 12) {
-                            Text("About Live Mode")
-                                .font(.system(size: 32, weight: .bold, design: .rounded))
-                                .foregroundColor(AppDesignSystem.Colors.primaryText)
-                            
-                            Text("Live Mode connects your game to real football matches happening now. Here's how it works:")
-                                .font(.system(size: 16, weight: .medium, design: .rounded))
-                                .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                                .multilineTextAlignment(.center)
-                        }
-                        
-                        
-                        // Enhanced feature list
-                        VStack(spacing: 16) {
-                            ForEach(Array(liveFeatures.enumerated()), id: \.offset) { index, feature in
-                                EnhancedLiveModeFeature(
-                                    feature: feature,
-                                    index: index,
-                                    isAnimated: animateFeatures
-                                )
-                            }
-                        }
-                        
-                        // Free mode info (if applicable)
-                        if AppPurchaseManager.shared.currentTier == .free {
-                            freeModeInfoCard
-                        }
-                        
-                        // Important note
-                        VStack(spacing: 12) {
-                            Text("📶 Network Required")
-                                .font(.system(size: 16, weight: .bold, design: .rounded))
-                                .foregroundColor(AppDesignSystem.Colors.primaryText)
-                            
-                            Text("Live Mode requires an internet connection and uses data. Updates may be delayed by 1-2 minutes from the actual match.")
-                                .font(.system(size: 14, weight: .medium, design: .rounded))
-                                .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                                .multilineTextAlignment(.center)
-                        }
-                        .enhancedCard()
-                        
-                        // Get started button
-                        Button("Get Started") {
-                            presentationMode.wrappedValue.dismiss()
-                            onGetStarted()
-                        }
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(
-                                    LinearGradient(
-                                        colors: [
-                                            AppDesignSystem.Colors.primary,
-                                            AppDesignSystem.Colors.primary.opacity(0.8)
-                                        ],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                        )
-                        .vibrantButton()
-                        
-                        Spacer(minLength: 40)
-                    }
-                    .padding(20)
-                }
-                .background(AppDesignSystem.Colors.background)
-                .navigationTitle("Live Mode")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Button("Close") {
-                            presentationMode.wrappedValue.dismiss()
-                        }
-                        .foregroundColor(AppDesignSystem.Colors.primary)
-                    }
-                }
-            }
-            .onAppear {
-                withAnimation(AppDesignSystem.Animations.standard.delay(0.5)) {
-                    animateFeatures = true
-                }
-            }
-        }
-    }
-    
-    private var freeModeInfoCard: some View {
-        VStack(spacing: 16) {
-            HStack {
-                Image(systemName: "gift.fill")
-                    .font(.system(size: 24))
-                    .foregroundColor(AppDesignSystem.Colors.warning)
-                
-                Text("Free Mode Limitations")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
-                    .foregroundColor(AppDesignSystem.Colors.primaryText)
-                
-                Spacer()
-            }
-            
-            VStack(alignment: .leading, spacing: 8) {
-                Text("You can follow up to \(AppConfig.maxFreeMatches) live matches in free mode.")
-                    .font(.system(size: 14, weight: .medium, design: .rounded))
-                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                
-                HStack {
-                    Text("Remaining matches:")
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                        .foregroundColor(AppDesignSystem.Colors.primaryText)
-                    
-                    Spacer()
-                    
-                    Text("\(remainingFreeMatches)")
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
-                        .foregroundColor(AppDesignSystem.Colors.success)
-                }
-                
-                Text("Upgrade to premium to get unlimited matches and the ability to follow multiple matches simultaneously.")
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
-            }
-        }
-        .enhancedCard()
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(AppDesignSystem.Colors.warning.opacity(0.3), lineWidth: 2)
-        )
-    }
-    
-    private var liveFeatures: [(icon: String, title: String, description: String, color: Color)] {
-        [
-            ("sportscourt.fill", "Select a Match", "Choose from live or upcoming matches from major leagues.", AppDesignSystem.Colors.primary),
-            ("person.2.fill", "Set Up Participants", "Add the people who will be participating in your game.", AppDesignSystem.Colors.success),
-            ("scalemass.fill", "Configure Bets", "Set your bet amounts for different types of events.", AppDesignSystem.Colors.warning),
-            ("person.crop.circle.badge.checkmark", "Select Players", "Choose football players from the match to include in your game.", AppDesignSystem.Colors.info),
-            ("bell.fill", "Real-time Updates", "Goals, cards, and other events are automatically recorded as they happen.", AppDesignSystem.Colors.secondary),
-            ("arrow.left.arrow.right", "Automatic Substitutions", "When a player is substituted in the real match, the same happens in your game.", AppDesignSystem.Colors.accent)
-        ]
-    }
-}
+// MARK: - Enhanced Card Modifier
 
-struct EnhancedLiveModeFeature: View {
-    let feature: (icon: String, title: String, description: String, color: Color)
-    let index: Int
-    let isAnimated: Bool
-    
-    var body: some View {
-        HStack(alignment: .top, spacing: 16) {
-            ZStack {
-                Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [feature.color, feature.color.opacity(0.7)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 50, height: 50)
-                
-                Image(systemName: feature.icon)
-                    .font(.system(size: 22, weight: .medium))
-                    .foregroundColor(.white)
-            }
-            .shadow(
-                color: feature.color.opacity(0.3),
-                radius: 6,
-                x: 0,
-                y: 3
+extension View {
+    func enhancedCard() -> some View {
+        self.padding(20)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(AppDesignSystem.Colors.cardBackground)
+                    .shadow(color: Color.black.opacity(0.08), radius: 8, x: 0, y: 4)
             )
-            
-            VStack(alignment: .leading, spacing: 6) {
-                Text(feature.title)
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
-                    .foregroundColor(AppDesignSystem.Colors.primaryText)
-                
-                Text(feature.description)
-                    .font(.system(size: 14, weight: .medium, design: .rounded))
-                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .enhancedCard()
-        .opacity(isAnimated ? 1.0 : 0.0)
-        .offset(x: isAnimated ? 0 : -30)
-        .animation(
-            AppDesignSystem.Animations.bouncy.delay(Double(index) * 0.1),
-            value: isAnimated
-        )
     }
 }
-

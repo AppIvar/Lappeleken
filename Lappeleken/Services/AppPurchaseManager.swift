@@ -121,19 +121,42 @@ class AppPurchaseManager: ObservableObject {
         }
     }
     
+    /// Enhanced canUseLiveFeatures to support free testing
+    var canUseLiveFeatures: Bool {
+        // Always allow during free testing period
+        if AppConfig.isFreeLiveTestingActive {
+            return true
+        }
+        
+        // Normal logic for non-testing periods
+        return currentTier == .premium || remainingFreeMatchesToday > 0
+    }
+    
+    /// Enhanced remainingFreeMatchesToday to support free testing
     var remainingFreeMatchesToday: Int {
-        let dailyLimit = 1 // 1 free match per calendar day
+        // Unlimited during free testing
+        if AppConfig.isFreeLiveTestingActive {
+            return Int.max
+        }
+        
+        // Normal daily limit calculation
+        let dailyLimit = 1 // 1 free match per calendar day (after testing)
         let used = dailyFreeMatchesUsed
         let adRewarded = adRewardedMatchesToday
         let total = dailyLimit + adRewarded
         return max(0, total - used)
     }
     
-    var canUseLiveFeatures: Bool {
-        return currentTier == .premium || remainingFreeMatchesToday > 0
-    }
-    
+    /// Enhanced useFreeLiveMatch to handle free testing
     func useFreeLiveMatch() {
+        // Don't count usage during free testing period
+        if AppConfig.isFreeLiveTestingActive {
+            print("🎁 Free testing active - match usage not counted")
+            AppConfig.recordFreeLiveModeUsage() // For analytics only
+            return
+        }
+        
+        // Normal usage counting for non-testing periods
         dailyFreeMatchesUsed += 1
         print("📊 Used daily live match. Remaining today: \(remainingFreeMatchesToday)")
     }
@@ -396,14 +419,5 @@ enum PurchaseError: Error, LocalizedError {
     }
 }
 
-// MARK: - Date Formatter Extension
 
-extension DateFormatter {
-    static let yyyyMMdd: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        formatter.timeZone = TimeZone.current
-        return formatter
-    }()
-}
 

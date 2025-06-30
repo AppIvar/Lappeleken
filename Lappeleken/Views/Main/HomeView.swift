@@ -28,8 +28,41 @@ struct HomeView: View {
                     // Enhanced app branding
                     appBrandingSection
                     
+                    // Free testing banner (if active)
+                    freeTestingBannerSection
+                    
                     // Enhanced mode selection cards
-                    gameModeSelectionSection
+                    VStack(spacing: 20) {
+                        Text("Choose Your Game Mode")
+                            .font(.system(size: 22, weight: .semibold, design: .rounded))
+                            .foregroundColor(AppDesignSystem.Colors.primaryText)
+                        
+                        VStack(spacing: 16) {
+                            // Manual mode card (unchanged)
+                            EnhancedModeCard(
+                                title: "Manual Mode",
+                                subtitle: "Create custom games with your own players",
+                                icon: "gamecontroller.fill",
+                                color: AppDesignSystem.Colors.secondary,
+                                isSelected: !isLiveMode,
+                                features: ["Custom players", "Offline play", "Unlimited games", "Full control"],
+                                badge: nil
+                            ) {
+                                withAnimation(AppDesignSystem.Animations.bouncy) {
+                                    isLiveMode = false
+                                    UserDefaults.standard.set(false, forKey: "isLiveMode")
+                                    NotificationCenter.default.post(
+                                        name: Notification.Name("AppModeChanged"),
+                                        object: nil
+                                    )
+                                    showingNewGameSheet = true
+                                }
+                            }
+                            
+                            // Updated live mode card
+                            updatedLiveModeCard
+                        }
+                    }
                     
                     // Enhanced quick actions
                     quickActionsSection
@@ -146,6 +179,118 @@ struct HomeView: View {
         }
     }
     
+    // MARK: - Free Testing Banner
+    
+    private var freeTestingBannerSection: some View {
+        Group {
+            if AppConfig.isFreeLiveTestingActive {
+                freeTestingActiveBanner
+            }
+        }
+    }
+    
+    private var freeTestingActiveBanner: some View {
+        VStack(spacing: 16) {
+            HStack(spacing: 12) {
+                Image(systemName: "gift.fill")
+                    .font(.system(size: 24))
+                    .foregroundColor(.white)
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Text("FREE LIVE MODE")
+                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                            .foregroundColor(.white)
+                        
+                        Text("BETA")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(AppDesignSystem.Colors.warning)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.white)
+                            .cornerRadius(4)
+                    }
+                    
+                    Text("Unlimited matches for everyone during testing!")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(.white.opacity(0.9))
+                }
+                
+                Spacer()
+            }
+            
+            HStack(spacing: 16) {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(.white)
+                    
+                    Text("No limits")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white)
+                }
+                
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(.white.opacity(0.8))
+                    
+                    Text("May contain bugs")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.8))
+                }
+                
+                Spacer()
+            }
+        }
+        .padding(20)
+        .background(
+            RoundedRectangle(cornerRadius: 16)
+                .fill(
+                    LinearGradient(
+                        colors: [
+                            AppDesignSystem.Colors.success,
+                            AppDesignSystem.Colors.success.opacity(0.8)
+                        ],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 16)
+                .stroke(Color.white.opacity(0.3), lineWidth: 1)
+        )
+        .shadow(
+            color: AppDesignSystem.Colors.success.opacity(0.4),
+            radius: 12,
+            x: 0,
+            y: 6
+        )
+    }
+    
+    // MARK: - Updated Live Mode Card
+    
+    private var updatedLiveModeCard: some View {
+        EnhancedModeCard(
+            title: "Live Mode",
+            subtitle: AppConfig.isFreeLiveTestingActive ?
+                "Follow unlimited real matches (Free Testing)" :
+                "Follow real matches with automatic updates",
+            icon: "globe",
+            color: AppDesignSystem.Colors.primary,
+            isSelected: isLiveMode,
+            features: AppConfig.isFreeLiveTestingActive ?
+                ["Real matches", "Live updates", "Auto events", "Unlimited (Testing)"] :
+                ["Real matches", "Live updates", "Auto events", "Team lineups"],
+            badge: AppDesignSystem.BetaBadge()
+        ) {
+            withAnimation(AppDesignSystem.Animations.bouncy) {
+                handleLiveModeSelection()
+            }
+        }
+    }
+
     // MARK: - Game Mode Selection
     
     private var gameModeSelectionSection: some View {

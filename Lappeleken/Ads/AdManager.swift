@@ -183,7 +183,7 @@ class AdManager: NSObject, ObservableObject {
     
     /// Call this when live match events occur (goals, cards, etc.)
     func recordLiveMatchEvent(eventType: String = "match_event") {
-        // Only track for free users
+        // Track for ALL free users (including during testing period)
         guard AppPurchaseManager.shared.currentTier == .free else {
             print("ℹ️ Premium user - no event tracking")
             return
@@ -192,7 +192,7 @@ class AdManager: NSObject, ObservableObject {
         liveMatchEventCount += 1
         print("📊 Live event recorded: \(eventType). Total events: \(liveMatchEventCount)")
         
-        // Check if we should show an ad
+        // Show ads based on frequency during testing too
         if shouldShowAdAfterLiveEvent() {
             showEventBasedInterstitial()
         }
@@ -215,8 +215,15 @@ class AdManager: NSObject, ObservableObject {
     
     private func resetEventCounting() {
         liveMatchEventCount = 0
-        eventsUntilNextAd = Int.random(in: 2...3) // Reset to new random threshold
+        eventsUntilNextAd = Int.random(in: 2...3) // Show ad every 2-3 events as requested
         print("🔄 Event counting reset. Next ad in \(eventsUntilNextAd) events")
+        
+        // Track ad frequency during free testing
+        if AppConfig.isFreeLiveTestingActive {
+            let key = "freeTestingAdsShown_\(DateFormatter.yyyyMMdd.string(from: Date()))"
+            let currentCount = UserDefaults.standard.integer(forKey: key)
+            UserDefaults.standard.set(currentCount + 1, forKey: key)
+        }
     }
     
     private func showEventBasedInterstitial() {
@@ -249,6 +256,14 @@ class AdManager: NSObject, ObservableObject {
         liveMatchEventCount = 0
         eventsUntilNextAd = Int.random(in: 2...3)
         print("🎮 New live match session started. First ad in \(eventsUntilNextAd) events")
+        
+        // Track session starts during free testing
+        if AppConfig.isFreeLiveTestingActive {
+            let key = "freeTestingSessions_\(DateFormatter.yyyyMMdd.string(from: Date()))"
+            let currentCount = UserDefaults.standard.integer(forKey: key)
+            UserDefaults.standard.set(currentCount + 1, forKey: key)
+            print("📊 Free testing session tracked: \(currentCount + 1) today")
+        }
     }
     
     /// Call when ending a live match
@@ -409,6 +424,26 @@ class AdManager: NSObject, ObservableObject {
     func getLiveEventStats() -> (currentEvents: Int, eventsUntilAd: Int, adsShown: Int) {
         let adsShown = UserDefaults.standard.integer(forKey: "adImpressions_interstitial_live_event")
         return (liveMatchEventCount, eventsUntilNextAd, adsShown)
+    }
+    
+    // MARK: - Free Testing Analytics
+    
+    func getFreeTestingAdAnalytics() -> [String: Any] {
+        guard AppConfig.isFreeLiveTestingActive else {
+            return ["error": "Free testing not active"]
+        }
+        
+        let today = DateFormatter.yyyyMMdd.string(from: Date())
+        let adsToday = UserDefaults.standard.integer(forKey: "freeTestingAdsShown_\(today)")
+        let sessionsToday = UserDefaults.standard.integer(forKey: "freeTestingSessions_\(today)")
+        
+        return [
+            "adsShownToday": adsToday,
+            "sessionsToday": sessionsToday,
+            "adFrequency": "Every 2-3 events",
+            "currentEventCount": liveMatchEventCount,
+            "eventsUntilNextAd": eventsUntilNextAd
+        ]
     }
 }
 
