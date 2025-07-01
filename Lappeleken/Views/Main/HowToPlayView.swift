@@ -9,7 +9,6 @@ import SwiftUI
 
 struct HowToPlayView: View {
     @State private var currentStep = 0
-    @State private var animateBackground = false
     @State private var animateCards = false
     @State private var showAllSteps = false
     
@@ -98,10 +97,6 @@ struct HowToPlayView: View {
         .navigationTitle("How to Play")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
-            withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
-                animateBackground = true
-            }
-            
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                 withAnimation(.spring(response: 0.8, dampingFraction: 0.6)) {
                     animateCards = true
@@ -114,19 +109,8 @@ struct HowToPlayView: View {
     // MARK: - Background
     
     private var backgroundView: some View {
-        LinearGradient(
-            colors: [
-                AppDesignSystem.Colors.background,
-                AppDesignSystem.Colors.background.opacity(0.95),
-                AppDesignSystem.Colors.cardBackground
-            ],
-            startPoint: animateBackground ? .topLeading : .bottomTrailing,
-            endPoint: animateBackground ? .bottomTrailing : .topLeading
-        )
-        .ignoresSafeArea()
-        .overlay(
-            FloatingTutorialElements()
-        )
+        AppDesignSystem.Colors.background
+            .ignoresSafeArea()
     }
     
     // MARK: - Header Section

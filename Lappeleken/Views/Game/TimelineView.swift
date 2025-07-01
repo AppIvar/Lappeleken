@@ -382,7 +382,7 @@ struct EditableTimelineEventRow: View {
                         .frame(width: 12, height: 12)
                         .overlay(
                             Circle()
-                                .stroke(Color.white, lineWidth: 2)
+                                .stroke(AppDesignSystem.Colors.primary, lineWidth: 2)
                         )
                     
                     Rectangle()
@@ -471,7 +471,7 @@ struct EditableTimelineEventRow: View {
         .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill(Color.white)
+                .fill(AppDesignSystem.Colors.cardBackground)
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
                         .stroke(eventColor.opacity(0.2), lineWidth: 1)

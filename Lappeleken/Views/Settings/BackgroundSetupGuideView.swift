@@ -270,7 +270,7 @@ struct InstructionCard: View {
         }
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill(Color.white)
+                .fill(AppDesignSystem.Colors.cardBackground)
                 .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
         )
     }

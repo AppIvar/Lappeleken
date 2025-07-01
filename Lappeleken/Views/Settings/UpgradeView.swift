@@ -181,7 +181,7 @@ struct UpgradeView: View {
                 // Progress indicator
                 ZStack {
                     Circle()
-                        .stroke(Color.gray.opacity(0.2), lineWidth: 3)
+                        .stroke(Color.white.opacity(0.2), lineWidth: 3)
                         .frame(width: 30, height: 30)
                     
                     Circle()

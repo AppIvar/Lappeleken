@@ -12,9 +12,6 @@ struct PlayerCard: View {
     let isSelected: Bool
     let action: () -> Void
     
-    // REMOVED: @State private var isPressed = false
-    // REMOVED: @State private var animateGradient = false
-    
     private var playerAvatarGradient: RadialGradient {
         RadialGradient(
             colors: [

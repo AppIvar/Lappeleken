@@ -146,7 +146,7 @@ extension View {
                             .background(Color(UIColor.systemBackground))
                             .overlay(
                                 Rectangle()
-                                    .stroke(Color.gray.opacity(0.1), lineWidth: 1)
+                                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
                             )
                     }
                 }

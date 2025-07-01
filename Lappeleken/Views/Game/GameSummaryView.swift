@@ -12,9 +12,9 @@ struct GameSummaryView: View {
     @Environment(\.presentationMode) var presentationMode
     @State private var gameName: String = ""
     @State private var showingSaveDialog = false
-    @State private var animateGradient = false
     @State private var showConfetti = false
     @State private var pulseWinner = false
+
     
     // Computed properties
     private var sortedEvents: [GameEvent] {
@@ -86,9 +86,6 @@ struct GameSummaryView: View {
                 }
             }
             .onAppear {
-                withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
-                    animateGradient = true
-                }
                 
                 if winner != nil {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -136,16 +133,13 @@ struct GameSummaryView: View {
     
     private var backgroundView: some View {
         LinearGradient(
-            colors: winner != nil ? [
+            colors: [
                 AppDesignSystem.Colors.background,
                 AppDesignSystem.Colors.background.opacity(0.95),
                 AppDesignSystem.Colors.cardBackground
-            ] : [
-                Color(red: 0.95, green: 0.97, blue: 1.0),
-                Color(red: 0.98, green: 0.95, blue: 1.0)
             ],
-            startPoint: animateGradient ? .topLeading : .bottomTrailing,
-            endPoint: animateGradient ? .bottomTrailing : .topLeading
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
         )
         .ignoresSafeArea()
     }
@@ -608,29 +602,18 @@ struct GameSummaryView: View {
     // MARK: - Action Buttons
     
     @ObservedObject private var adManager = AdManager.shared
-    @State private var showingExportSheet = false
     
     private var actionButtonsSection: some View {
         VStack(spacing: 16) {
-            HStack(spacing: 16) {
-                Button("Save Game") {
-                    showingSaveDialog = true
-                }
-                .buttonStyle(EnhancedSecondaryButtonStyle())
-                
-                Button("Export Summary") {
-                    handleExportTap()
-                }
-                .buttonStyle(EnhancedPrimaryButtonStyle())
+            Button("Save Game") {
+                showingSaveDialog = true
             }
+            .buttonStyle(EnhancedPrimaryButtonStyle())
             
             Button("Return to Home") {
                 presentationMode.wrappedValue.dismiss()
             }
-            .buttonStyle(EnhancedTertiaryButtonStyle())
-        }
-        .sheet(isPresented: $showingExportSheet) {
-            exportOptionsSheet
+            .buttonStyle(EnhancedSecondaryButtonStyle())
         }
     }
     
@@ -665,7 +648,7 @@ struct GameSummaryView: View {
                         .padding(16)
                         .background(
                             RoundedRectangle(cornerRadius: 12)
-                                .fill(Color.white)
+                                .fill(AppDesignSystem.Colors.background)
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 12)
                                         .stroke(AppDesignSystem.Colors.primary.opacity(0.3), lineWidth: 1)
@@ -709,292 +692,10 @@ struct GameSummaryView: View {
         .showBannerAdForFreeUsers()
     }
     
-    // MARK: - Export Options Sheet (keeping your existing logic)
-    
-    private var exportOptionsSheet: some View {
-        NavigationView {
-            VStack(spacing: 20) {
-                Text("Export Game Summary")
-                    .font(.title2)
-                    .font(.system(size: 17, weight: .semibold))
-                
-                if AppPurchaseManager.shared.currentTier == .premium {
-                    VStack(spacing: 16) {
-                        exportOptionButton(
-                            title: "Export as PDF",
-                            subtitle: "Share or save PDF summary",
-                            icon: "doc.fill"
-                        ) {
-                            showingExportSheet = false
-                            exportPDF()
-                        }
-                        
-                        exportOptionButton(
-                            title: "Share Text Summary",
-                            subtitle: "Quick text version to share",
-                            icon: "square.and.arrow.up"
-                        ) {
-                            showingExportSheet = false
-                            shareTextSummary()
-                        }
-                    }
-                } else {
-                    VStack(spacing: 16) {
-                        Text("Export is a premium feature")
-                            .font(.headline)
-                            .foregroundColor(.secondary)
-                            .padding(.bottom, 8)
-                        
-                        if adManager.isRewardedReady {
-                            exportOptionButton(
-                                title: "Watch Ad to Export",
-                                subtitle: "Free with short video",
-                                icon: "play.tv.fill",
-                                color: .green
-                            ) {
-                                showRewardedAdForExport()
-                            }
-                        } else {
-                            VStack {
-                                Image(systemName: "clock")
-                                    .font(.title2)
-                                    .foregroundColor(.secondary)
-                                Text("Ad not ready - try again in a moment")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                                    .multilineTextAlignment(.center)
-                            }
-                            .padding()
-                            .background(Color.gray.opacity(0.1))
-                            .cornerRadius(12)
-                        }
-                        
-                        exportOptionButton(
-                            title: "Upgrade to Premium",
-                            subtitle: "Unlimited exports + more features",
-                            icon: "crown.fill",
-                            color: .blue
-                        ) {
-                            showingExportSheet = false
-                            showUpgradePrompt()
-                        }
-                    }
-                }
-                
-                Spacer()
-            }
-            .padding()
-            .navigationTitle("Export Options")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Cancel") {
-                        showingExportSheet = false
-                    }
-                }
-            }
-        }
-    }
-    
-    private func exportOptionButton(
-        title: String,
-        subtitle: String,
-        icon: String,
-        color: Color = .primary,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            HStack {
-                Image(systemName: icon)
-                    .font(.title2)
-                    .foregroundColor(color)
-                    .frame(width: 30)
-                
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.headline)
-                        .foregroundColor(.primary)
-                    
-                    Text(subtitle)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                }
-                
-                Spacer()
-                
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            .padding()
-            .background(Color.gray.opacity(0.1))
-            .cornerRadius(12)
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
     
     // MARK: - Helper Methods (keeping your existing logic)
     
-    private func handleExportTap() {
-        showingExportSheet = true
-    }
-    
-    private func showRewardedAdForExport() {
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let rootViewController = windowScene.windows.first?.rootViewController else {
-            return
-        }
-        
-        showingExportSheet = false
-        
-        adManager.showRewardedAd(from: rootViewController) { success in
-            DispatchQueue.main.async {
-                if success {
-                    self.exportPDF()
-                } else {
-                    print("❌ Failed to show rewarded ad for export")
-                }
-            }
-        }
-    }
-    
-    private func shareTextSummary() {
-        let summary = createGameSummaryText()
-        
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let rootViewController = windowScene.windows.first?.rootViewController else {
-            return
-        }
-        
-        let activityVC = UIActivityViewController(
-            activityItems: [summary],
-            applicationActivities: nil
-        )
-        
-        if let popover = activityVC.popoverPresentationController {
-            popover.sourceView = rootViewController.view
-            popover.sourceRect = CGRect(
-                x: rootViewController.view.bounds.midX,
-                y: rootViewController.view.bounds.midY,
-                width: 0,
-                height: 0
-            )
-        }
-        
-        rootViewController.present(activityVC, animated: true)
-    }
-    
-    private func createGameSummaryText() -> String {
-        var summary = "🏈 LUCKY FOOTBALL SLIP - GAME SUMMARY\n"
-        summary += "Generated: \(DateFormatter.localizedString(from: Date(), dateStyle: .medium, timeStyle: .short))\n\n"
-        
-        summary += "📊 EVENTS\n"
-        summary += String(repeating: "-", count: 40) + "\n"
-        
-        if hasEvents {
-            for event in sortedEvents {
-                summary += "• \(event.player.name) (\(event.player.team.name))\n"
-                summary += "  \(event.eventType.rawValue) - \(DateFormatter.localizedString(from: event.timestamp, dateStyle: .none, timeStyle: .short))\n\n"
-            }
-        } else {
-            summary += "No events recorded\n\n"
-        }
-        
-        summary += "💰 FINAL BALANCES\n"
-        summary += String(repeating: "-", count: 40) + "\n"
-        
-        for participant in sortedParticipants {
-            summary += "\(participant.name): \(formatCurrency(participant.balance))\n"
-        }
-        summary += "\n"
-        
-        summary += "💸 PAYMENTS NEEDED\n"
-        summary += String(repeating: "-", count: 40) + "\n"
-        
-        let payments = calculatePayments()
-        if payments.isEmpty {
-            summary += "No payments needed\n"
-        } else {
-            for payment in payments {
-                summary += "\(payment.from) → \(payment.to): \(formatCurrency(payment.amount))\n"
-            }
-        }
-        
-        summary += "\n---\nGenerated by Lucky Football Slip"
-        return summary
-    }
-    
-    private func showUpgradePrompt() {
-        let alert = UIAlertController(
-            title: "Premium Feature",
-            message: "Export functionality is available for premium users. Would you like to upgrade?",
-            preferredStyle: .alert
-        )
-        
-        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel))
-        alert.addAction(UIAlertAction(title: "Upgrade", style: .default) { _ in
-            NotificationCenter.default.post(
-                name: Notification.Name("ShowUpgradePrompt"),
-                object: nil
-            )
-        })
-        
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let window = windowScene.windows.first,
-           let rootVC = window.rootViewController {
-            rootVC.present(alert, animated: true)
-        }
-    }
-    
-    private func exportPDF() {
-        PDFExporter.exportGameSummary(gameSession: gameSession) { fileURL in
-            guard let url = fileURL else {
-                print("❌ Error exporting PDF")
-                return
-            }
-            
-            // Ensure we're on the main thread and dismiss any existing presentations first
-            DispatchQueue.main.async {
-                // Get the topmost view controller safely
-                guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                      let window = windowScene.windows.first else {
-                    print("❌ Could not get window for PDF sharing")
-                    return
-                }
-                
-                // Get the topmost presented view controller
-                var topViewController = window.rootViewController
-                while let presentedViewController = topViewController?.presentedViewController {
-                    topViewController = presentedViewController
-                }
-                
-                guard let rootVC = topViewController else {
-                    print("❌ Could not get root view controller for PDF sharing")
-                    return
-                }
-                
-                // Create the activity view controller
-                let activityVC = UIActivityViewController(
-                    activityItems: [url],
-                    applicationActivities: nil
-                )
-                
-                // Configure for iPad
-                if let popover = activityVC.popoverPresentationController {
-                    popover.sourceView = rootVC.view
-                    popover.sourceRect = CGRect(x: rootVC.view.bounds.midX, y: rootVC.view.bounds.midY, width: 0, height: 0)
-                    popover.permittedArrowDirections = []
-                }
-                
-                // Present with a small delay to ensure any other presentations are complete
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                    rootVC.present(activityVC, animated: true) {
-                        print("✅ PDF share sheet presented successfully")
-                    }
-                }
-            }
-        }
-    }
+
     
     private func formatCurrency(_ value: Double) -> String {
         let formatter = NumberFormatter()

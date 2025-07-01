@@ -717,7 +717,7 @@ struct GameView: View {
                 .padding(.vertical, 10)
                 .background(
                     RoundedRectangle(cornerRadius: 10)
-                        .fill(isSelected ? AppDesignSystem.Colors.accent.opacity(0.1) : Color.white)
+                        .fill(isSelected ? AppDesignSystem.Colors.success.opacity(0.1) : AppDesignSystem.Colors.cardBackground)
                         .overlay(
                             RoundedRectangle(cornerRadius: 10)
                                 .stroke(
@@ -755,7 +755,7 @@ struct GameView: View {
                     .padding(.vertical, 12)
                     .background(
                         RoundedRectangle(cornerRadius: 12)
-                            .fill(Color.white)
+                            .fill(AppDesignSystem.Colors.cardBackground)
                             .overlay(
                                 RoundedRectangle(cornerRadius: 12)
                                     .stroke(AppDesignSystem.Colors.primary.opacity(0.3), lineWidth: 1)
@@ -1191,7 +1191,7 @@ struct CompactPlayerRow: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(isActive ? Color.white : AppDesignSystem.Colors.secondaryText.opacity(0.1))
+            .background(isActive ? AppDesignSystem.Colors.cardBackground : AppDesignSystem.Colors.secondaryText.opacity(0.1))
             .cornerRadius(8)
         }
         .buttonStyle(PlainButtonStyle())
@@ -1232,7 +1232,7 @@ struct PlayerSelectionCard: View {
             .padding(12)
             .background(
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(isSelected ? AppDesignSystem.Colors.success.opacity(0.1) : Color.white)
+                    .fill(isSelected ? AppDesignSystem.Colors.accent.opacity(0.1) : AppDesignSystem.Colors.cardBackground)
                     .overlay(
                         RoundedRectangle(cornerRadius: 10)
                             .stroke(

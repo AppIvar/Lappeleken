@@ -16,7 +16,6 @@ struct SettingsView: View {
     @State private var showingUpgradeView = false
     @State private var showingLiveSetupInfo = false
     @State private var showingMatchSelection = false
-    @State private var animateGradient = false
     @State private var showingBackgroundSetup = false
 
     
@@ -109,27 +108,14 @@ struct SettingsView: View {
         .sheet(isPresented: $showingBackgroundSetup) {
             BackgroundSetupGuideView()
         }
-        .onAppear {
-            withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
-                animateGradient = true
-            }
-        }
         .withSmartMonetization()
     }
 
     // MARK: - Background
     
     private var backgroundView: some View {
-        LinearGradient(
-            colors: [
-                AppDesignSystem.Colors.background,
-                AppDesignSystem.Colors.background.opacity(0.95),
-                AppDesignSystem.Colors.cardBackground
-            ],
-            startPoint: animateGradient ? .topLeading : .bottomTrailing,
-            endPoint: animateGradient ? .bottomTrailing : .topLeading
-        )
-        .ignoresSafeArea()
+        AppDesignSystem.Colors.background
+            .ignoresSafeArea()
     }
     
     // MARK: - Game Mode Content
@@ -248,7 +234,7 @@ struct SettingsView: View {
                 // Visual indicator
                 ZStack {
                     Circle()
-                        .stroke(Color.gray.opacity(0.2), lineWidth: 3)
+                        .stroke(Color.white.opacity(0.2), lineWidth: 3)
                         .frame(width: 40, height: 40)
                     
                     Circle()
@@ -934,7 +920,7 @@ struct EnhancedUpgradeRow: View {
                                 currentTier == .premium ?
                                 AppDesignSystem.Colors.success.opacity(0.1) :
                                 AppDesignSystem.Colors.warning.opacity(0.1),
-                                Color.white
+                                AppDesignSystem.Colors.cardBackground
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
@@ -1048,7 +1034,7 @@ struct EnhancedCurrencyRow: View {
                             endPoint: .bottomTrailing
                         ) :
                         LinearGradient(
-                            colors: [Color.white, Color.white],
+                            colors: [AppDesignSystem.Colors.cardBackground, AppDesignSystem.Colors.cardBackground],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )

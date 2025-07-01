@@ -13,7 +13,6 @@ struct HomeView: View {
     @State private var showingNewGameSheet = false
     @State private var showingLiveInfoSheet = false
     @State private var showingHistoryView = false
-    @State private var animateGradient = false
     @State private var pulseApp = false
     
     var body: some View {
@@ -87,9 +86,6 @@ struct HomeView: View {
             showingHistoryView = true
         }
         .onAppear {
-            withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
-                animateGradient = true
-            }
             withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
                 pulseApp = true
             }
@@ -100,19 +96,8 @@ struct HomeView: View {
     // MARK: - Background
     
     private var backgroundView: some View {
-        ZStack {
-            // Animated gradient background
-            LinearGradient(
-                colors: [
-                    AppDesignSystem.Colors.background,
-                    AppDesignSystem.Colors.background.opacity(0.95),
-                    AppDesignSystem.Colors.cardBackground
-                ],
-                startPoint: animateGradient ? .topLeading : .bottomTrailing,
-                endPoint: animateGradient ? .bottomTrailing : .topLeading
-            )
+        AppDesignSystem.Colors.background
             .ignoresSafeArea()
-        }
     }
     
     // MARK: - App Branding

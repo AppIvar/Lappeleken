@@ -388,7 +388,7 @@ struct UnifiedPlayerCard: View {
                 RoundedRectangle(cornerRadius: 10)
                     .fill(isSelected ? 
                           AppDesignSystem.TeamColors.getAccentColor(for: player.team).opacity(0.2) :
-                          Color.white)
+                            AppDesignSystem.Colors.cardBackground)
             )
             .overlay(
                 RoundedRectangle(cornerRadius: 10)

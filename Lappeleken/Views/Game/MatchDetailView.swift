@@ -11,7 +11,6 @@ struct MatchDetailView: View {
     @ObservedObject var gameSession: GameSession
     @State private var selectedTab = 0
     @State private var isLoading = false
-    @State private var animateBackground = false
     @State private var pulseMatchHeader = false
     
     var body: some View {
@@ -50,9 +49,6 @@ struct MatchDetailView: View {
             }
         }
         .onAppear {
-            withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
-                animateBackground = true
-            }
             withAnimation(.easeInOut(duration: 2).repeatForever(autoreverses: true)) {
                 pulseMatchHeader = true
             }
@@ -63,21 +59,8 @@ struct MatchDetailView: View {
     // MARK: - Enhanced Background
     
     private var backgroundView: some View {
-        LinearGradient(
-            colors: [
-                AppDesignSystem.Colors.background,
-                AppDesignSystem.Colors.success.opacity(0.03),
-                AppDesignSystem.Colors.primary.opacity(0.02),
-                AppDesignSystem.Colors.background
-            ],
-            startPoint: animateBackground ? .topLeading : .bottomTrailing,
-            endPoint: animateBackground ? .bottomTrailing : .topLeading
-        )
-        .ignoresSafeArea()
-        .overlay(
-            // Floating match elements
-            FloatingMatchElements()
-        )
+        AppDesignSystem.Colors.background
+            .ignoresSafeArea()
     }
 }
 
@@ -415,7 +398,7 @@ struct EnhancedTabSelector: View {
                 .fill(AppDesignSystem.Colors.cardBackground)
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
                 )
         )
         .shadow(
@@ -706,7 +689,7 @@ struct EnhancedPlayerLineupCard: View {
         .padding(8)
         .background(
             RoundedRectangle(cornerRadius: 8)
-                .fill(Color.white.opacity(0.8))
+                .fill(AppDesignSystem.Colors.cardBackground.opacity(0.8))
                 .overlay(
                     RoundedRectangle(cornerRadius: 8)
                         .stroke(teamColor.opacity(0.3), lineWidth: 1)

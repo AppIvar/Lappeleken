@@ -14,7 +14,6 @@ struct AssignPlayersView: View {
     @State private var showConfetti = false
     @State private var currentParticipantIndex = -1
     @State private var assignedPlayerIds: [UUID] = []
-    @State private var animateBackground = false
     @State private var pulseButton = false
     
     var body: some View {
@@ -46,9 +45,6 @@ struct AssignPlayersView: View {
             }
         }
         .onAppear {
-            withAnimation(.easeInOut(duration: 3).repeatForever(autoreverses: true)) {
-                animateBackground = true
-            }
             withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
                 pulseButton = true
             }
@@ -58,20 +54,8 @@ struct AssignPlayersView: View {
     // MARK: - Background
     
     private var backgroundView: some View {
-        LinearGradient(
-            colors: assignmentComplete ? [
-                AppDesignSystem.Colors.success.opacity(0.1),
-                AppDesignSystem.Colors.primary.opacity(0.05),
-                AppDesignSystem.Colors.secondary.opacity(0.1)
-            ] : [
-                AppDesignSystem.Colors.background,
-                AppDesignSystem.Colors.primary.opacity(0.05),
-                AppDesignSystem.Colors.background
-            ],
-            startPoint: animateBackground ? .topLeading : .bottomTrailing,
-            endPoint: animateBackground ? .bottomTrailing : .topLeading
-        )
-        .ignoresSafeArea()
+        AppDesignSystem.Colors.background
+            .ignoresSafeArea()
     }
     
     // MARK: - Pre-Assignment View

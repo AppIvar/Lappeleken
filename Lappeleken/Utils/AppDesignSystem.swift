@@ -16,8 +16,8 @@ struct AppDesignSystem {
         static let accent = Color(red: 0.85, green: 0.0, blue: 0.65)
         
         // Adaptive backgrounds
-        static let background = Color(.systemBackground)
-        static let cardBackground = Color(.secondarySystemBackground)
+        static let background = Color(UIColor.systemBackground)
+        static let cardBackground = Color(UIColor.secondarySystemGroupedBackground)
         
         // Adaptive text colors
         static let primaryText = Color(.label)
@@ -37,6 +37,10 @@ struct AppDesignSystem {
         // Football-themed colors
         static let grassGreen = Color(red: 0.2, green: 0.8, blue: 0.4)
         static let goalYellow = Color(red: 1.0, green: 0.8, blue: 0.0)
+        
+        static let surfaceBackground = Color(UIColor.secondarySystemBackground)
+        static let groupedBackground = Color(UIColor.systemGroupedBackground)
+        static let cardSurface = Color(UIColor.secondarySystemGroupedBackground)
     }
     
     // MARK: - Typography (enhanced but same names)
@@ -214,7 +218,7 @@ extension View {
         self
             .background(
                 RoundedRectangle(cornerRadius: AppDesignSystem.Layout.cornerRadius)
-                    .fill(Color.white.opacity(0.85))
+                    .fill(AppDesignSystem.Colors.cardBackground.opacity(0.85))
                     .overlay(
                         RoundedRectangle(cornerRadius: AppDesignSystem.Layout.cornerRadius)
                             .stroke(Color.white.opacity(0.3), lineWidth: 1)

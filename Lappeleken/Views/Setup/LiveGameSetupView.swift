@@ -430,7 +430,7 @@ struct LiveGameSetupView: View {
                         .padding()
                         .background(
                             RoundedRectangle(cornerRadius: AppDesignSystem.Layout.cornerRadius)
-                                .fill(Color.white)
+                                .fill(AppDesignSystem.Colors.cardBackground)
                                 .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
                         )
                         .onSubmit {
@@ -1330,7 +1330,7 @@ struct EnhancedParticipantCard: View {
         .frame(maxWidth: .infinity)
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill(Color.white)
+                .fill(AppDesignSystem.Colors.cardBackground)
                 .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
         )
         .scaleEffect(isPressed ? 0.95 : 1.0)
@@ -1362,7 +1362,7 @@ struct ParticipantRow: View {
         .padding()
         .background(
             RoundedRectangle(cornerRadius: AppDesignSystem.Layout.cornerRadius)
-                .fill(Color.white)
+                .fill(AppDesignSystem.Colors.cardBackground)
                 .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
         )
     }

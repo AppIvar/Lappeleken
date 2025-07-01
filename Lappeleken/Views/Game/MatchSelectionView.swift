@@ -15,7 +15,6 @@ struct MatchSelectionView: View {
     @State private var isSelectingMatch = false
     @State private var selectedMatchId: String? = nil
     @State private var error: String? = nil
-    @State private var animateGradient = false
     @StateObject private var networkMonitor = NetworkMonitor()
     
     var body: some View {
@@ -48,9 +47,6 @@ struct MatchSelectionView: View {
                 }
             }
             .onAppear {
-                withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
-                    animateGradient = true
-                }
                 
                 if gameSession.availableMatches.isEmpty {
                     loadMatches()
@@ -63,15 +59,8 @@ struct MatchSelectionView: View {
     // MARK: - Background
     
     private var backgroundView: some View {
-        LinearGradient(
-            colors: [
-                Color(red: 0.95, green: 0.97, blue: 1.0),
-                Color(red: 0.98, green: 0.95, blue: 1.0)
-            ],
-            startPoint: animateGradient ? .topLeading : .bottomTrailing,
-            endPoint: animateGradient ? .bottomTrailing : .topLeading
-        )
-        .ignoresSafeArea()
+        AppDesignSystem.Colors.background
+            .ignoresSafeArea()
     }
     
     // MARK: - Loading View
