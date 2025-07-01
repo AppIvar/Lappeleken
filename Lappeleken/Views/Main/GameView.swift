@@ -125,9 +125,9 @@ struct GameView: View {
     private var backgroundView: some View {
         LinearGradient(
             colors: [
-                Color(red: 0.95, green: 0.98, blue: 1.0),
-                Color(red: 0.98, green: 0.96, blue: 1.0),
-                Color(red: 0.96, green: 0.97, blue: 1.0)
+                AppDesignSystem.Colors.background,
+                AppDesignSystem.Colors.background.opacity(0.95),
+                AppDesignSystem.Colors.cardBackground
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing

@@ -160,7 +160,7 @@ struct LiveModeInfoView: View {
                     .foregroundColor(AppDesignSystem.Colors.warning)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
-                    .background(Color.white)
+                    .background(AppDesignSystem.Colors.cardBackground)
                     .cornerRadius(4)
             }
             

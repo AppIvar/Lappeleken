@@ -84,42 +84,67 @@ class GameHistoryManager: ObservableObject {
     // MARK: - New Methods for SavedGameSession compatibility
     
     func getSavedGameSessions() -> [SavedGameSession] {
-        // Load from the correct key for SavedGameSession format
-        if let data = UserDefaults.standard.data(forKey: "savedGameSessions"),
-           let games = try? JSONDecoder().decode([SavedGameSession].self, from: data) {
-            print("📚 Loaded \(games.count) saved games from storage")
-            return games.sorted { $0.dateSaved > $1.dateSaved }
+        // Try loading new format first
+        if let data = UserDefaults.standard.data(forKey: "savedGameSessions") {
+            do {
+                let games = try JSONDecoder().decode([SavedGameSession].self, from: data)
+                return games.sorted { $0.dateSaved > $1.dateSaved }
+            } catch {
+                // Clear corrupted data
+                UserDefaults.standard.removeObject(forKey: "savedGameSessions")
+            }
         }
         
         // Fallback: try to load old format and convert
-        if let data = UserDefaults.standard.data(forKey: "savedGames"),
-           let oldGames = try? JSONDecoder().decode([SavedGame].self, from: data) {
-            print("📚 Converting \(oldGames.count) old format games")
-            return convertOldGamesToNew(oldGames)
+        if let data = UserDefaults.standard.data(forKey: "savedGames") {
+            do {
+                let oldGames = try JSONDecoder().decode([SavedGame].self, from: data)
+                let convertedGames = convertOldGamesToNew(oldGames)
+                
+                // Clean up old data after successful conversion
+                if !convertedGames.isEmpty {
+                    UserDefaults.standard.removeObject(forKey: "savedGames")
+                }
+                
+                return convertedGames
+            } catch {
+                // Clear corrupted old format data
+                UserDefaults.standard.removeObject(forKey: "savedGames")
+            }
         }
         
-        print("📚 No saved games found in storage")
         return []
     }
-    
-    // Convert old SavedGame format to new SavedGameSession format
+
+
     private func convertOldGamesToNew(_ oldGames: [SavedGame]) -> [SavedGameSession] {
         var newGames: [SavedGameSession] = []
         
         for oldGame in oldGames {
-            if let gameSession = try? JSONDecoder().decode(GameSession.self, from: oldGame.gameData) {
-                let newGame = SavedGameSession(from: gameSession, name: oldGame.name)
-                newGames.append(newGame)
+            do {
+                let gameSession = try JSONDecoder().decode(GameSession.self, from: oldGame.gameData)
+                
+                if !gameSession.participants.isEmpty || !gameSession.events.isEmpty {
+                    let newGame = SavedGameSession(from: gameSession, name: oldGame.name)
+                    newGames.append(newGame)
+                }
+            } catch {
+                // Skip corrupted games
+                continue
             }
         }
         
         // Save in new format
-        if let encoded = try? JSONEncoder().encode(newGames) {
-            UserDefaults.standard.set(encoded, forKey: "savedGameSessions")
+        if !newGames.isEmpty {
+            if let encoded = try? JSONEncoder().encode(newGames) {
+                UserDefaults.standard.set(encoded, forKey: "savedGameSessions")
+            }
         }
         
         return newGames.sorted { $0.dateSaved > $1.dateSaved }
     }
+
+    
 
     func saveGameSession(_ gameSession: GameSession, name: String) {
         print("🎮 Saving game session: \(name)")
@@ -194,6 +219,7 @@ struct SavedGameSession: Identifiable, Codable {
     let participants: [Participant]
     let events: [GameEvent]
     let selectedPlayers: [Player]
+    let bets: [Bet]
     
     init(from gameSession: GameSession, name: String) {
         self.id = UUID()
@@ -202,5 +228,6 @@ struct SavedGameSession: Identifiable, Codable {
         self.participants = gameSession.participants
         self.events = gameSession.events
         self.selectedPlayers = gameSession.selectedPlayers
+        self.bets = gameSession.bets
     }
 }

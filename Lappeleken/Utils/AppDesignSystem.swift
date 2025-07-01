@@ -10,33 +10,33 @@ import SwiftUI
 struct AppDesignSystem {
     // MARK: - Enhanced Colors (keeping same property names)
     struct Colors {
-        // Primary colors - now more vibrant
-        static let primary = Color(red: 0.0, green: 0.48, blue: 1.0) // Bright blue
-        static let secondary = Color(red: 1.0, green: 0.45, blue: 0.0) // Vibrant orange
-        static let accent = Color(red: 0.85, green: 0.0, blue: 0.65) // Magenta
+        // Adaptive colors that work in both light and dark mode
+        static let primary = Color(red: 0.0, green: 0.48, blue: 1.0)
+        static let secondary = Color(red: 1.0, green: 0.45, blue: 0.0)
+        static let accent = Color(red: 0.85, green: 0.0, blue: 0.65)
         
-        // Background colors - warmer and more inviting
-        static let background = Color(red: 0.98, green: 0.98, blue: 1.0) // Very light blue tint
-        static let cardBackground = Color.white
+        // Adaptive backgrounds
+        static let background = Color(.systemBackground)
+        static let cardBackground = Color(.secondarySystemBackground)
         
-        // Text Colors - same names, enhanced contrast
-        static let primaryText = Color(red: 0.15, green: 0.15, blue: 0.2)
-        static let secondaryText = Color(red: 0.4, green: 0.4, blue: 0.5)
+        // Adaptive text colors
+        static let primaryText = Color(.label)
+        static let secondaryText = Color(.secondaryLabel)
         
-        // Status colors - more vibrant
-        static let success = Color(red: 0.0, green: 0.8, blue: 0.4) // Bright green
-        static let warning = Color(red: 1.0, green: 0.6, blue: 0.0) // Bright orange
-        static let error = Color(red: 1.0, green: 0.2, blue: 0.3) // Bright red
+        // Status colors (these work well in both modes)
+        static let success = Color(red: 0.0, green: 0.8, blue: 0.4)
+        static let warning = Color(red: 1.0, green: 0.6, blue: 0.0)
+        static let error = Color(red: 1.0, green: 0.2, blue: 0.3)
+        static let info = Color(red: 0.0, green: 0.7, blue: 1.0)
         
-        // New additions for enhanced UI
-        static let info = Color(red: 0.0, green: 0.7, blue: 1.0) // Bright cyan
+        // Interactive states
         static let selected = primary.opacity(0.15)
-        static let pressed = Color.black.opacity(0.1)
-        static let disabled = Color.gray.opacity(0.3)
+        static let pressed = Color(.systemGray4)
+        static let disabled = Color(.systemGray3)
         
         // Football-themed colors
-        static let grassGreen = Color(red: 0.2, green: 0.8, blue: 0.2)
-        static let goalYellow = Color(red: 1.0, green: 0.9, blue: 0.0)
+        static let grassGreen = Color(red: 0.2, green: 0.8, blue: 0.4)
+        static let goalYellow = Color(red: 1.0, green: 0.8, blue: 0.0)
     }
     
     // MARK: - Typography (enhanced but same names)

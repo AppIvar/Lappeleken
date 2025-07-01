@@ -137,9 +137,9 @@ struct GameSummaryView: View {
     private var backgroundView: some View {
         LinearGradient(
             colors: winner != nil ? [
-                AppDesignSystem.Colors.success.opacity(0.1),
-                AppDesignSystem.Colors.primary.opacity(0.1),
-                Color(red: 0.98, green: 0.98, blue: 1.0)
+                AppDesignSystem.Colors.background,
+                AppDesignSystem.Colors.background.opacity(0.95),
+                AppDesignSystem.Colors.cardBackground
             ] : [
                 Color(red: 0.95, green: 0.97, blue: 1.0),
                 Color(red: 0.98, green: 0.95, blue: 1.0)

@@ -713,6 +713,64 @@ class GameSession: ObservableObject, Codable {
         }
     }
     
+    func recalculateBalancesFromEvents() {
+        // Reset all participant balances to zero
+        for i in 0..<participants.count {
+            participants[i].balance = 0.0
+        }
+        
+        // Replay all events to recalculate balances
+        for event in events {
+            guard let bet = bets.first(where: { $0.eventType == event.eventType }) else { continue }
+            
+            // Find participants who have the player
+            let participantsWithPlayer = participants.filter { participant in
+                participant.selectedPlayers.contains { $0.id == event.player.id } ||
+                participant.substitutedPlayers.contains { $0.id == event.player.id }
+            }
+            
+            // Find participants who don't have the player
+            let participantsWithoutPlayer = participants.filter { participant in
+                !participant.selectedPlayers.contains { $0.id == event.player.id } &&
+                !participant.substitutedPlayers.contains { $0.id == event.player.id }
+            }
+            
+            guard !participantsWithPlayer.isEmpty && !participantsWithoutPlayer.isEmpty else {
+                continue
+            }
+            
+            // Apply the same payment logic as the existing calculatePayments method
+            if bet.amount >= 0 {
+                let totalAmount = Double(participantsWithoutPlayer.count) * bet.amount
+                let amountPerWinner = totalAmount / Double(participantsWithPlayer.count)
+                
+                for i in 0..<participants.count {
+                    let hasPlayer = participants[i].selectedPlayers.contains { $0.id == event.player.id } ||
+                    participants[i].substitutedPlayers.contains { $0.id == event.player.id }
+                    
+                    if hasPlayer {
+                        participants[i].balance += amountPerWinner
+                    } else {
+                        participants[i].balance -= bet.amount
+                    }
+                }
+            } else {
+                let payAmount = abs(bet.amount)
+                
+                for i in 0..<participants.count {
+                    let hasPlayer = participants[i].selectedPlayers.contains { $0.id == event.player.id } ||
+                    participants[i].substitutedPlayers.contains { $0.id == event.player.id }
+                    
+                    if hasPlayer {
+                        participants[i].balance -= payAmount * Double(participantsWithoutPlayer.count)
+                    } else {
+                        participants[i].balance += payAmount * Double(participantsWithPlayer.count)
+                    }
+                }
+            }
+        }
+    }
+    
     func addCustomEvent(name: String, amount: Double) {
         let bet = Bet(eventType: .custom, amount: amount)
         bets.append(bet)

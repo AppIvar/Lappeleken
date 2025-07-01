@@ -20,6 +20,7 @@ struct ContentView: View {
     @State private var gameName = ""
     @State private var showAutoSavePrompt = false
     @State private var isLoadingGame = false
+    @State private var isContinuingSavedGame = false
 
     
     var body: some View {
@@ -39,14 +40,19 @@ struct ContentView: View {
                     }
                     .onAppear {
                         // Show save prompt when game view appears (game has started)
+                        // BUT skip it if we're continuing a saved game
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                             if AppPurchaseManager.shared.currentTier == .free &&
                                !gameSession.participants.isEmpty &&
+                               !isContinuingSavedGame &&
                                !UserDefaults.standard.bool(forKey: "hasShownSavePromptFor\(gameSession.id.uuidString)") {
                                 
                                 showAutoSavePrompt = true
                                 UserDefaults.standard.set(true, forKey: "hasShownSavePromptFor\(gameSession.id.uuidString)")
                             }
+                            
+                            // Reset the flag after checking
+                            isContinuingSavedGame = false
                         }
                     }
             } else {
@@ -94,12 +100,19 @@ struct ContentView: View {
                            let restoredGameSession = userInfo["gameSession"] as? GameSession,
                            let gameName = userInfo["gameName"] as? String {
                             
+                            // Set flag to indicate we're continuing a saved game
+                            isContinuingSavedGame = true
+                            
                             // Replace current game session with restored one
                             gameSession.participants = restoredGameSession.participants
                             gameSession.events = restoredGameSession.events
                             gameSession.selectedPlayers = restoredGameSession.selectedPlayers
                             gameSession.availablePlayers = restoredGameSession.availablePlayers
                             gameSession.canUndoLastEvent = restoredGameSession.canUndoLastEvent
+                            gameSession.bets = restoredGameSession.bets
+                            
+                            // Close history view immediately
+                            showHistoryView = false
                             
                             // Start the game
                             activeGame = true
@@ -108,7 +121,6 @@ struct ContentView: View {
                             print("📊 Restored \(gameSession.participants.count) participants, \(gameSession.events.count) events")
                         }
                     }
-
 
                     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("CloseHistoryView"))) { _ in
                         showHistoryView = false
@@ -184,7 +196,7 @@ struct ContentView: View {
                 
                 TextField("Game name (optional)", text: $gameName)
                     .padding()
-                    .background(Color.white)
+                    .background(AppDesignSystem.Colors.cardBackground)
                     .cornerRadius(AppDesignSystem.Layout.cornerRadius)
                     .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
                 

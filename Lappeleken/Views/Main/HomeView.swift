@@ -104,9 +104,9 @@ struct HomeView: View {
             // Animated gradient background
             LinearGradient(
                 colors: [
-                    Color(red: 0.95, green: 0.97, blue: 1.0),
-                    Color(red: 0.98, green: 0.95, blue: 1.0),
-                    Color(red: 0.96, green: 0.98, blue: 1.0)
+                    AppDesignSystem.Colors.background,
+                    AppDesignSystem.Colors.background.opacity(0.95),
+                    AppDesignSystem.Colors.cardBackground
                 ],
                 startPoint: animateGradient ? .topLeading : .bottomTrailing,
                 endPoint: animateGradient ? .bottomTrailing : .topLeading
@@ -207,7 +207,7 @@ struct HomeView: View {
                             .foregroundColor(AppDesignSystem.Colors.warning)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(Color.white)
+                            .background(AppDesignSystem.Colors.cardBackground)
                             .cornerRadius(4)
                     }
                     

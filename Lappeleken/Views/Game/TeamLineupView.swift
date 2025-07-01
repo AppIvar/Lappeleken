@@ -141,7 +141,7 @@ struct PlayerLineupCard: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(Color.white)
+        .background(AppDesignSystem.Colors.cardBackground)
         .cornerRadius(8)
         .shadow(color: Color.black.opacity(0.05), radius: 1, x: 0, y: 1)
     }

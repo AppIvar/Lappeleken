@@ -122,9 +122,9 @@ struct SettingsView: View {
     private var backgroundView: some View {
         LinearGradient(
             colors: [
-                Color(red: 0.95, green: 0.98, blue: 1.0),
-                Color(red: 0.98, green: 0.96, blue: 1.0),
-                Color(red: 0.96, green: 0.97, blue: 1.0)
+                AppDesignSystem.Colors.background,
+                AppDesignSystem.Colors.background.opacity(0.95),
+                AppDesignSystem.Colors.cardBackground
             ],
             startPoint: animateGradient ? .topLeading : .bottomTrailing,
             endPoint: animateGradient ? .bottomTrailing : .topLeading
@@ -819,7 +819,7 @@ struct EnhancedSettingsRow: View {
             .padding(16)
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.white)
+                    .fill(AppDesignSystem.Colors.cardBackground)
                     .overlay(
                         RoundedRectangle(cornerRadius: 12)
                             .stroke(color.opacity(0.1), lineWidth: 1)
@@ -1042,7 +1042,7 @@ struct EnhancedCurrencyRow: View {
                         LinearGradient(
                             colors: [
                                 AppDesignSystem.Colors.success.opacity(0.1),
-                                Color.white
+                                AppDesignSystem.Colors.cardBackground
                             ],
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing

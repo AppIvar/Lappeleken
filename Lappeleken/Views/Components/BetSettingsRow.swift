@@ -76,7 +76,7 @@ struct BetSettingsRow: View {
                 ), formatter: NumberFormatter())
                 .keyboardType(.decimalPad)
                 .padding()
-                .background(Color.white)
+                .background(AppDesignSystem.Colors.cardBackground)
                 .cornerRadius(AppDesignSystem.Layout.cornerRadius)
                 .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
             }

@@ -17,6 +17,8 @@ struct HistoryView: View {
     @State private var showingSortOptions = false
     @State private var selectedGame: SavedGameSession?
     @State private var showingGameDetail = false
+
+    
     
     enum SortOption: String, CaseIterable {
         case newest = "Newest First"
@@ -76,15 +78,13 @@ struct HistoryView: View {
             }
             .navigationTitle("Game History")
             .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Done") {
-                        presentationMode.wrappedValue.dismiss()
-                    }
-                    .foregroundColor(AppDesignSystem.Colors.primary)
-                    .font(.system(size: 17, weight: .semibold))
-                }
+            .navigationBarItems(trailing:
+                                    Button("Done") {
+                presentationMode.wrappedValue.dismiss()
             }
+                .foregroundColor(AppDesignSystem.Colors.primary)
+                .font(.system(size: 17, weight: .semibold))
+            )
             .onAppear {
                 withAnimation(.easeInOut(duration: 2.0).repeatForever(autoreverses: true)) {
                     animateGradient = true
@@ -94,6 +94,28 @@ struct HistoryView: View {
             .sheet(isPresented: $showingGameDetail) {
                 if let game = selectedGame {
                     GameDetailSheet(game: game)
+                } else {
+                    VStack {
+                        Text("Error: No game selected")
+                            .foregroundColor(.red)
+                        Button("Close") {
+                            showingGameDetail = false
+                        }
+                    }
+                    .padding()
+                    .onAppear {
+                        // Debug: Check what's happening with selectedGame
+                        print("❌ Sheet presented but selectedGame is nil")
+                        print("❌ showingGameDetail: \(showingGameDetail)")
+                        print("❌ savedGames count: \(savedGames.count)")
+                    }
+                }
+            }
+            .onChange(of: showingGameDetail) { isShowing in
+                // Add this back - it's important for debugging
+                print("🎭 Sheet state changed to: \(isShowing)")
+                if isShowing {
+                    print("🎭 Selected game: \(selectedGame?.name ?? "nil")")
                 }
             }
         }
@@ -106,9 +128,9 @@ struct HistoryView: View {
     private var backgroundView: some View {
         LinearGradient(
             colors: [
-                Color(red: 0.95, green: 0.97, blue: 1.0),
-                Color(red: 0.98, green: 0.95, blue: 1.0),
-                Color(red: 0.96, green: 0.98, blue: 0.95)
+                AppDesignSystem.Colors.background,
+                AppDesignSystem.Colors.background.opacity(0.95),
+                AppDesignSystem.Colors.cardBackground
             ],
             startPoint: animateGradient ? .topLeading : .bottomTrailing,
             endPoint: animateGradient ? .bottomTrailing : .topLeading
@@ -373,8 +395,6 @@ struct HistoryView: View {
             withAnimation(.spring()) {
                 self.isLoading = false
             }
-            
-            print("📚 Loaded \(self.savedGames.count) saved games")
         }
     }
     
@@ -545,7 +565,6 @@ struct EnhancedGameCard: View {
                             )
                     )
                 } else {
-                    // Show participant names
                     Text("Players: \(game.participants.map { $0.name }.joined(separator: ", "))")
                         .font(.system(size: 14, weight: .medium, design: .rounded))
                         .foregroundColor(AppDesignSystem.Colors.secondaryText)
@@ -618,7 +637,6 @@ struct EnhancedGameCard: View {
         return formatter.string(from: NSNumber(value: value)) ?? "€0"
     }
 }
-
 // MARK: - Game Stat Item
 
 struct GameStatItem: View {
@@ -673,16 +691,13 @@ struct GameDetailSheet: View {
             }
             .navigationTitle("Game Details")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Close") {
-                        presentationMode.wrappedValue.dismiss()
-                    }
-                    .foregroundColor(AppDesignSystem.Colors.primary)
+            .navigationBarItems(trailing:
+                Button("Close") {
+                    presentationMode.wrappedValue.dismiss()
                 }
-            }
+                .foregroundColor(AppDesignSystem.Colors.primary)
+            )
             .onAppear {
-                // Add a small delay to ensure data is properly loaded
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                     withAnimation(.easeOut(duration: 0.3)) {
                         isLoading = false
@@ -745,7 +760,6 @@ struct GameDetailSheet: View {
                     VStack(spacing: 8) {
                         ForEach(Array(game.participants.sorted(by: { $0.balance > $1.balance }).enumerated()), id: \.element.id) { index, participant in
                             HStack {
-                                // Position indicator
                                 ZStack {
                                     Circle()
                                         .fill(positionColor(index + 1))
@@ -839,7 +853,6 @@ struct GameDetailSheet: View {
                 
                 // Action buttons
                 VStack(spacing: 16) {
-                    // Continue Game Button - PRIMARY ACTION
                     Button("Continue This Game") {
                         continueGame()
                     }
@@ -904,9 +917,8 @@ struct GameDetailSheet: View {
     }
     
     private func continueGame() {
-        // Check if we should show interstitial ad for free users
         if AppPurchaseManager.shared.currentTier == .free &&
-            AdManager.shared.shouldShowInterstitialForSettings() { // Using settings method as proxy
+            AdManager.shared.shouldShowInterstitialForSettings() {
             showInterstitialThenContinueGame()
         } else {
             loadAndContinueGame()
@@ -928,38 +940,88 @@ struct GameDetailSheet: View {
     }
     
     private func loadAndContinueGame() {
-        // Create a new GameSession from the saved game data
-        let restoredGameSession = GameSession()
+        let gameHistoryManager = GameHistoryManager.shared
+        let freshGames = gameHistoryManager.getSavedGameSessions()
         
-        // Restore all the game state
-        restoredGameSession.participants = game.participants
-        restoredGameSession.events = game.events
-        restoredGameSession.selectedPlayers = game.selectedPlayers
-        restoredGameSession.availablePlayers = game.selectedPlayers
-        
-        // Post notification to continue the game with restored session
-        NotificationCenter.default.post(
-            name: Notification.Name("ContinueSavedGame"),
-            object: nil,
-            userInfo: ["gameSession": restoredGameSession, "gameName": game.name]
-        )
-        
-        // Close the detail view and history view
-        presentationMode.wrappedValue.dismiss()
-        
-        // Post another notification to close the history view
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            NotificationCenter.default.post(
-                name: Notification.Name("CloseHistoryView"),
-                object: nil
-            )
+        guard let freshGame = freshGames.first(where: { $0.id == game.id }) else {
+            return
         }
         
-        print("🎮 Continuing saved game: \(game.name)")
+        let restoredGameSession = GameSession()
+        
+        restoredGameSession.selectedPlayers = freshGame.selectedPlayers
+        restoredGameSession.availablePlayers = freshGame.selectedPlayers
+        
+        restoredGameSession.participants.removeAll()
+        for savedParticipant in freshGame.participants {
+            let freshParticipant = Participant(
+                name: savedParticipant.name,
+                selectedPlayers: savedParticipant.selectedPlayers,
+                substitutedPlayers: savedParticipant.substitutedPlayers,
+                balance: 0.0
+            )
+            restoredGameSession.participants.append(freshParticipant)
+        }
+        
+        var allUniquePlayersFromParticipants: [Player] = []
+        for participant in restoredGameSession.participants {
+            allUniquePlayersFromParticipants.append(contentsOf: participant.selectedPlayers)
+            allUniquePlayersFromParticipants.append(contentsOf: participant.substitutedPlayers)
+        }
+        
+        let uniquePlayers = Array(Set(allUniquePlayersFromParticipants.map { $0.id })).compactMap { playerId in
+            allUniquePlayersFromParticipants.first { $0.id == playerId }
+        }
+        
+        if !uniquePlayers.isEmpty {
+            restoredGameSession.availablePlayers = uniquePlayers
+            restoredGameSession.selectedPlayers = uniquePlayers
+        }
+        
+        if !freshGame.bets.isEmpty {
+            restoredGameSession.bets = freshGame.bets
+        } else {
+            restoredGameSession.addBet(eventType: .goal, amount: 10.0)
+            restoredGameSession.addBet(eventType: .assist, amount: 5.0)
+            restoredGameSession.addBet(eventType: .yellowCard, amount: -3.0)
+            restoredGameSession.addBet(eventType: .redCard, amount: -10.0)
+        }
+        
+        restoredGameSession.events = freshGame.events
+        
+        if !freshGame.events.isEmpty {
+            restoredGameSession.recalculateBalancesFromEvents()
+        }
+        
+        restoredGameSession.canUndoLastEvent = false
+        restoredGameSession.objectWillChange.send()
+        
+        let totalPlayerAssignments = restoredGameSession.participants.reduce(0) { total, participant in
+            total + participant.selectedPlayers.count + participant.substitutedPlayers.count
+        }
+        
+        if totalPlayerAssignments == 0 && !restoredGameSession.selectedPlayers.isEmpty {
+            restoredGameSession.assignPlayersRandomly()
+        }
+        
+        guard !restoredGameSession.participants.isEmpty else {
+            return
+        }
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            NotificationCenter.default.post(
+                name: Notification.Name("ContinueSavedGame"),
+                object: nil,
+                userInfo: ["gameSession": restoredGameSession, "gameName": freshGame.name]
+            )
+            
+            self.presentationMode.wrappedValue.dismiss()
+        }
     }
     
+
+    
     private func exportGameSummary() {
-        // Create a temporary GameSession from saved data for PDF export
         let tempGameSession = GameSession()
         tempGameSession.participants = game.participants
         tempGameSession.events = game.events
@@ -967,31 +1029,24 @@ struct GameDetailSheet: View {
         
         PDFExporter.exportGameSummary(gameSession: tempGameSession) { fileURL in
             guard let url = fileURL else {
-                print("❌ Error exporting PDF from history")
                 return
             }
             
-            // Ensure we're on the main thread and handle presentation properly
             DispatchQueue.main.async {
-                // Dismiss this detail view first
                 self.presentationMode.wrappedValue.dismiss()
                 
-                // Wait a moment then present the share sheet
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                     guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
                           let window = windowScene.windows.first else {
-                        print("❌ Could not get window for PDF sharing")
                         return
                     }
                     
-                    // Get the topmost view controller
                     var topViewController = window.rootViewController
                     while let presentedViewController = topViewController?.presentedViewController {
                         topViewController = presentedViewController
                     }
                     
                     guard let rootVC = topViewController else {
-                        print("❌ Could not get root view controller for PDF sharing")
                         return
                     }
                     
@@ -1000,16 +1055,13 @@ struct GameDetailSheet: View {
                         applicationActivities: nil
                     )
                     
-                    // Configure for iPad
                     if let popover = activityVC.popoverPresentationController {
                         popover.sourceView = rootVC.view
                         popover.sourceRect = CGRect(x: rootVC.view.bounds.midX, y: rootVC.view.bounds.midY, width: 0, height: 0)
                         popover.permittedArrowDirections = []
                     }
                     
-                    rootVC.present(activityVC, animated: true) {
-                        print("✅ PDF share sheet presented successfully from history")
-                    }
+                    rootVC.present(activityVC, animated: true)
                 }
             }
         }
