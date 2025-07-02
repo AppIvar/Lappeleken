@@ -244,14 +244,17 @@ struct AppConfig {
     
     // MARK: - App Store Configuration
     
-    static let appStoreID = "YOUR_APP_ID"
-    static let appStoreURL = "https://apps.apple.com/app/lucky-football-slip"
+    static let appStoreID = "6746332040"
+    static let appStoreURL = "https://apps.apple.com/app/id6746332040"
+    
+    // MARK: - iOS Version support
+    static let minimumIOSVersion = "15.6"
     
     // MARK: - Support and Legal
     
-    static let supportEmail = "support@lappeleken.com"
-    static let privacyPolicyURL = "https://lappeleken.com/privacy"
-    static let termsOfServiceURL = "https://lappeleken.com/terms"
+    static let supportEmail = "luckyfootballslip@gmail.com"
+    static let privacyPolicyURL = "https://lucky-football-slip.netlify.app/#privacy"
+    static let termsOfServiceURL = "https://lucky-football-slip.netlify.app/#terms"
 }
 
 // MARK: - Production Control (No Server Required)

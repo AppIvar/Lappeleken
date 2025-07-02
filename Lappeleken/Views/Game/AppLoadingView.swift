@@ -142,6 +142,7 @@ struct AppLoadingView: View {
 struct MainAppView: View {
     @State private var isLoading = true
     @State private var hasCompletedStartup = false
+    @State private var showOnboarding = !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
     
     var body: some View {
         ZStack {
@@ -154,6 +155,9 @@ struct MainAppView: View {
             }
         }
         .animation(.easeInOut(duration: 0.5), value: isLoading)
+        .fullScreenCover(isPresented: $showOnboarding) {
+            OnboardingView(isPresented: $showOnboarding)
+        }
         .onAppear {
             if !hasCompletedStartup {
                 startupSequence()
@@ -163,8 +167,14 @@ struct MainAppView: View {
     }
     
     private func startupSequence() {
+        // Initialize app services
+        ManualModeManager.shared.initialize()
+        
+        // Validate configuration
+        AppConfig.validateConfiguration()
+        
         // Simulate app initialization tasks
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
             withAnimation(.easeInOut(duration: 0.5)) {
                 isLoading = false
             }

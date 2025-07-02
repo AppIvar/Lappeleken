@@ -34,7 +34,7 @@ class AdManager: NSObject, ObservableObject {
         static let bannerProd = "ca-app-pub-5153687741487701/5033356288"
         
         // Toggle between test and production
-        static let useProductionAds = false // Set to true for production
+        static let useProductionAds = true // Set to true for production
         
         static var interstitial: String {
             let adUnit = useProductionAds ? interstitialProd : interstitialTest
