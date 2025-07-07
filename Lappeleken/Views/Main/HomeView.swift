@@ -143,7 +143,7 @@ struct HomeView: View {
             }
             
             VStack(spacing: 8) {
-                Text("Lappeleken")
+                Text("Lucky Football Slip")
                     .font(.system(size: 34, weight: .bold, design: .rounded))
                     .foregroundStyle(
                         LinearGradient(

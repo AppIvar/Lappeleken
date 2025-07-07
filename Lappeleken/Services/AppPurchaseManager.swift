@@ -44,11 +44,8 @@ class AppPurchaseManager: ObservableObject {
                 return [
                     "Unlimited live matches daily",
                     "All leagues & competitions",
-                    "Multiple match tracking",
                     "Completely ad-free experience",
-                    "Premium support",
-                    "Export game summaries",
-                    "Priority customer support"
+                    "Premium support"
                 ]
             }
         }
@@ -62,7 +59,7 @@ class AppPurchaseManager: ObservableObject {
     }
     
     enum ProductID: String, CaseIterable {
-        case premium = "HovlandGames.Lucky_Football_Slip.premium_monthly"
+        case premium = "Lucky.Football.Slip.premium_monthly"
         
         var displayName: String {
             switch self {
@@ -72,7 +69,7 @@ class AppPurchaseManager: ObservableObject {
         
         var description: String {
             switch self {
-            case .premium: return "Unlimited live matches and completely ad-free experience"
+            case .premium: return "Unlimited live matches and ad-free experience"
             }
         }
     }
@@ -80,6 +77,10 @@ class AppPurchaseManager: ObservableObject {
     // MARK: - Initialization
     
     private init() {
+        #if DEBUG
+        debugProductConfiguration()
+        #endif
+        
         loadPurchaseState()
         transactionListener = listenForTransactions()
         
@@ -88,6 +89,14 @@ class AppPurchaseManager: ObservableObject {
             await updateEntitlements()
         }
     }
+
+    #if DEBUG
+    func debugProductConfiguration() {
+        print("🐛 DEBUG: ProductID.premium.rawValue = '\(ProductID.premium.rawValue)'")
+        print("🐛 DEBUG: All cases = \(ProductID.allCases.map { "'\($0.rawValue)'" })")
+        print("🐛 DEBUG: Bundle ID = '\(Bundle.main.bundleIdentifier ?? "nil")'")
+    }
+    #endif
     
     deinit {
         transactionListener?.cancel()
@@ -174,17 +183,26 @@ class AppPurchaseManager: ObservableObject {
         return true
     }
     
+    
     // MARK: - Product Management
     
     func loadProducts() async {
+        print("🔍 Loading products...")
+        
         do {
-            let products = try await Product.products(for: ProductID.allCases.map { $0.rawValue })
+            let productIDs = ProductID.allCases.map { $0.rawValue }
+            let products = try await Product.products(for: productIDs)
             
             await MainActor.run {
                 self.availableProducts = products
                 print("✅ Loaded \(products.count) products")
+                
                 for product in products {
                     print("  - \(product.id): \(product.displayName) - \(product.displayPrice)")
+                }
+                
+                if products.isEmpty {
+                    print("❌ No products found - check App Store Connect configuration")
                 }
             }
         } catch {

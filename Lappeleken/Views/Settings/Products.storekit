@@ -1,0 +1,131 @@
+{
+  "appPolicies" : {
+    "eula" : "",
+    "policies" : [
+      {
+        "locale" : "en_US",
+        "policyText" : "",
+        "policyURL" : ""
+      }
+    ]
+  },
+  "identifier" : "B5A1E5C6",
+  "nonRenewingSubscriptions" : [
+
+  ],
+  "products" : [
+    {
+      "displayPrice" : "4.99",
+      "familyShareable" : false,
+      "internalID" : "6746333334",
+      "localizations" : [
+        {
+          "description" : "Unlock unlimited live matches and remove ads",
+          "displayName" : "Premium Upgrade",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "HovlandGames.Lucky_Football_Slip.premium",
+      "referenceName" : "Premium Upgrade",
+      "type" : "NonConsumable"
+    }
+  ],
+  "settings" : {
+    "_applicationInternalID" : "6746332040",
+    "_developerTeamID" : "C444WC2JJY",
+    "_failTransactionsEnabled" : false,
+    "_lastSynchronizedDate" : 773569143.85886204,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : [
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Load Products"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Purchase"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Verification"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Store Sync"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Subscription Status"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "App Transaction"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Manage Subscriptions Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Refund Request Sheet"
+      },
+      {
+        "current" : null,
+        "enabled" : false,
+        "name" : "Offer Code Redeem Sheet"
+      }
+    ]
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "21723300",
+      "localizations" : [
+
+      ],
+      "name" : "Lucky Football Slip Premium",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "2.99",
+          "familyShareable" : true,
+          "groupNumber" : 1,
+          "internalID" : "6748069369",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "No ads and unlimited live games",
+              "displayName" : "Lucky Football Slip Premium",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "Lucky.Football.Slip.premium_monthly",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Lucky Football Slip Premium Monthly",
+          "subscriptionGroupID" : "21723300",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 4,
+    "minor" : 0
+  }
+}

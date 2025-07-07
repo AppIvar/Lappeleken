@@ -724,11 +724,11 @@ struct NewGameSetupView: View {
     private func getDefaultAmount(for eventType: Bet.EventType) -> Double {
         switch eventType {
         case .goal, .assist, .penalty, .cleanSheet:
-            return 1.0
+            return 0.0
         case .yellowCard, .redCard, .ownGoal, .penaltyMissed:
-            return 1.0
+            return 0.0
         case .custom:
-            return 1.0
+            return 0.0
         }
     }
     

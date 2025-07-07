@@ -373,8 +373,6 @@ struct SubscriptionOfferCard: View {
             VStack(alignment: .leading, spacing: 8) {
                 FeatureBullet(text: "Unlimited live matches daily")
                 FeatureBullet(text: "Completely ad-free experience")
-                FeatureBullet(text: "Track multiple matches simultaneously")
-                FeatureBullet(text: "Export game summaries")
                 FeatureBullet(text: "Priority customer support")
             }
             

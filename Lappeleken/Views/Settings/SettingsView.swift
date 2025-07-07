@@ -389,7 +389,7 @@ struct SettingsView: View {
                 color: AppDesignSystem.Colors.success,
                 isExternalLink: true
             ) {
-                if let url = URL(string: "https://lappeleken.com/privacy") {
+                if let url = URL(string: "https://lucky-football-slip.netlify.app/#privacy") {
                     UIApplication.shared.open(url)
                 }
             }
@@ -401,7 +401,7 @@ struct SettingsView: View {
                 color: AppDesignSystem.Colors.secondary,
                 isExternalLink: true
             ) {
-                if let url = URL(string: "https://lappeleken.com/terms") {
+                if let url = URL(string: "https://lucky-football-slip.netlify.app/#terms") {
                     UIApplication.shared.open(url)
                 }
             }
