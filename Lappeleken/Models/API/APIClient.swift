@@ -116,6 +116,12 @@ class APIClient {
         request.addValue("application/json", forHTTPHeaderField: "Accept")
         request.addValue(AppConfig.footballDataAPIKey, forHTTPHeaderField: "X-Auth-Token")
         
+        // ADD THIS DEBUGGING:
+        print("🔧 API Request Debug:")
+        print("   URL: \(url.absoluteString)")
+        print("   Headers: \(request.allHTTPHeaderFields ?? [:])")
+        print("   API Key: \(String(AppConfig.footballDataAPIKey.prefix(8)))...")
+        
         if AppConfig.enableDetailedLogging {
             let stats = APIRateLimiter.shared.getUsageStats()
             print("📡 API Request (\(stats.current)/\(stats.max)): \(url.absoluteString)")
@@ -150,3 +156,4 @@ class APIClient {
         }
     }
 }
+

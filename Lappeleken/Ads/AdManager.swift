@@ -55,6 +55,28 @@ class AdManager: NSObject, ObservableObject {
         }
     }
     
+    // MARK: - Feature Flag Integration
+    
+    /// Should show ads for current user based on feature flags
+    var shouldShowAdsForUser: Bool {
+        return AppConfig.shouldShowAdsForCurrentUser
+    }
+    
+    /// Should show banner ads specifically
+    var shouldShowBannerAds: Bool {
+        return AppConfig.AdSettings.showBannerAds && shouldShowAdsForUser
+    }
+    
+    /// Should show interstitial ads specifically
+    var shouldShowInterstitialAds: Bool {
+        return AppConfig.AdSettings.showInterstitialAds && shouldShowAdsForUser
+    }
+    
+    /// Should show rewarded ads specifically
+    var shouldShowRewardedAds: Bool {
+        return AppConfig.AdSettings.showRewardedAds && shouldShowAdsForUser
+    }
+    
     // MARK: - Event-Based Ad System Properties
     
     private var liveMatchEventCount: Int {
@@ -89,6 +111,7 @@ class AdManager: NSObject, ObservableObject {
         print("🎯 AdManager initializing...")
         print("🔍 App Bundle ID: \(Bundle.main.bundleIdentifier ?? "Unknown")")
         print("🔍 Production Ads Enabled: \(AdUnitIDs.useProductionAds)")
+        print("🎯 Ads enabled for user: \(shouldShowAdsForUser)")
         
         Task {
             await initializeAds()
@@ -134,6 +157,11 @@ class AdManager: NSObject, ObservableObject {
     // MARK: - Ad Loading
     
     private func loadInterstitialAd() async {
+        guard shouldShowInterstitialAds else {
+            print("💡 Interstitial ads disabled by feature flags")
+            return
+        }
+        
         print("🎯 Loading interstitial ad...")
         print("🔍 Ad Unit ID: \(AdUnitIDs.interstitial)")
         
@@ -157,6 +185,11 @@ class AdManager: NSObject, ObservableObject {
     }
     
     private func loadRewardedAd() async {
+        guard shouldShowRewardedAds else {
+            print("💡 Rewarded ads disabled by feature flags")
+            return
+        }
+        
         print("🎯 Loading rewarded ad...")
         print("🔍 Ad Unit ID: \(AdUnitIDs.rewarded)")
         
@@ -183,16 +216,16 @@ class AdManager: NSObject, ObservableObject {
     
     /// Call this when live match events occur (goals, cards, etc.)
     func recordLiveMatchEvent(eventType: String = "match_event") {
-        // Track for ALL free users (including during testing period)
-        guard AppPurchaseManager.shared.currentTier == .free else {
-            print("ℹ️ Premium user - no event tracking")
+        // Only track events if ads are enabled
+        guard shouldShowAdsForUser else {
+            print("ℹ️ Ads disabled - no event tracking")
             return
         }
         
         liveMatchEventCount += 1
         print("📊 Live event recorded: \(eventType). Total events: \(liveMatchEventCount)")
         
-        // Show ads based on frequency during testing too
+        // Show ads based on frequency
         if shouldShowAdAfterLiveEvent() {
             showEventBasedInterstitial()
         }
@@ -207,7 +240,7 @@ class AdManager: NSObject, ObservableObject {
         if currentEvents >= threshold {
             // Reset for next ad cycle
             resetEventCounting()
-            return isAdLoaded // Only show if ad is ready
+            return isAdLoaded && shouldShowInterstitialAds
         }
         
         return false
@@ -215,7 +248,7 @@ class AdManager: NSObject, ObservableObject {
     
     private func resetEventCounting() {
         liveMatchEventCount = 0
-        eventsUntilNextAd = Int.random(in: 2...3) // Show ad every 2-3 events as requested
+        eventsUntilNextAd = Int.random(in: 2...3) // Show ad every 2-3 events
         print("🔄 Event counting reset. Next ad in \(eventsUntilNextAd) events")
         
         // Track ad frequency during free testing
@@ -268,15 +301,14 @@ class AdManager: NSObject, ObservableObject {
     
     /// Call when ending a live match
     func endLiveMatchSession() {
-        // Keep the count for potential next match in same session
         print("🏁 Live match session ended. Events recorded: \(liveMatchEventCount)")
     }
     
     // MARK: - Interstitial Ads
     
     func showInterstitialAd(from viewController: UIViewController, completion: @escaping (Bool) -> Void) {
-        guard AppPurchaseManager.shared.currentTier == .free else {
-            print("ℹ️ Premium user - no interstitial ads")
+        guard shouldShowInterstitialAds else {
+            print("ℹ️ Interstitial ads disabled by feature flags")
             completion(true)
             return
         }
@@ -301,6 +333,12 @@ class AdManager: NSObject, ObservableObject {
     // MARK: - Rewarded Ads
     
     func showRewardedAd(from viewController: UIViewController, completion: @escaping (Bool) -> Void) {
+        guard shouldShowRewardedAds else {
+            print("ℹ️ Rewarded ads disabled by feature flags")
+            completion(false)
+            return
+        }
+        
         guard let rewardedAd = rewardedAd else {
             print("❌ Rewarded ad not loaded")
             completion(false)
@@ -318,8 +356,8 @@ class AdManager: NSObject, ObservableObject {
     }
     
     func showRewardedAdForExtraMatch(from viewController: UIViewController, completion: @escaping (Bool) -> Void) {
-        guard AppPurchaseManager.shared.currentTier == .free else {
-            print("ℹ️ Premium user doesn't need extra matches")
+        guard shouldShowRewardedAds else {
+            print("ℹ️ Rewarded ads disabled by feature flags")
             completion(false)
             return
         }
@@ -350,7 +388,7 @@ class AdManager: NSObject, ObservableObject {
     // MARK: - Legacy Ad Methods (Keep for compatibility)
     
     func shouldShowInterstitialAfterGameComplete() -> Bool {
-        guard AppPurchaseManager.shared.currentTier == .free else { return false }
+        guard shouldShowInterstitialAds else { return false }
         
         let gameCount = UserDefaults.standard.integer(forKey: "completedGameCount")
         UserDefaults.standard.set(gameCount + 1, forKey: "completedGameCount")
@@ -366,12 +404,12 @@ class AdManager: NSObject, ObservableObject {
     }
     
     func shouldShowInterstitialForHistoryView() -> Bool {
-        guard AppPurchaseManager.shared.currentTier == .free else { return false }
+        guard shouldShowInterstitialAds else { return false }
         return shouldShowInterstitialWithCooldown(for: "history_view", cooldownMinutes: 5)
     }
     
     func shouldShowInterstitialForSettings() -> Bool {
-        guard AppPurchaseManager.shared.currentTier == .free else { return false }
+        guard shouldShowInterstitialAds else { return false }
         return shouldShowInterstitialWithCooldown(for: "settings_view", cooldownMinutes: 10)
     }
     
@@ -446,7 +484,6 @@ class AdManager: NSObject, ObservableObject {
         ]
     }
 }
-
 
 // MARK: - FullScreenContentDelegate
 

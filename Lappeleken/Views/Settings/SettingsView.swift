@@ -50,7 +50,7 @@ struct SettingsView: View {
                         
                         // Premium Features Section
                         EnhancedSettingsSection(
-                            title: "Premium Features",
+                            title: "App Features",
                             icon: "crown.fill",
                             color: AppDesignSystem.Colors.warning
                         ) {
@@ -92,7 +92,13 @@ struct SettingsView: View {
             }
         }
         .sheet(isPresented: $showingUpgradeView) {
-            UpgradeView()
+            // Only show UpgradeView if subscriptions are enabled
+            if AppConfig.subscriptionEnabled {
+                UpgradeView()
+            } else {
+                // Show feature flags info instead
+                featureFlagsInfoSheet
+            }
         }
         .sheet(isPresented: $showingLiveSetupInfo) {
             LiveModeInfoView(onGetStarted: {
@@ -109,6 +115,145 @@ struct SettingsView: View {
             BackgroundSetupGuideView()
         }
         .withSmartMonetization()
+    }
+    
+    // MARK: - Feature Flags Info Sheet (NEW)
+
+    private var featureFlagsInfoSheet: some View {
+        NavigationView {
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Header
+                    VStack(spacing: 16) {
+                        Image(systemName: "heart.circle.fill")
+                            .font(.system(size: 50))
+                            .foregroundColor(AppDesignSystem.Colors.success)
+                        
+                        Text("Thank You for Testing!")
+                            .font(.system(size: 24, weight: .bold))
+                            .foregroundColor(AppDesignSystem.Colors.primaryText)
+                        
+                        Text("We're thrilled to have you try Lucky Football Slip during our testing period.")
+                            .font(.system(size: 16))
+                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    }
+                    
+                    // Testing notice
+                    VStack(spacing: 12) {
+                        HStack {
+                            Image(systemName: "gift.fill")
+                                .font(.system(size: 24))
+                                .foregroundColor(AppDesignSystem.Colors.warning)
+                            
+                            Text("Special Testing Access")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundColor(AppDesignSystem.Colors.primaryText)
+                            
+                            Spacer()
+                        }
+                        
+                        Text("During this testing period, you have free access to premium features that will typically require a subscription. We want you to experience the full potential of our app!")
+                            .font(.system(size: 14))
+                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                            .multilineTextAlignment(.leading)
+                    }
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(AppDesignSystem.Colors.warning.opacity(0.1))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(AppDesignSystem.Colors.warning.opacity(0.3), lineWidth: 1)
+                            )
+                    )
+                    
+                    // What you get
+                    VStack(spacing: 16) {
+                        Text("What You Get During Testing")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(AppDesignSystem.Colors.primaryText)
+                        
+                        VStack(spacing: 12) {
+                            featureStatusRow("Unlimited Live Matches", true)
+                            featureStatusRow("All Football Leagues", true)
+                            featureStatusRow("Real-Time Updates", true)
+                            featureStatusRow("Background Monitoring", true)
+                            featureStatusRow("Export Game Summaries", true)
+                        }
+                    }
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(AppDesignSystem.Colors.cardBackground)
+                    )
+                    
+                    // Feedback request
+                    VStack(spacing: 12) {
+                        Text("Help Us Improve")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundColor(AppDesignSystem.Colors.primaryText)
+                        
+                        Text("Your feedback during this testing period is invaluable! Please let us know what you love, what could be better, and any bugs you encounter. Together, we'll make Lucky Football Slip the best football companion app!")
+                            .font(.system(size: 14))
+                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                            .multilineTextAlignment(.center)
+                        
+                        Button(action: {
+                            if let url = URL(string: "mailto:\(AppConfig.supportEmail)?subject=Testing%20Feedback%20-%20Lucky%20Football%20Slip") {
+                                UIApplication.shared.open(url)
+                            }
+                        }) {
+                            HStack {
+                                Image(systemName: "envelope.fill")
+                                Text("Send Feedback")
+                            }
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.white)
+                            .padding()
+                            .background(AppDesignSystem.Colors.primary)
+                            .cornerRadius(10)
+                        }
+                    }
+                    .padding()
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(AppDesignSystem.Colors.primary.opacity(0.1))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(AppDesignSystem.Colors.primary.opacity(0.3), lineWidth: 1)
+                            )
+                    )
+                    
+                    Spacer(minLength: 20)
+                }
+                .padding(20)
+            }
+            .navigationTitle("Testing Features")
+            .navigationBarItems(
+                trailing: Button("Done") {
+                    showingUpgradeView = false
+                }
+            )
+        }
+    }
+
+    private func featureStatusRow(_ title: String, _ isEnabled: Bool) -> some View {
+        HStack {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundColor(AppDesignSystem.Colors.success)
+            
+            Text(title)
+                .font(.system(size: 16))
+                .foregroundColor(AppDesignSystem.Colors.primaryText)
+            
+            Spacer()
+            
+            Text("Included")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(AppDesignSystem.Colors.success)
+        }
     }
 
     // MARK: - Background
@@ -178,37 +323,222 @@ struct SettingsView: View {
     
     private var premiumFeaturesContent: some View {
         VStack(spacing: 16) {
-            // Main upgrade button - always visible
-            EnhancedUpgradeRow(
-                currentTier: purchaseManager.currentTier,
-                remainingMatches: purchaseManager.remainingFreeMatchesToday
-            ) {
-                showingUpgradeView = true
-            }
-            
-            // Daily matches info for free users
-            if purchaseManager.currentTier == .free {
-                dailyMatchesInfoCard
-                
-                // Watch ad option if available
-                if purchaseManager.remainingFreeMatchesToday == 0 && AdManager.shared.isRewardedReady {
-                    watchAdForExtraMatchCard
-                }
-            }
-            
-            // Restore purchases option
-            if purchaseManager.currentTier == .free && !purchaseManager.availableProducts.isEmpty {
-                EnhancedSettingsRow(
-                    title: "Restore Purchases",
-                    subtitle: "Restore previous purchases",
-                    icon: "arrow.clockwise.circle.fill",
-                    color: AppDesignSystem.Colors.info
+            // Only show subscription UI if subscriptions are enabled
+            if AppConfig.subscriptionEnabled {
+                // Main upgrade button
+                EnhancedUpgradeRow(
+                    currentTier: purchaseManager.currentTier,
+                    remainingMatches: purchaseManager.remainingFreeMatchesToday
                 ) {
-                    Task {
-                        await purchaseManager.restorePurchases()
+                    showingUpgradeView = true
+                }
+                
+                // Daily matches info for free users
+                if purchaseManager.currentTier == .free {
+                    dailyMatchesInfoCard
+                }
+                
+                // Restore purchases option
+                if purchaseManager.currentTier == .free && !purchaseManager.availableProducts.isEmpty {
+                    EnhancedSettingsRow(
+                        title: "Restore Purchases",
+                        subtitle: "Restore previous purchases",
+                        icon: "arrow.clockwise.circle.fill",
+                        color: AppDesignSystem.Colors.info
+                    ) {
+                        Task {
+                            await purchaseManager.restorePurchases()
+                        }
                     }
                 }
+            } else {
+                // Feature flags mode - show current feature status
+                featureFlagsStatusView
             }
+        }
+    }
+    
+    // MARK: - Feature Flags Status View
+
+    private var featureFlagsStatusView: some View {
+        VStack(spacing: 16) {
+            // Testing notice banner
+            testingNoticeBanner
+            
+            // Header
+            EnhancedSettingsRow(
+                title: "App Features",
+                subtitle: "Currently available during testing period",
+                icon: "star.fill",
+                color: AppDesignSystem.Colors.success,
+                hasAction: false
+            )
+            
+            // Feature status cards
+            featureStatusCard(
+                title: "Unlimited Live Matches",
+                isEnabled: true,
+                description: "No daily limit during testing period"
+            )
+            
+            featureStatusCard(
+                title: "All Competitions",
+                isEnabled: true,
+                description: "Access to all football leagues"
+            )
+            
+            // Ad status card
+            adStatusCard
+            
+            // Free testing status if active
+            if AppConfig.isFreeLiveTestingActive {
+                freeTestingActiveCard
+            }
+        }
+    }
+    
+    private var testingNoticeBanner: some View {
+        VStack(spacing: 12) {
+            HStack {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 20))
+                    .foregroundColor(AppDesignSystem.Colors.warning)
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Testing Period")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
+                    
+                    Text("Features temporarily available for testing")
+                        .font(.system(size: 14))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                }
+                
+                Spacer()
+            }
+            
+            Text("We're excited to have you try Lucky Football Slip! These premium features are currently available for free during our testing period. We hope you enjoy the experience and would love your feedback!")
+                .font(.system(size: 14))
+                .foregroundColor(AppDesignSystem.Colors.primaryText)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(AppDesignSystem.Colors.warning.opacity(0.1))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(AppDesignSystem.Colors.warning.opacity(0.3), lineWidth: 1)
+                )
+        )
+    }
+    
+    private func featureStatusCard(title: String, isEnabled: Bool, description: String) -> some View {
+        HStack(spacing: 16) {
+            Image(systemName: isEnabled ? "checkmark.circle.fill" : "xmark.circle.fill")
+                .font(.system(size: 20))
+                .foregroundColor(isEnabled ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.error)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                Text(description)
+                    .font(.system(size: 13))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+            }
+            
+            Spacer()
+            
+            Text(isEnabled ? "Included" : "Disabled")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.white)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(isEnabled ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.error)
+                .cornerRadius(6)
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(AppDesignSystem.Colors.cardBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke((isEnabled ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.error).opacity(0.2), lineWidth: 1)
+                )
+        )
+    }
+    
+    private var adStatusCard: some View {
+        HStack(spacing: 16) {
+            Image(systemName: "play.rectangle.fill")
+                .font(.system(size: 20))
+                .foregroundColor(AppDesignSystem.Colors.info)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Ad-Supported Experience")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                Text("Ads help keep the app free")
+                    .font(.system(size: 13))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+            }
+            
+            Spacer()
+            
+            Text("Active")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.white)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(AppDesignSystem.Colors.info)
+                .cornerRadius(6)
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(AppDesignSystem.Colors.cardBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(AppDesignSystem.Colors.info.opacity(0.2), lineWidth: 1)
+                )
+        )
+    }
+
+    private var freeTestingActiveCard: some View {
+        VStack(spacing: 12) {
+            HStack {
+                Image(systemName: "gift.fill")
+                    .font(.system(size: 20))
+                    .foregroundColor(AppDesignSystem.Colors.success)
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Free Testing Active")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(AppDesignSystem.Colors.success)
+                    
+                    Text("Enhanced features for testing")
+                        .font(.system(size: 14))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                }
+                
+                Spacer()
+                
+                Text("🎁")
+                    .font(.system(size: 24))
+            }
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(AppDesignSystem.Colors.success.opacity(0.1))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(AppDesignSystem.Colors.success.opacity(0.3), lineWidth: 1)
+                    )
+            )
         }
     }
     
@@ -272,7 +602,7 @@ struct SettingsView: View {
         }
     }
 
-    private var watchAdForExtraMatchCard: some View {
+   /* private var watchAdForExtraMatchCard: some View {
         Button(action: {
             showRewardedAdForExtraMatch()
         }) {
@@ -332,7 +662,7 @@ struct SettingsView: View {
                 print("❌ Failed to show rewarded ad from settings")
             }
         }
-    }
+    } */
     
     // MARK: - Currency Settings Content
     
@@ -427,71 +757,65 @@ struct SettingsView: View {
             }
             .padding(.horizontal, 4)
             
-            // FREE TESTING CONTROLS (NEW)
-            freeTestingDebugSection
-            
-            // Premium testing buttons
+            // NEW LINEUP TESTING
             EnhancedSettingsRow(
-                title: "Set to Premium",
-                subtitle: "Unlock all features for testing",
-                icon: "crown.fill",
-                color: AppDesignSystem.Colors.success
-            ) {
-                AppPurchaseManager.shared.setToPremiumForTesting()
-            }
-            
-            EnhancedSettingsRow(
-                title: "Set to Free",
-                subtitle: "Reset to free tier for testing",
-                icon: "person.circle.fill",
-                color: AppDesignSystem.Colors.primary
-            ) {
-                AppPurchaseManager.shared.setToFreeForTesting()
-            }
-            
-            EnhancedSettingsRow(
-                title: "Reset Daily Usage",
-                subtitle: "Reset daily match limits",
-                icon: "arrow.clockwise.circle.fill",
+                title: "Test API Access",
+                subtitle: "Check if football-data.org API is working",
+                icon: "globe.fill",
                 color: AppDesignSystem.Colors.info
             ) {
-                AppPurchaseManager.shared.resetDailyMatchUsageForTesting()
+                Task {
+                    if let footballService = ServiceProvider.shared.getMatchService() as? FootballDataMatchService {
+                        await footballService.debugAPIAccess()
+                    }
+                }
             }
             
-            // Current status display
             EnhancedSettingsRow(
-                title: "Current Tier: \(purchaseManager.currentTier.displayName)",
-                subtitle: "Remaining matches: \(purchaseManager.remainingFreeMatchesToday)",
+                title: "Test Recent Finished Matches",
+                subtitle: "Check lineup data for recent finished matches",
+                icon: "checkmark.circle.fill",
+                color: AppDesignSystem.Colors.success
+            ) {
+                Task {
+                    if let footballService = ServiceProvider.shared.getMatchService() as? FootballDataMatchService {
+                        await footballService.debugRecentFinishedMatches()
+                    }
+                }
+            }
+            
+            EnhancedSettingsRow(
+                title: "Test Upcoming Matches",
+                subtitle: "Check lineup data for upcoming matches",
+                icon: "calendar.badge.plus",
+                color: AppDesignSystem.Colors.warning
+            ) {
+                Task {
+                    if let footballService = ServiceProvider.shared.getMatchService() as? FootballDataMatchService {
+                        await footballService.debugUpcomingMatches()
+                    }
+                }
+            }
+            
+            // FEATURE FLAGS CONTROLS
+            featureFlagsDebugSection
+            
+            // FREE TESTING CONTROLS
+            freeTestingDebugSection
+            
+            // Legacy subscription testing (when enabled)
+            if AppConfig.subscriptionEnabled {
+                legacySubscriptionDebugSection
+            }
+            
+            // App status display
+            EnhancedSettingsRow(
+                title: "App Status",
+                subtitle: "Subscription: \(AppConfig.subscriptionEnabled ? "Enabled" : "Disabled"), Free Testing: \(AppConfig.isFreeLiveTestingActive ? "Active" : "Inactive")",
                 icon: "info.circle.fill",
                 color: AppDesignSystem.Colors.secondary,
                 hasAction: false
             )
-            
-            EnhancedSettingsRow(
-                title: "Event Sync Mode",
-                subtitle: AppConfig.useStubData ? "Using mock events" : "Using real API",
-                icon: AppConfig.useStubData ? "flask.fill" : "globe.fill",
-                color: AppConfig.useStubData ? AppDesignSystem.Colors.warning : AppDesignSystem.Colors.success,
-                hasAction: false
-            )
-
-            EnhancedSettingsRow(
-                title: "Test Missed Events Banner (3 events)",
-                subtitle: "Manually trigger banner for testing",
-                icon: "bell.badge.fill",
-                color: AppDesignSystem.Colors.info
-            ) {
-                // Test with different numbers
-                NotificationCenter.default.post(
-                    name: Notification.Name("MissedEventsFound"),
-                    object: nil,
-                    userInfo: [
-                        "eventCount": 3,
-                        "matchName": "Real Test Match",
-                        "gameId": UUID().uuidString
-                    ]
-                )
-            }
         }
         .padding(12)
         .background(
@@ -500,6 +824,132 @@ struct SettingsView: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
                         .stroke(AppDesignSystem.Colors.warning.opacity(0.3), lineWidth: 1)
+                )
+        )
+    }
+    
+    // MARK: - Feature Flags Debug Section (NEW)
+
+    private var featureFlagsDebugSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Header
+            HStack {
+                Image(systemName: "flag.fill")
+                    .foregroundColor(AppDesignSystem.Colors.primary)
+                
+                Text("Feature Flags Control")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                Spacer()
+            }
+            
+            // Feature toggles (Note: These would need UserDefaults implementation)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Current Status:")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                Text("• Multiple Matches: \(AppConfig.PremiumFeatures.multipleMatchSelection ? "✅" : "❌")")
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                
+                Text("• Unlimited Daily: \(AppConfig.PremiumFeatures.unlimitedDailyMatches ? "✅" : "❌")")
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                
+                Text("• Ad-Free: \(AppConfig.PremiumFeatures.adFreeExperience ? "✅" : "❌")")
+                    .font(.system(size: 12, design: .monospaced))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+            }
+            .padding(8)
+            .background(Color.gray.opacity(0.1))
+            .cornerRadius(4)
+            
+            // Note about feature flags
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Note:")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(AppDesignSystem.Colors.warning)
+                
+                Text("Feature flags are compile-time constants. To change them, update AppConfig.swift and rebuild.")
+                    .font(.system(size: 10))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(AppConfig.subscriptionEnabled ? Color.blue.opacity(0.1) : Color.green.opacity(0.1))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(AppConfig.subscriptionEnabled ? Color.blue.opacity(0.3) : Color.green.opacity(0.3), lineWidth: 1)
+                )
+        )
+    }
+
+    // MARK: - Legacy Subscription Debug Section (when enabled)
+
+    private var legacySubscriptionDebugSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            // Header
+            HStack {
+                Image(systemName: "creditcard.fill")
+                    .foregroundColor(AppDesignSystem.Colors.warning)
+                
+                Text("Subscription Testing")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                Spacer()
+            }
+            
+            // Subscription testing buttons
+            VStack(spacing: 8) {
+                HStack(spacing: 12) {
+                    Button("Set Premium") {
+                        AppPurchaseManager.shared.setToPremiumForTesting()
+                    }
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.green)
+                    .cornerRadius(6)
+                    
+                    Button("Set Free") {
+                        AppPurchaseManager.shared.setToFreeForTesting()
+                    }
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.blue)
+                    .cornerRadius(6)
+                    
+                    Button("Reset Usage") {
+                        AppPurchaseManager.shared.resetDailyMatchUsageForTesting()
+                    }
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.orange)
+                    .cornerRadius(6)
+                }
+                
+                Text("Tier: \(purchaseManager.currentTier.displayName), Matches: \(purchaseManager.remainingFreeMatchesToday)")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.orange.opacity(0.1))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.orange.opacity(0.3), lineWidth: 1)
                 )
         )
     }

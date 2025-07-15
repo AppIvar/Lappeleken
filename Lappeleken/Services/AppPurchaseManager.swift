@@ -74,6 +74,12 @@ class AppPurchaseManager: ObservableObject {
         }
     }
     
+    // MARK: - Feature Flag Integration
+    
+    var isSubscriptionEnabled: Bool {
+        return AppConfig.subscriptionEnabled
+    }
+    
     // MARK: - Initialization
     
     private init() {
@@ -95,6 +101,7 @@ class AppPurchaseManager: ObservableObject {
         print("🐛 DEBUG: ProductID.premium.rawValue = '\(ProductID.premium.rawValue)'")
         print("🐛 DEBUG: All cases = \(ProductID.allCases.map { "'\($0.rawValue)'" })")
         print("🐛 DEBUG: Bundle ID = '\(Bundle.main.bundleIdentifier ?? "nil")'")
+        print("🐛 DEBUG: Subscription enabled = \(isSubscriptionEnabled)")
     }
     #endif
     
@@ -130,42 +137,63 @@ class AppPurchaseManager: ObservableObject {
         }
     }
     
-    /// Enhanced canUseLiveFeatures to support free testing
+    /// Enhanced canUseLiveFeatures with feature flags
     var canUseLiveFeatures: Bool {
+        // If unlimited daily matches feature is enabled, always allow
+        if AppConfig.hasUnlimitedDailyMatches {
+            return true
+        }
+        
         // Always allow during free testing period
         if AppConfig.isFreeLiveTestingActive {
             return true
         }
         
-        // Normal logic for non-testing periods
+        // If subscription is disabled, use daily limit logic
+        if !isSubscriptionEnabled {
+            return remainingFreeMatchesToday > 0
+        }
+        
+        // Normal subscription logic when enabled
         return currentTier == .premium || remainingFreeMatchesToday > 0
     }
     
-    /// Enhanced remainingFreeMatchesToday to support free testing
+    /// Enhanced remainingFreeMatchesToday with feature flags
     var remainingFreeMatchesToday: Int {
+        // Unlimited if feature flag is enabled
+        if AppConfig.hasUnlimitedDailyMatches {
+            return Int.max
+        }
+        
         // Unlimited during free testing
         if AppConfig.isFreeLiveTestingActive {
             return Int.max
         }
         
         // Normal daily limit calculation
-        let dailyLimit = 1 // 1 free match per calendar day (after testing)
+        let dailyLimit = 1
         let used = dailyFreeMatchesUsed
         let adRewarded = adRewardedMatchesToday
         let total = dailyLimit + adRewarded
         return max(0, total - used)
     }
     
-    /// Enhanced useFreeLiveMatch to handle free testing
+    /// Enhanced useFreeLiveMatch with feature flags
     func useFreeLiveMatch() {
-        // Don't count usage during free testing period
-        if AppConfig.isFreeLiveTestingActive {
-            print("🎁 Free testing active - match usage not counted")
-            AppConfig.recordFreeLiveModeUsage() // For analytics only
+        // Don't count usage if unlimited feature is enabled
+        if AppConfig.hasUnlimitedDailyMatches {
+            print("🎁 Unlimited matches feature enabled - usage not counted")
             return
         }
         
-        // Normal usage counting for non-testing periods
+        // Don't count usage during free testing period
+        if AppConfig.isFreeLiveTestingActive {
+            print("🎁 Free testing active - match usage not counted")
+            AppConfig.recordFreeLiveModeUsage()
+            return
+        }
+        
+        // Normal usage counting
         dailyFreeMatchesUsed += 1
         print("📊 Used daily live match. Remaining today: \(remainingFreeMatchesToday)")
     }
@@ -183,32 +211,47 @@ class AppPurchaseManager: ObservableObject {
         return true
     }
     
-    
     // MARK: - Product Management
     
     func loadProducts() async {
+        guard isSubscriptionEnabled else {
+            print("💡 Subscription disabled for this release")
+            return
+        }
+        
         print("🔍 Loading products...")
+        isLoading = true
+        purchaseError = nil
         
         do {
-            let productIDs = ProductID.allCases.map { $0.rawValue }
+            let productIDs = Set(ProductID.allCases.map { $0.rawValue })
+            print("🔍 Requesting products: \(productIDs)")
+            
             let products = try await Product.products(for: productIDs)
             
             await MainActor.run {
                 self.availableProducts = products
-                print("✅ Loaded \(products.count) products")
-                
-                for product in products {
-                    print("  - \(product.id): \(product.displayName) - \(product.displayPrice)")
-                }
+                self.isLoading = false
                 
                 if products.isEmpty {
-                    print("❌ No products found - check App Store Connect configuration")
+                    self.purchaseError = "Subscription not available. Please try again later."
+                    print("❌ No products loaded - check App Store Connect status")
+                } else {
+                    print("✅ Loaded \(products.count) products:")
+                    for product in products {
+                        print("  - \(product.id): \(product.displayName) - \(product.displayPrice)")
+                        if let subscription = product.subscription {
+                            print("    Subscription period: \(subscription.subscriptionPeriod)")
+                            print("    Subscription group: \(subscription.subscriptionGroupID)")
+                        }
+                    }
                 }
             }
         } catch {
             await MainActor.run {
+                self.isLoading = false
+                self.purchaseError = "Failed to load subscription: \(error.localizedDescription)"
                 print("❌ Failed to load products: \(error)")
-                self.purchaseError = "Failed to load products: \(error.localizedDescription)"
             }
         }
     }
@@ -272,6 +315,27 @@ class AppPurchaseManager: ObservableObject {
         }
     }
     
+    func validateSubscriptionConfiguration() {
+        print("🔍 Validating subscription configuration...")
+        
+        guard let bundleID = Bundle.main.bundleIdentifier else {
+            print("❌ No bundle identifier found")
+            return
+        }
+        
+        print("📱 Bundle ID: \(bundleID)")
+        print("🛍️ Expected Product ID: \(ProductID.premium.rawValue)")
+        print("🚀 Subscription enabled: \(isSubscriptionEnabled)")
+        
+        if availableProducts.isEmpty && isSubscriptionEnabled {
+            print("❌ No products loaded - subscription may not be active in App Store Connect")
+        } else if !isSubscriptionEnabled {
+            print("💡 Subscription disabled - using feature flags for premium features")
+        } else {
+            print("✅ App Store products loaded successfully")
+        }
+    }
+    
     // MARK: - Restore Purchases
     
     func restorePurchases() async {
@@ -316,13 +380,39 @@ class AppPurchaseManager: ObservableObject {
         }
     }
     
-    private func updateEntitlements() async {
+    func updateEntitlements() async {
+        var hasActivePremium = false
+        
         for await result in Transaction.currentEntitlements {
             do {
                 let transaction = try checkVerified(result)
-                await updatePurchaseState(for: transaction)
+                
+                if transaction.productID == ProductID.premium.rawValue {
+                    // For subscriptions, check expiration date
+                    if let expirationDate = transaction.expirationDate {
+                        if expirationDate > Date() {
+                            hasActivePremium = true
+                            print("✅ Active premium subscription expires: \(expirationDate)")
+                        } else {
+                            print("❌ Premium subscription expired: \(expirationDate)")
+                        }
+                    } else {
+                        // No expiration date means it's active
+                        hasActivePremium = true
+                        print("✅ Active premium subscription (no expiration)")
+                    }
+                }
             } catch {
-                print("❌ Failed to update entitlements: \(error)")
+                print("❌ Failed to verify transaction: \(error)")
+            }
+        }
+        
+        await MainActor.run {
+            let newTier: PurchaseTier = hasActivePremium ? .premium : .free
+            if newTier != currentTier {
+                currentTier = newTier
+                savePurchaseState()
+                print("🔄 Tier updated to: \(newTier.displayName)")
             }
         }
     }
@@ -436,6 +526,3 @@ enum PurchaseError: Error, LocalizedError {
         }
     }
 }
-
-
-

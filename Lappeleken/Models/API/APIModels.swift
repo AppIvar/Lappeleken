@@ -1,163 +1,120 @@
 //
-//  CoreDataModel.swift
-//  Lappeleken
+//  APIModels.swift
+//  Lucky Football Slip
 //
-//  Created by Ivar Hovland on 08/05/2025.
+//  Clean API models based on football-data.org v4 documentation
 //
 
 import Foundation
 
-// API client for live functionality
-class FootballAPIClient {
-    // API endpoints
-    private enum Endpoint {
-        case matches
-        case players
-        case events(matchId: String)
+// MARK: - Core API Response Models
+
+struct MatchesResponse: Codable {
+    let matches: [APIMatch]
+    let count: Int?
+    
+    enum CodingKeys: String, CodingKey {
+        case matches, count
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
         
-        var url: URL? {
-            switch self {
-            case .matches:
-                return URL(string: "https://api.football-data.org/v4/matches")
-            case .players:
-                return URL(string: "https://api.football-data.org/v4/players")
-            case .events(let matchId):
-                return URL(string: "https://api.football-data.org/v4/matches/\(matchId)/events")
-            }
+        do {
+            matches = try container.decode([APIMatch].self, forKey: .matches)
+        } catch {
+            print("Could not decode matches: \(error)")
+            matches = []
         }
-    }
-    
-    // API key (will be provided later)
-    private var apiKey: String?
-    
-    // Fetch matches
-    func fetchMatches(completion: @escaping (Result<[APIMatch], Error>) -> Void) {
-        // This will be implemented when we add the live functionality
-        // For now, it's just a placeholder
-    }
-    
-    // Fetch players
-    func fetchPlayers(teamId: String, completion: @escaping (Result<[Player], Error>) -> Void) {
-        // This will be implemented when we add the live functionality
-        // For now, it's just a placeholder
-    }
-    
-    // Fetch live events
-    func fetchEvents(matchId: String, completion: @escaping (Result<[LiveEvent], Error>) -> Void) {
-        // This will be implemented when we add the live functionality
-        // For now, it's just a placeholder
+        
+        count = try container.decodeIfPresent(Int.self, forKey: .count)
     }
 }
 
-// Models for API responses
+struct CompetitionsResponse: Codable {
+    let competitions: [APICompetition]
+}
 
-
-struct APITeam: Codable {
+struct TeamResponse: Codable {
     let id: Int
     let name: String
     let shortName: String?
     let crest: String?
-    let squad: [APIPlayer]?
-    
-    func toAppModel() -> Team {
-        return Team(
-            id: UUID(), // Generate a new UUID for the team
-            name: name,
-            shortName: shortName ?? name.prefix(3).uppercased(),
-            logoName: "team_logo", // Default logo name
-            primaryColor: "#1a73e8" // Default color
-        )
-    }
-}
-
-struct APILineup: Codable {
-    let homeTeam: APITeamLineup
-    let awayTeam: APITeamLineup
-    
-    func toAppModel() -> Lineup {
-        return Lineup(
-            homeTeam: homeTeam.toAppModel(),
-            awayTeam: awayTeam.toAppModel()
-        )
-    }
-}
-
-struct APITeamLineup: Codable {
-    let team: APITeam
-    let formation: String?
-    let startXI: [APILineupPlayer]
-    let substitutes: [APILineupPlayer]
+    let squad: [APIPlayer]
     let coach: APICoach?
     
-    func toAppModel() -> TeamLineup {
-        return TeamLineup(
-            team: team.toAppModel(),
-            formation: formation,
-            startingXI: startXI.map { $0.player.toAppModel(team: team.toAppModel()) },
-            substitutes: substitutes.map { $0.player.toAppModel(team: team.toAppModel()) },
+    func toTeamSquad() -> TeamSquad {
+        let team = Team(
+            name: name,
+            shortName: shortName ?? String(name.prefix(3)).uppercased(),
+            logoName: "team_logo",
+            primaryColor: "#1a73e8"
+        )
+        
+        let players = squad.map { $0.toAppModel(team: team) }
+        
+        return TeamSquad(
+            team: team,
+            players: players,
             coach: coach?.toAppModel()
         )
     }
 }
 
-struct APILineupPlayer: Codable {
-    let player: APIPlayer
-    let position: String?
-    
-    enum CodingKeys: String, CodingKey {
-        case player
-        case position
-    }
-}
+// MARK: - Match Models
 
-struct APICoach: Codable {
+struct APIMatch: Codable {
     let id: Int
-    let name: String
-    let countryOfBirth: String?
-    let nationality: String?
+    let competition: APICompetition
+    let utcDate: String
+    let status: String
+    let homeTeam: APITeam
+    let awayTeam: APITeam
+    let score: APIScore
     
-    func toAppModel() -> Coach {
-        return Coach(
-            id: "\(id)",
-            name: name,
-            nationality: nationality
-        )
-    }
-}
-
-struct APIMatchWithEvents: Codable {
-    let match: APIMatch
+    // Optional lineup data (only present with proper headers)
     let goals: [APIGoal]?
     let bookings: [APIBooking]?
     let substitutions: [APISubstitution]?
     
-    func toAppModel() -> MatchWithEvents {
-        let matchModel = match.toAppModel()
+    func toAppModel() -> Match {
+        let date = DateUtility.iso8601Full.date(from: utcDate) ?? Date()
         
-        // Convert API events to app model events
+        return Match(
+            id: "\(id)",
+            homeTeam: homeTeam.toAppModel(),
+            awayTeam: awayTeam.toAppModel(),
+            startTime: date,
+            status: matchStatus(from: status),
+            competition: competition.toAppModel()
+        )
+    }
+    
+    func toMatchWithEvents() -> MatchWithEvents {
+        let match = toAppModel()
         var events: [MatchEvent] = []
         
-        // Add goals
+        // Convert goals to events
         if let goals = goals {
             for goal in goals {
                 events.append(MatchEvent(
-                    id: "\(goal.id)",
-                    type: goal.type,
+                    id: "\(goal.minute)_goal_\(goal.scorer.id)",
+                    type: goal.type.lowercased(),
                     playerId: "\(goal.scorer.id)",
                     playerName: goal.scorer.name,
                     minute: goal.minute,
                     teamId: "\(goal.team.id)",
                     playerOffId: nil,
-                    playerOnId: goal.assistId != nil ? "\(goal.assistId!)" : nil
+                    playerOnId: goal.assist?.id != nil ? "\(goal.assist!.id)" : nil
                 ))
             }
         }
         
-        // Add bookings
+        // Convert bookings to events
         if let bookings = bookings {
             for booking in bookings {
                 events.append(MatchEvent(
-                    id: "\(booking.id)",
+                    id: "\(booking.minute)_\(booking.card.lowercased())_\(booking.player.id)",
                     type: booking.card == "YELLOW" ? "yellow_card" : "red_card",
                     playerId: "\(booking.player.id)",
                     playerName: booking.player.name,
@@ -169,11 +126,11 @@ struct APIMatchWithEvents: Codable {
             }
         }
         
-        // Add substitutions
+        // Convert substitutions to events
         if let substitutions = substitutions {
             for sub in substitutions {
                 events.append(MatchEvent(
-                    id: "\(sub.id)",
+                    id: "\(sub.minute)_sub_\(sub.playerOut.id)",
                     type: "substitution",
                     playerId: "\(sub.playerOut.id)",
                     playerName: sub.playerOut.name,
@@ -186,88 +143,176 @@ struct APIMatchWithEvents: Codable {
         }
         
         return MatchWithEvents(
-            match: matchModel,
+            match: match,
             events: events,
-            homeLineup: nil,  // These would be populated separately
+            homeLineup: nil,
             awayLineup: nil
         )
     }
+    
+    private func matchStatus(from status: String) -> MatchStatus {
+        switch status.uppercased() {
+        case "SCHEDULED", "TIMED":
+            return .upcoming
+        case "LIVE", "IN_PLAY":
+            return .inProgress
+        case "PAUSED":
+            return .halftime
+        case "FINISHED":
+            return .completed
+        case "POSTPONED":
+            return .postponed
+        case "CANCELLED":
+            return .cancelled
+        case "SUSPENDED":
+            return .suspended
+        default:
+            print("⚠️ Unknown match status: \(status)")
+            return .unknown
+        }
+    }
 }
 
-struct APIGoal: Codable {
+// MARK: - Team Models
+
+struct APITeam: Codable {
     let id: Int
-    let minute: Int
-    let team: APITeam
-    let scorer: APIPlayer
-    let assistId: Int?
-    let type: String // REGULAR_GOAL, OWN_GOAL, PENALTY
-}
-
-struct APIBooking: Codable {
-    let id: Int
-    let minute: Int
-    let team: APITeam
-    let player: APIPlayer
-    let card: String // YELLOW, RED
-}
-
-struct APISubstitution: Codable {
-    let id: Int
-    let minute: Int
-    let team: APITeam
-    let playerIn: APIPlayer
-    let playerOut: APIPlayer
-}
-
-struct LiveEvent: Codable, Identifiable {
-    let id: String
-    let minute: Int
-    let type: String
-    let player: APIPlayer?
-    let teamId: String
-}
-
-struct APITeamSquad: Codable {
-    let team: APITeam
-    let squad: [APIPlayer]
+    let name: String
+    let shortName: String?
+    let crest: String?
+    
+    // Squad data (from team endpoint)
+    let squad: [APIPlayer]?
+    
+    // Lineup data (from match endpoint with lineup headers)
+    let formation: String?
+    let lineup: [APILineupPlayer]?
+    let bench: [APILineupPlayer]?
     let coach: APICoach?
     
-    func toAppModel() -> TeamSquad {
-        return TeamSquad(
-            team: team.toAppModel(),
-            players: squad.map { $0.toAppModel(team: team.toAppModel()) },
-            coach: coach?.toAppModel()
+    func toAppModel() -> Team {
+        return Team(
+            id: UUID(uuidString: "00000000-0000-0000-0000-\(String(format: "%012d", id))") ?? UUID(),
+            name: name,
+            shortName: shortName ?? name.prefix(3).uppercased(),
+            logoName: "team_logo",
+            primaryColor: "#1a73e8"
+        )
+    }
+    
+    func toTeamLineup() -> TeamLineup? {
+        guard let lineup = lineup else { return nil }
+        
+        let team = toAppModel()
+        
+        return TeamLineup(
+            team: team,
+            formation: formation,
+            startingXI: lineup.map { $0.toAppModel(team: team) },
+            substitutes: (bench ?? []).map { $0.toAppModel(team: team) },
+            coach: coach?.toAppModel()  // This will safely handle nil coaches
         )
     }
 }
+
+// MARK: - Player Models
 
 struct APIPlayer: Codable {
     let id: Int
     let name: String
     let position: String?
+    let shirtNumber: Int?
+    let dateOfBirth: String?
+    let nationality: String?
     
     func toAppModel(team: Team) -> Player {
-        // Map API position to app position
         let playerPosition: Player.Position
         switch position?.lowercased() {
         case "goalkeeper":
             playerPosition = .goalkeeper
-        case "defender":
+        case "defence", "center-back", "centre-back", "right-back", "left-back":
             playerPosition = .defender
-        case "midfielder":
+        case "midfield", "central midfield", "defensive midfield", "attacking midfield", "right winger", "left winger":
             playerPosition = .midfielder
-        case "forward", "attacker":
+        case "offence", "centre-forward", "striker":
             playerPosition = .forward
         default:
-            playerPosition = .midfielder // Default to midfielder
+            playerPosition = .midfielder
         }
         
         return Player(
+            apiId: String(id),
             name: name,
             team: team,
             position: playerPosition
         )
     }
+}
+
+struct APILineupPlayer: Codable {
+    let id: Int
+    let name: String
+    let position: String?
+    let shirtNumber: Int?
+    
+    func toAppModel(team: Team) -> Player {
+        let playerPosition: Player.Position
+        switch position?.lowercased() {
+        case "goalkeeper":
+            playerPosition = .goalkeeper
+        case "centre-back", "center-back", "right-back", "left-back":
+            playerPosition = .defender
+        case "central midfield", "defensive midfield", "attacking midfield", "right winger", "left winger":
+            playerPosition = .midfielder
+        case "centre-forward":
+            playerPosition = .forward
+        default:
+            playerPosition = .midfielder
+        }
+        
+        return Player(
+            apiId: String(id),
+            name: name,
+            team: team,
+            position: playerPosition
+        )
+    }
+}
+
+// MARK: - Event Models
+
+struct APIGoal: Codable {
+    let minute: Int
+    let type: String // REGULAR, PENALTY, OWN_GOAL
+    let team: APITeamBasic
+    let scorer: APIPlayerBasic
+    let assist: APIPlayerBasic?
+}
+
+struct APIBooking: Codable {
+    let minute: Int
+    let team: APITeamBasic
+    let player: APIPlayerBasic
+    let card: String // YELLOW, RED
+}
+
+struct APISubstitution: Codable {
+    let minute: Int
+    let team: APITeamBasic
+    let playerIn: APIPlayerBasic
+    let playerOut: APIPlayerBasic
+}
+
+// MARK: - Basic Models
+
+struct APIPlayerBasic: Codable {
+    let id: Int
+    let name: String
+}
+
+struct APITeamBasic: Codable {
+    let id: Int
+    let name: String
 }
 
 struct APICompetition: Codable {
@@ -284,6 +329,20 @@ struct APICompetition: Codable {
     }
 }
 
+struct APICoach: Codable {
+    let id: Int?
+    let name: String?
+    let nationality: String?
+    
+    func toAppModel() -> Coach {
+        return Coach(
+            id: "\(id ?? 0)",
+            name: name ?? "Unknown Coach",
+            nationality: nationality
+        )
+    }
+}
+
 struct APIScore: Codable {
     let fullTime: ScoreDetail?
     let halfTime: ScoreDetail?
@@ -294,79 +353,7 @@ struct APIScore: Codable {
     }
 }
 
-struct APIMatchDetail: Codable {
-    let id: Int
-    let competition: APICompetition
-    let homeTeam: APITeam
-    let awayTeam: APITeam
-    let utcDate: String
-    let status: String
-    let score: APIScore
-    let venue: String?
-    let attendance: Int?
-    let referee: String?
-    
-    func toAppModel() -> MatchDetail {
-        
-        let date = DateUtility.iso8601Full.date(from: utcDate) ?? Date()
-        
-        let match = Match(
-            id: "\(id)",
-            homeTeam: homeTeam.toAppModel(),
-            awayTeam: awayTeam.toAppModel(),
-            startTime: date,
-            status: matchStatusFrom(status: status),
-            competition: competition.toAppModel()
-        )
-        
-        return MatchDetail(
-            match: match,
-            venue: venue,
-            attendance: attendance,
-            referee: referee,
-            homeScore: score.fullTime?.home ?? 0,
-            awayScore: score.fullTime?.away ?? 0
-        )
-    }
-    
-    private func matchStatusFrom(status: String) -> MatchStatus {
-        switch status {
-        case "SCHEDULED": return .upcoming
-        case "LIVE", "IN_PLAY": return .inProgress
-        case "PAUSED": return .halftime
-        case "FINISHED": return .completed
-        default: return .unknown
-        }
-    }
-}
-
-// API responses containers
-struct CompetitionsResponse: Codable {
-    let competitions: [APICompetition]
-}
-
-struct MatchesResponse: Codable {
-    let matches: [APIMatch]
-    let count: Int?
-    
-    enum CodingKeys: String, CodingKey {
-        case matches
-        case count
-    }
-    
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        
-        do {
-            matches = try container.decode([APIMatch].self, forKey: .matches)
-        } catch {
-            print("Could not decode matches: \(error)")
-            matches = []
-        }
-        
-        count = try container.decodeIfPresent(Int.self, forKey: .count)
-    }
-}
+// MARK: - App Models (unchanged)
 
 struct Lineup {
     let homeTeam: TeamLineup
@@ -387,29 +374,6 @@ struct Coach {
     let nationality: String?
 }
 
-struct MatchEventDetails: Identifiable {
-    let id: String
-    let minute: Int
-    let type: EventType
-    let player: Player
-    let team: Team
-    let detail: String?
-    let secondaryPlayer: Player? // For assists, etc.
-    
-    enum EventType: String {
-        case goal
-        case card
-        case substitution
-        case var_goal // VAR-related
-        case penalty_missed
-        case penalty_scored
-        case injury
-        case corner
-        case foul
-    }
-}
-
-// Combined match with events
 struct MatchWithEvents {
     let match: Match
     let events: [MatchEvent]
@@ -417,7 +381,6 @@ struct MatchWithEvents {
     let awayLineup: TeamLineup?
 }
 
-// Team squad
 struct TeamSquad {
     let team: Team
     let players: [Player]

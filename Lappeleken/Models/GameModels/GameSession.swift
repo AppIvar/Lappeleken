@@ -26,7 +26,7 @@ class GameSession: ObservableObject, Codable {
     @Published var customEventMappings: [UUID: String] = [:]
 
     private var dataService: GameDataService
-    private var matchMonitoringTask: Task<Void, Never>?
+    private var matchMonitoringTask: Task<Void, Error>?
     private var matchService: MatchService?
     private var lastEventBackup: (event: GameEvent, participantBalances: [UUID: Double])? = nil
     
@@ -165,37 +165,48 @@ class GameSession: ObservableObject, Codable {
         }
         
         print("📋 Fetching lineup for match \(matchId)")
-        print("🔧 Using service type: \(type(of: matchService))")
         
         do {
-            let lineup = try await matchService.fetchMatchLineup(matchId: matchId)
+            let lineup: Lineup
+            if let footballService = matchService as? FootballDataMatchService {
+                lineup = try await footballService.fetchMatchLineup(matchId: matchId)
+            } else {
+                lineup = try await matchService.fetchMatchLineup(matchId: matchId)
+            }
             
             await MainActor.run {
                 self.matchLineups[matchId] = lineup
                 
-                // Extract players from lineup
-                var allPlayers: [Player] = []
-                allPlayers.append(contentsOf: lineup.homeTeam.startingXI)
-                allPlayers.append(contentsOf: lineup.homeTeam.substitutes)
-                allPlayers.append(contentsOf: lineup.awayTeam.startingXI)
-                allPlayers.append(contentsOf: lineup.awayTeam.substitutes)
+                // Extract players from lineup and add to availablePlayers
+                let lineupPlayers = extractPlayersFromLineup(lineup)
                 
-                self.availablePlayers = allPlayers
-                self.selectedPlayers = allPlayers
+                // Replace or add players
+                let existingPlayerIds = Set(availablePlayers.map { $0.id })
+                let newPlayers = lineupPlayers.filter { !existingPlayerIds.contains($0.id) }
                 
-                print("✅ Lineup processed: \(allPlayers.count) players available")
-                print("  - Home XI: \(lineup.homeTeam.startingXI.count)")
-                print("  - Home Subs: \(lineup.homeTeam.substitutes.count)")
-                print("  - Away XI: \(lineup.awayTeam.startingXI.count)")
-                print("  - Away Subs: \(lineup.awayTeam.substitutes.count)")
+                availablePlayers.append(contentsOf: newPlayers)
                 
-                self.objectWillChange.send()
+                print("✅ Lineup fetched: \(lineupPlayers.count) players added to session")
+                objectWillChange.send()
             }
-            
         } catch {
-            print("❌ Error fetching lineup: \(error)")
+            print("❌ Failed to fetch lineup for match \(matchId): \(error)")
             throw error
         }
+    }
+    
+    private func extractPlayersFromLineup(_ lineup: Lineup) -> [Player] {
+        var players: [Player] = []
+        
+        // Extract home team players
+        players.append(contentsOf: lineup.homeTeam.startingXI)
+        players.append(contentsOf: lineup.homeTeam.substitutes)
+        
+        // Extract away team players
+        players.append(contentsOf: lineup.awayTeam.startingXI)
+        players.append(contentsOf: lineup.awayTeam.substitutes)
+        
+        return players
     }
     
     func startMonitoringMatch(_ match: Match) {
@@ -624,26 +635,70 @@ class GameSession: ObservableObject, Codable {
     }
     
     private func processLiveEvent(_ event: MatchEvent) {
-        // Map API event to app event type
-        guard let eventType = mapToEventType(event.type),
-              let player = availablePlayers.first(where: { $0.id.uuidString == event.playerId }) else {
+        // Look up player by API ID first, then fallback to name
+        guard let player = findPlayerForEvent(event) else {
+            print("❌ Could not find player for event: \(event.playerName ?? "Unknown") (ID: \(event.playerId))")
             return
         }
         
-        // For substitutions
+        // Map API event to app event type
+        guard let eventType = mapToEventType(event.type) else {
+            print("❌ Unknown event type: \(event.type)")
+            return
+        }
+        
+        // Handle substitutions
         if event.type == "substitution" {
-            guard let playerOff = availablePlayers.first(where: { $0.id.uuidString == event.playerOffId }),
-                  let playerOn = availablePlayers.first(where: { $0.id.uuidString == event.playerOnId }) else {
-                return
-            }
-            
-            substitutePlayer(playerOff: playerOff, playerOn: playerOn)
+            handleSubstitution(event)
         } else {
-            // For other events - ensure we're on MainActor
+            // Credit the participant who owns this player
             Task { @MainActor in
                 recordEvent(player: player, eventType: eventType)
             }
         }
+    }
+    
+    private func findPlayerForEvent(_ event: MatchEvent) -> Player? {
+        // Method 1: Match by API ID (most reliable)
+        if let player = availablePlayers.first(where: { $0.apiId == event.playerId }) {
+            return player
+        }
+        
+        // Method 2: Match by name (fallback)
+        if let playerName = event.playerName {
+            if let player = availablePlayers.first(where: {
+                $0.name.lowercased() == playerName.lowercased()
+            }) {
+                return player
+            }
+        }
+        
+        return nil
+    }
+
+    
+    private func handleSubstitution(_ event: MatchEvent) {
+        guard let playerOffId = event.playerOffId,
+              let playerOnId = event.playerOnId,
+              let playerOff = availablePlayers.first(where: { $0.apiId == playerOffId }),
+              let playerOn = findOrCreatePlayerFromAPI(apiId: playerOnId) else {
+            print("❌ Could not process substitution")
+            return
+        }
+        
+        substitutePlayer(playerOff: playerOff, playerOn: playerOn)
+    }
+    
+    private func findOrCreatePlayerFromAPI(apiId: String) -> Player? {
+        // First try to find existing player
+        if let existingPlayer = availablePlayers.first(where: { $0.apiId == apiId }) {
+            return existingPlayer
+        }
+        
+        // If not found, we can't create it without more API data
+        // This would require a separate API call to get player details
+        print("⚠️ Player with API ID \(apiId) not found in available players")
+        return nil
     }
     
     private func mapToEventType(_ apiEventType: String) -> Bet.EventType? {
@@ -1139,6 +1194,9 @@ class GameSession: ObservableObject, Codable {
     }
     
     func fetchAvailableMatchesRobust() async throws {
+        
+        await testAPIAccess()
+        
         guard isLiveMode else {
             throw NSError(domain: "GameSession", code: 1, userInfo: [
                 NSLocalizedDescriptionKey: "Live mode is not enabled"
@@ -1160,7 +1218,7 @@ class GameSession: ObservableObject, Codable {
             // Handle real football service
             if let footballService = matchService as? FootballDataMatchService {
                 print("🌐 Using real FootballDataMatchService")
-                matches = try await footballService.fetchLiveMatchesWithFallback(competitionCode: nil)
+                matches = try await footballService.fetchLiveMatches(competitionCode: nil)
             } else {
                 print("🔄 Using generic MatchService interface")
                 // Try live matches first, then fallback to upcoming
@@ -1205,6 +1263,14 @@ class GameSession: ObservableObject, Codable {
         }
     }
     
+    private func testAPIAccess() async {
+        guard let footballService = matchService as? FootballDataMatchService else {
+            print("❌ No football service available")
+            return
+        }
+        await footballService.debugAPIAccess()
+    }
+    
     func fetchMatchPlayersRobust(for matchId: String) async throws -> [Player]? {
         guard let matchService = matchService else {
             throw NSError(domain: "GameSession", code: 1, userInfo: [
@@ -1225,6 +1291,25 @@ class GameSession: ObservableObject, Codable {
             print("❌ Error fetching players for match \(matchId): \(error)")
             throw error
         }
+    }
+    
+    @MainActor func setupEventDrivenMode() {
+        guard isLiveMode else { return }
+        print("🎯 Setting up event-driven mode for game \(id)")
+        
+        // Start event-driven monitoring
+        startRealEventDrivenMode()
+    }
+
+    @MainActor func cleanupEventDrivenMode() {
+        print("🧹 Cleaning up event-driven mode for game \(id)")
+        
+        // Stop event monitoring
+        EventDrivenManager.shared.stopMonitoring(for: self)
+        
+        // Cancel any existing monitoring tasks
+        matchMonitoringTask?.cancel()
+        matchMonitoringTask = nil
     }
     
     func selectMatchRobust(_ match: Match) async {
@@ -1291,7 +1376,7 @@ class GameSession: ObservableObject, Codable {
         if let footballService = matchService as? FootballDataMatchService {
             matchMonitoringTask = footballService.smartMatchMonitoring(
                 matchId: match.id,
-                onUpdate: { [weak self] (update: MatchUpdate) in
+                onUpdate: { [weak self] update in
                     guard let self = self else { return }
                     
                     Task { @MainActor in

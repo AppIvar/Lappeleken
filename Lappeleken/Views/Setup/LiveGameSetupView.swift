@@ -1033,7 +1033,7 @@ struct LiveGameSetupView: View {
             do {
                 let matchIdsToLoad = AppConfig.canSelectMultipleMatches
                 ? Array(self.selectedMatchIds)
-                : Array(self.selectedMatchIds.prefix(1)) // Safe array creation
+                : Array(self.selectedMatchIds.prefix(1))
                 
                 guard !matchIdsToLoad.isEmpty else {
                     await MainActor.run {
@@ -1048,40 +1048,34 @@ struct LiveGameSetupView: View {
                 }
                 
                 var allPlayers: [Player] = []
-                var playerUnavailableMatches: [Match] = []
+                var matchesWithoutLineups: [Match] = []
                 
                 print("🔄 Loading players for \(matchIdsToLoad.count) matches...")
                 
-                // Process matches sequentially with proper error handling
                 for (index, matchId) in matchIdsToLoad.enumerated() {
                     guard let match = gameSession.availableMatches.first(where: { $0.id == matchId }) else {
                         print("⚠️ Match with ID \(matchId) not found in available matches")
                         continue
                     }
                     
+                    print("📥 Loading players for match \(index + 1)/\(matchIdsToLoad.count): \(match.homeTeam.name) vs \(match.awayTeam.name)")
+                    
                     do {
-                        print("📥 Loading players for match \(index + 1)/\(matchIdsToLoad.count): \(match.homeTeam.name) vs \(match.awayTeam.name)")
-                        
-                        let players = try await gameSession.fetchMatchPlayersRobust(for: matchId) ?? []
-                        
-                        let hasDummyPlayers = players.isEmpty || players.contains(where: {
-                            $0.name.contains("Player ")
-                        })
-                        
-                        if hasDummyPlayers {
-                            playerUnavailableMatches.append(match)
+                        // Try lineup first
+                        try await gameSession.fetchMatchLineup(for: matchId)
+                        if let lineup = gameSession.matchLineups[matchId] {
+                            let lineupPlayers = extractPlayersFromLineup(lineup)
+                            allPlayers.append(contentsOf: lineupPlayers)
+                            print("✅ Loaded \(lineupPlayers.count) real players from lineup")
                         }
-                        
-                        allPlayers.append(contentsOf: players)
-                        
-                        // Rate limiting between requests
-                        if index < matchIdsToLoad.count - 1 {
-                            try await Task.sleep(nanoseconds: 2_000_000_000)
-                        }
-                        
                     } catch {
-                        print("❌ Error loading players for match \(matchId): \(error)")
-                        // Continue with other matches
+                        print("❌ No lineup available for \(match.homeTeam.name) vs \(match.awayTeam.name): \(error)")
+                        matchesWithoutLineups.append(match)
+                    }
+                    
+                    // Rate limiting between requests
+                    if index < matchIdsToLoad.count - 1 {
+                        try await Task.sleep(nanoseconds: 2_000_000_000)
                     }
                 }
                 
@@ -1090,16 +1084,18 @@ struct LiveGameSetupView: View {
                     gameSession.availablePlayers = allPlayers
                     
                     if !allPlayers.isEmpty {
-                        if !playerUnavailableMatches.isEmpty {
-                            self.showPlayerUnavailableWarning(matches: playerUnavailableMatches)
-                        } else {
-                            // Safely move to next step
-                            if self.currentStep < self.steps.count - 1 {
-                                self.currentStep += 1
-                            }
+                        print("✅ Successfully loaded \(allPlayers.count) real players")
+                        if self.currentStep < self.steps.count - 1 {
+                            self.currentStep += 1
                         }
                     } else {
-                        self.error = "No players found for the selected match(es). Team lineups may not be available yet."
+                        // No real players available
+                        if !matchesWithoutLineups.isEmpty {
+                            let matchNames = matchesWithoutLineups.map { "\($0.homeTeam.name) vs \($0.awayTeam.name)" }.joined(separator: ", ")
+                            self.error = "Lineups are not available for: \(matchNames)\n\nPlease try:\n• Selecting a different match\n• Waiting closer to kickoff time\n• Choosing a Premier League match"
+                        } else {
+                            self.error = "No lineup data available for selected matches."
+                        }
                     }
                     
                     gameSession.objectWillChange.send()
@@ -1108,10 +1104,19 @@ struct LiveGameSetupView: View {
             } catch {
                 await MainActor.run {
                     self.isLoading = false
-                    self.error = "Error loading players: \(error.localizedDescription)"
+                    self.error = "Error loading lineups: \(error.localizedDescription)"
                 }
             }
         }
+    }
+    
+    private func extractPlayersFromLineup(_ lineup: Lineup) -> [Player] {
+        var players: [Player] = []
+        players.append(contentsOf: lineup.homeTeam.startingXI)
+        players.append(contentsOf: lineup.homeTeam.substitutes)
+        players.append(contentsOf: lineup.awayTeam.startingXI)
+        players.append(contentsOf: lineup.awayTeam.substitutes)
+        return players
     }
     
     private func showPlayerUnavailableWarning(matches: [Match]) {

@@ -2,18 +2,17 @@
 //  Enhanced MatchSelectionView.swift
 //  Lucky Football Slip
 //
-//  Enhanced with vibrant design patterns
+//  Enhanced with feature flags and multiple match selection
 //
 
 import SwiftUI
-
 
 struct MatchSelectionView: View {
     @ObservedObject var gameSession: GameSession
     @Environment(\.presentationMode) var presentationMode
     @State private var isLoading = false
     @State private var isSelectingMatch = false
-    @State private var selectedMatchId: String? = nil
+    @State private var selectedMatches: [Match] = [] // Support multiple matches
     @State private var error: String? = nil
     @StateObject private var networkMonitor = NetworkMonitor()
     
@@ -47,7 +46,6 @@ struct MatchSelectionView: View {
                 }
             }
             .onAppear {
-                
                 if gameSession.availableMatches.isEmpty {
                     loadMatches()
                 }
@@ -82,7 +80,7 @@ struct MatchSelectionView: View {
                     .font(AppDesignSystem.Typography.headingFont)
                     .foregroundColor(AppDesignSystem.Colors.primaryText)
                 
-                if isSelectingMatch, let matchId = selectedMatchId {
+                if isSelectingMatch {
                     Text("Preparing match details...")
                         .font(AppDesignSystem.Typography.bodyFont)
                         .foregroundColor(AppDesignSystem.Colors.secondaryText)
@@ -147,38 +145,6 @@ struct MatchSelectionView: View {
         .padding()
     }
     
-    // MARK: - Connection info
-    
-    private var liveConnectionInfo: some View {
-        VStack(spacing: 8) {
-            HStack {
-                LiveConnectionStatus(isConnected: networkMonitor.isConnected)
-                
-                Spacer()
-                
-                if gameSession.availableMatches.isEmpty && !isLoading {
-                    Button("Refresh") {
-                        loadMatches()
-                    }
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(AppDesignSystem.Colors.primary)
-                }
-            }
-            
-            if networkMonitor.isConnected && !gameSession.availableMatches.isEmpty {
-                HStack {
-                    Image(systemName: "clock")
-                        .foregroundColor(AppDesignSystem.Colors.info)
-                    Text("Matches update automatically")
-                        .font(.system(size: 12))
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                    Spacer()
-                }
-            }
-        }
-        .padding(.vertical, 8)
-    }
-    
     // MARK: - Empty State View
     
     private var emptyStateView: some View {
@@ -239,41 +205,118 @@ struct MatchSelectionView: View {
     // MARK: - Matches List View
     
     private var matchesListView: some View {
-        ScrollView(showsIndicators: false) {
-            LazyVStack(spacing: 16) {
-                // Header
-                VStack(spacing: 8) {
-                    Text("Select a Match")
-                        .font(AppDesignSystem.Typography.headingFont)
-                        .foregroundColor(AppDesignSystem.Colors.primaryText)
-                    
-                    Text("\(gameSession.availableMatches.count) matches available")
-                        .font(AppDesignSystem.Typography.bodyFont)
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                }
-                .padding(.top, 20)
-                .padding(.bottom, 10)
-                
-                // Matches
-                ForEach(Array(gameSession.availableMatches.enumerated()), id: \.element.id) { index, match in
-                    EnhancedMatchCard(
-                        match: match,
-                        index: index
-                    ) {
-                        selectMatch(match)
+        VStack(spacing: 0) {
+            // Header with feature flag info
+            headerView
+            
+            ScrollView(showsIndicators: false) {
+                LazyVStack(spacing: 16) {
+                    // Matches
+                    ForEach(Array(gameSession.availableMatches.enumerated()), id: \.element.id) { index, match in
+                        EnhancedMatchCard(
+                            match: match,
+                            index: index,
+                            isSelected: selectedMatches.contains(where: { $0.id == match.id }),
+                            canSelectMultiple: AppConfig.canSelectMultipleMatches
+                        ) {
+                            selectMatch(match)
+                        }
+                        .animation(
+                            AppDesignSystem.Animations.bouncy.delay(Double(index) * 0.1),
+                            value: gameSession.availableMatches.count
+                        )
                     }
-                    .animation(
-                        AppDesignSystem.Animations.bouncy.delay(Double(index) * 0.1),
-                        value: gameSession.availableMatches.count
-                    )
                 }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 100) // Space for bottom button
             }
-            .padding(.horizontal, 20)
-            .padding(.bottom, 40)
+            
+            // Bottom action button
+            if !selectedMatches.isEmpty {
+                bottomActionButton
+            }
         }
     }
     
-    // MARK: - Helper Methods (keeping your existing logic)
+    // MARK: - Header View
+    
+    private var headerView: some View {
+        VStack(spacing: 12) {
+            // Title and count
+            VStack(spacing: 8) {
+                Text("Select Match\(AppConfig.canSelectMultipleMatches ? "es" : "")")
+                    .font(AppDesignSystem.Typography.headingFont)
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                Text("\(gameSession.availableMatches.count) matches available")
+                    .font(AppDesignSystem.Typography.bodyFont)
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+            }
+            
+            // Feature flag indicator
+            if AppConfig.canSelectMultipleMatches {
+                HStack {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(AppDesignSystem.Colors.success)
+                    
+                    Text("Multiple selection enabled")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(AppDesignSystem.Colors.success)
+                    
+                    Spacer()
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 8)
+                .background(AppDesignSystem.Colors.success.opacity(0.1))
+                .cornerRadius(8)
+                .padding(.horizontal, 20)
+            } else {
+                HStack {
+                    Image(systemName: "info.circle.fill")
+                        .foregroundColor(AppDesignSystem.Colors.primary)
+                    
+                    Text("Select one match")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(AppDesignSystem.Colors.primary)
+                    
+                    if AppConfig.subscriptionEnabled {
+                        Text("• Premium: Multiple matches")
+                            .font(.system(size: 12))
+                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    }
+                    
+                    Spacer()
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 8)
+                .background(AppDesignSystem.Colors.primary.opacity(0.1))
+                .cornerRadius(8)
+                .padding(.horizontal, 20)
+            }
+        }
+        .padding(.top, 20)
+        .padding(.bottom, 10)
+    }
+    
+    // MARK: - Bottom Action Button
+    
+    private var bottomActionButton: some View {
+        VStack(spacing: 0) {
+            Divider()
+            
+            Button("Select \(selectedMatches.count) Match\(selectedMatches.count != 1 ? "es" : "")") {
+                confirmSelection()
+            }
+            .disabled(selectedMatches.isEmpty || isSelectingMatch)
+            .buttonStyle(.borderedProminent)
+            .frame(maxWidth: .infinity, minHeight: 50)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 16)
+            .background(Color(UIColor.systemBackground))
+        }
+    }
+    
+    // MARK: - Helper Methods
     
     private func loadMatches() {
         isLoading = true
@@ -302,13 +345,32 @@ struct MatchSelectionView: View {
     }
     
     private func selectMatch(_ match: Match) {
+        if AppConfig.canSelectMultipleMatches {
+            // Premium: Allow multiple selections
+            if selectedMatches.contains(where: { $0.id == match.id }) {
+                selectedMatches.removeAll { $0.id == match.id }
+            } else {
+                selectedMatches.append(match)
+            }
+        } else {
+            // Free: Only one match allowed, auto-confirm
+            selectedMatches = [match]
+            confirmSelection()
+        }
+    }
+    
+    private func confirmSelection() {
+        guard !selectedMatches.isEmpty else { return }
+        
         isLoading = true
         isSelectingMatch = true
-        selectedMatchId = match.id
         
         Task {
             do {
-                try await gameSession.selectMatch(match)
+                // For now, select the first match (single match support)
+                // TODO: Add multiple match support to GameSession
+                let firstMatch = selectedMatches.first!
+                try await gameSession.selectMatch(firstMatch)
                 
                 await MainActor.run {
                     isLoading = false
@@ -341,6 +403,8 @@ struct MatchSelectionView: View {
 struct EnhancedMatchCard: View {
     let match: Match
     let index: Int
+    let isSelected: Bool
+    let canSelectMultiple: Bool
     let action: () -> Void
     
     @State private var isPressed = false
@@ -380,7 +444,16 @@ struct EnhancedMatchCard: View {
                     
                     Spacer()
                     
-                    enhancedStatusBadge
+                    HStack(spacing: 8) {
+                        enhancedStatusBadge
+                        
+                        // Selection indicator for multiple selection mode
+                        if canSelectMultiple {
+                            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                                .font(.system(size: 20))
+                                .foregroundColor(isSelected ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.secondaryText)
+                        }
+                    }
                 }
                 
                 // Main match content
@@ -435,19 +508,23 @@ struct EnhancedMatchCard: View {
                 
                 // Action hint
                 HStack {
-                    Image(systemName: "hand.tap.fill")
+                    Image(systemName: canSelectMultiple ? (isSelected ? "checkmark.circle.fill" : "plus.circle.fill") : "hand.tap.fill")
                         .font(.system(size: 12))
-                        .foregroundColor(AppDesignSystem.Colors.primary)
+                        .foregroundColor(isSelected ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.primary)
                     
-                    Text("Tap to select this match")
+                    Text(canSelectMultiple ?
+                         (isSelected ? "Selected" : "Tap to add to selection") :
+                         "Tap to select this match")
                         .font(AppDesignSystem.Typography.captionFont)
-                        .foregroundColor(AppDesignSystem.Colors.primary)
+                        .foregroundColor(isSelected ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.primary)
                     
                     Spacer()
                     
-                    Image(systemName: "arrow.right.circle.fill")
-                        .font(.system(size: 16))
-                        .foregroundColor(AppDesignSystem.Colors.primary)
+                    if !canSelectMultiple {
+                        Image(systemName: "arrow.right.circle.fill")
+                            .font(.system(size: 16))
+                            .foregroundColor(AppDesignSystem.Colors.primary)
+                    }
                 }
             }
             .padding(24)
@@ -457,6 +534,12 @@ struct EnhancedMatchCard: View {
                     .overlay(
                         RoundedRectangle(cornerRadius: 16)
                             .stroke(
+                                isSelected ?
+                                LinearGradient(
+                                    colors: [AppDesignSystem.Colors.success, AppDesignSystem.Colors.success],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ) :
                                 LinearGradient(
                                     colors: [
                                         AppDesignSystem.Colors.primary.opacity(0.3),
@@ -465,22 +548,22 @@ struct EnhancedMatchCard: View {
                                     startPoint: .topLeading,
                                     endPoint: .bottomTrailing
                                 ),
-                                lineWidth: 1
+                                lineWidth: isSelected ? 2 : 1
                             )
                     )
             )
             .shadow(
-                color: AppDesignSystem.Colors.primary.opacity(0.1),
+                color: isSelected ? AppDesignSystem.Colors.success.opacity(0.2) : AppDesignSystem.Colors.primary.opacity(0.1),
                 radius: 8,
                 x: 0,
                 y: 4
             )
-            .scaleEffect(isPressed ? 0.98 : 1.0)
+            .scaleEffect(isPressed ? 0.98 : (isSelected ? 1.02 : 1.0))
         }
         .buttonStyle(PlainButtonStyle())
     }
     
-    // MARK: - Sub-components
+    // MARK: - Sub-components (keeping your existing implementations)
     
     private func teamIcon(for team: Team) -> some View {
         Circle()
@@ -581,7 +664,7 @@ struct EnhancedMatchCard: View {
     }
 }
 
-// MARK: - Enhanced Button Styles
+// MARK: - Enhanced Button Styles (keeping your existing implementations)
 
 struct EnhancedPrimaryButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {

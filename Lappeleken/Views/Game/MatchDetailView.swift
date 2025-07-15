@@ -489,7 +489,21 @@ struct EnhancedLineupView: View {
     }
     
     private func getPlayersWithOwners(team: Team) -> [(player: Player, participant: Participant?)] {
+        print("🔍 Looking for players for team: \(team.name) (ID: \(team.id))")
+        
         let teamPlayers = gameSession.availablePlayers.filter { $0.team.id == team.id }
+        print("📊 Found \(teamPlayers.count) players for \(team.name)")
+        
+        // Debug: Print all available players and their team IDs
+        if teamPlayers.isEmpty {
+            print("🚨 No players found! Available teams in players:")
+            let uniqueTeams = Set(gameSession.availablePlayers.map { $0.team })
+            for playerTeam in uniqueTeams {
+                let playerCount = gameSession.availablePlayers.filter { $0.team.id == playerTeam.id }.count
+                print("   - \(playerTeam.name) (ID: \(playerTeam.id)): \(playerCount) players")
+            }
+        }
+        
         return teamPlayers.map { player in
             let owner = gameSession.participants.first { participant in
                 participant.selectedPlayers.contains { $0.id == player.id } ||

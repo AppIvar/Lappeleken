@@ -11,6 +11,7 @@ import SwiftUI
 // Enhanced Player model with better stats tracking
 struct Player: Identifiable, Codable, Equatable {
     var id = UUID()
+    var apiId: String?
     var name: String
     var team: Team
     var position: Position

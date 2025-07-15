@@ -125,14 +125,14 @@ struct BannerAdView: UIViewRepresentable {
     }
 }
 
-// MARK: - Enhanced View Extensions for Optimal Banner Placement
+// MARK: - Enhanced View Extensions with Feature Flag Integration
 
 extension View {
     /// Add banner ad at bottom for general views
     @MainActor
     func withSmartBanner() -> some View {
         Group {
-            if AppPurchaseManager.shared.currentTier == .free {
+            if AdManager.shared.shouldShowBannerAds {
                 VStack(spacing: 0) {
                     self
                     
@@ -160,7 +160,7 @@ extension View {
     @MainActor
     func withTabBanner(tabName: String) -> some View {
         Group {
-            if AppPurchaseManager.shared.currentTier == .free {
+            if AdManager.shared.shouldShowBannerAds {
                 VStack(spacing: 0) {
                     self
                         .onAppear {
@@ -190,7 +190,7 @@ extension View {
             } else {
                 self
                     .onAppear {
-                        print("📊 Premium user viewing tab: \(tabName)")
+                        print("📊 Ad-free user viewing tab: \(tabName)")
                     }
             }
         }
@@ -200,7 +200,7 @@ extension View {
     @MainActor
     func withMinimalBanner() -> some View {
         Group {
-            if AppPurchaseManager.shared.currentTier == .free {
+            if AdManager.shared.shouldShowBannerAds {
                 VStack(spacing: 0) {
                     self
                     
@@ -216,11 +216,11 @@ extension View {
         }
     }
     
-    /// Show upgrade prompt instead of banner occasionally
+    /// Show upgrade prompt instead of banner occasionally (only if subscription enabled)
     @MainActor
     func withSmartMonetization() -> some View {
         Group {
-            if AppPurchaseManager.shared.currentTier == .free {
+            if AdManager.shared.shouldShowBannerAds {
                 VStack(spacing: 0) {
                     self
                     
@@ -239,6 +239,9 @@ extension View {
     }
     
     private func shouldShowUpgradePrompt() -> Bool {
+        // Only show upgrade prompt if subscription is enabled
+        guard AppConfig.subscriptionEnabled else { return false }
+        
         // Show upgrade prompt 20% of the time, but not more than once per session
         let hasShownThisSession = UserDefaults.standard.bool(forKey: "upgradePromptShownThisSession")
         guard !hasShownThisSession else { return false }
@@ -249,9 +252,55 @@ extension View {
         }
         return shouldShow
     }
+    
+    @MainActor
+    func withInterstitialAd(trigger: InterstitialTrigger) -> some View {
+        self.onAppear {
+            Task { @MainActor in
+                showInterstitialIfNeeded(for: trigger)
+            }
+        }
+    }
+    
+    private func showInterstitialIfNeeded(for trigger: InterstitialTrigger) {
+        guard AdManager.shared.shouldShowInterstitialAds else { return }
+        
+        let shouldShow = switch trigger {
+        case .gameComplete:
+            AdManager.shared.shouldShowInterstitialAfterGameComplete()
+        case .historyView:
+            AdManager.shared.shouldShowInterstitialForHistoryView()
+        case .settingsView:
+            AdManager.shared.shouldShowInterstitialForSettings()
+        case .random:
+            Int.random(in: 1...10) <= 3 // 30% chance
+        }
+        
+        if shouldShow {
+            showInterstitialAd()
+        }
+    }
+    
+    private func showInterstitialAd() {
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let rootViewController = windowScene.windows.first?.rootViewController else {
+            return
+        }
+        
+        Task { @MainActor in
+            AdManager.shared.showInterstitialAd(from: rootViewController) { success in
+                if success {
+                    print("✅ Interstitial ad shown successfully")
+                    AdManager.shared.trackAdImpression(type: "interstitial")
+                } else {
+                    print("❌ Failed to show interstitial ad")
+                }
+            }
+        }
+    }
 }
 
-// MARK: - Upgrade Prompt Banner Component
+// MARK: - Upgrade Prompt Banner Component (Only shown if subscription enabled)
 
 struct UpgradePromptBanner: View {
     @ObservedObject private var purchaseManager = AppPurchaseManager.shared
@@ -332,52 +381,6 @@ extension View {
     func withBannerAd(placement: BannerPlacement = .bottom) -> some View {
         withSmartBanner()
     }
-    
-    @MainActor
-    func withInterstitialAd(trigger: InterstitialTrigger) -> some View {
-        self.onAppear {
-            Task { @MainActor in
-                showInterstitialIfNeeded(for: trigger)
-            }
-        }
-    }
-    
-    private func showInterstitialIfNeeded(for trigger: InterstitialTrigger) {
-        guard AppPurchaseManager.shared.currentTier == .free else { return }
-        
-        let shouldShow = switch trigger {
-        case .gameComplete:
-            AdManager.shared.shouldShowInterstitialAfterGameComplete()
-        case .historyView:
-            AdManager.shared.shouldShowInterstitialForHistoryView()
-        case .settingsView:
-            AdManager.shared.shouldShowInterstitialForSettings()
-        case .random:
-            Int.random(in: 1...10) <= 3 // 30% chance
-        }
-        
-        if shouldShow {
-            showInterstitialAd()
-        }
-    }
-    
-    private func showInterstitialAd() {
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let rootViewController = windowScene.windows.first?.rootViewController else {
-            return
-        }
-        
-        Task { @MainActor in
-            AdManager.shared.showInterstitialAd(from: rootViewController) { success in
-                if success {
-                    print("✅ Interstitial ad shown successfully")
-                    AdManager.shared.trackAdImpression(type: "interstitial")
-                } else {
-                    print("❌ Failed to show interstitial ad")
-                }
-            }
-        }
-    }
 }
 
 /*
@@ -395,7 +398,7 @@ SomeContentView()
 PaymentView()
     .withMinimalBanner()
 
-// For high-value conversion opportunities
+// For high-value conversion opportunities (only if subscription enabled)
 MainMenuView()
     .withSmartMonetization()
 */

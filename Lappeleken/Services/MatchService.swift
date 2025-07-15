@@ -18,7 +18,7 @@ protocol MatchService {
         matchId: String,
         updateInterval: TimeInterval,
         onUpdate: @escaping (MatchUpdate) -> Void
-    ) -> Task<Void, Never>
+    ) -> Task<Void, Error>
     
     // Premium features (commented out until API models are ready)
     
@@ -29,7 +29,7 @@ protocol MatchService {
         matchId: String,
         updateInterval: TimeInterval,
         onUpdate: @escaping (MatchUpdate) -> Void
-    ) -> Task<Void, Never>
+    ) -> Task<Void, Error>
     
 }
 

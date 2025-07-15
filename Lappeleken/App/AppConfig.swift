@@ -7,9 +7,75 @@
 
 import Foundation
 
-// MARK: - Updated AppConfig.swift with Free Live Mode Testing
-
 struct AppConfig {
+    
+    // MARK: - Master Feature Flags
+    
+    /// Master toggle for subscription system
+    static let subscriptionEnabled = false // ← Set to false for first release
+    
+    /// Individual premium feature flags (can be enabled separately for testing)
+    struct PremiumFeatures {
+        static let multipleMatchSelection = true    // ← Premium: Select multiple live matches
+        static let unlimitedDailyMatches = true     // ← Premium: No 1-per-day limit
+        static let adFreeExperience = false          // ← Premium: Remove all ads
+    }
+    
+    /// Ad configuration
+    struct AdSettings {
+        static let showAdsForAllUsers = true         // ← Show ads to everyone for now
+        static let showBannerAds = true              // ← Banner ads throughout app
+        static let showInterstitialAds = true       // ← Interstitial ads after games
+        static let showRewardedAds = false           // ← Rewarded ads for extra features
+    }
+    
+    // MARK: - Feature Flag Helpers
+    
+    @MainActor
+    static var canSelectMultipleMatches: Bool {
+        if !subscriptionEnabled {
+            return PremiumFeatures.multipleMatchSelection
+        }
+        // When subscription is enabled, check actual premium status
+        return AppPurchaseManager.shared.currentTier == .premium || isFreeLiveTestingActive
+    }
+    
+    @MainActor
+    static var hasUnlimitedDailyMatches: Bool {
+        if !subscriptionEnabled {
+            return PremiumFeatures.unlimitedDailyMatches
+        }
+        // When subscription is enabled, check actual premium status
+        return AppPurchaseManager.shared.currentTier == .premium || isFreeLiveTestingActive
+    }
+    
+    @MainActor
+    static var hasAdFreeExperience: Bool {
+        if !subscriptionEnabled {
+            return PremiumFeatures.adFreeExperience
+        }
+        // When subscription is enabled, check actual premium status
+        return AppPurchaseManager.shared.currentTier == .premium
+    }
+    
+    @MainActor
+    static var shouldShowAdsForCurrentUser: Bool {
+        // If ads are disabled globally, don't show
+        if !AdSettings.showAdsForAllUsers {
+            return false
+        }
+        
+        // If user has ad-free experience, don't show
+        if hasAdFreeExperience {
+            return false
+        }
+        
+        // Show ads for everyone else
+        return true
+    }
+    
+    // MARK: - Environment Configuration
+    
     static let environment: Environment = {
 #if DEBUG
         return .development
@@ -66,7 +132,6 @@ struct AppConfig {
     // MARK: - FREE LIVE MODE TESTING FEATURE
     
     /// Master flag to enable/disable free Live Mode testing
-    /// Set this to false after testing period to revert to 1 match limit
     static let liveModeFreeTesting: Bool = {
         return UserDefaults.standard.bool(forKey: "liveModeFreeTesting_enabled")
     }()
@@ -96,13 +161,7 @@ struct AppConfig {
     /// Daily free match limit (1 normally, unlimited during testing)
     @MainActor
     static var dailyFreeMatchLimit: Int {
-        return isFreeLiveTestingActive ? Int.max : 1 // Unlimited during testing, 1 after
-    }
-    
-    @MainActor
-    static var canSelectMultipleMatches: Bool {
-        // Allow multiple matches if premium OR during free testing
-        return AppPurchaseManager.shared.currentTier == .premium || isFreeLiveTestingActive
+        return isFreeLiveTestingActive ? Int.max : 1
     }
     
     @MainActor
@@ -151,24 +210,6 @@ struct AppConfig {
         ]
     }
     
-    // MARK: - Ad Configuration (Updated for Free Testing)
-    
-    @MainActor
-    static var shouldShowAdsForUser: Bool {
-        // Show ads for free users, even during testing period
-        return AppPurchaseManager.shared.currentTier == .free
-    }
-    
-    @MainActor
-    static var shouldShowInterstitialAfterGame: Bool {
-        return AdManager.shared.shouldShowInterstitialAfterGameComplete()
-    }
-    
-    static func incrementGameCount() {
-        let current = UserDefaults.standard.integer(forKey: "completedGameCount")
-        UserDefaults.standard.set(current + 1, forKey: "completedGameCount")
-    }
-    
     // MARK: - Feature Flags
     
     @MainActor
@@ -188,7 +229,8 @@ struct AppConfig {
     
     // MARK: - Analytics for Free Testing
     
-    @MainActor static func recordFreeLiveModeUsage() {
+    @MainActor
+    static func recordFreeLiveModeUsage() {
         guard isFreeLiveTestingActive else { return }
         
         let key = "freeLiveModeUsage_\(DateFormatter.yyyyMMdd.string(from: Date()))"
@@ -198,7 +240,8 @@ struct AppConfig {
         print("📊 Free Live Mode usage recorded: \(currentCount + 1) today")
     }
     
-    @MainActor static func getFreeLiveModeAnalytics() -> [String: Any] {
+    @MainActor
+    static func getFreeLiveModeAnalytics() -> [String: Any] {
         guard let startDate = freeTestingStartDate else {
             return ["error": "Free testing not active"]
         }
@@ -239,6 +282,9 @@ struct AppConfig {
         print("📊 Logging enabled: \(enableDetailedLogging)")
         print("💰 Purchase tier: \(AppPurchaseManager.shared.currentTier.displayName)")
         print("🎁 Free Live Mode Testing: \(isFreeLiveTestingActive ? "ACTIVE" : "INACTIVE")")
+        print("🚀 Subscription enabled: \(subscriptionEnabled)")
+        print("🎯 Feature flags: Multiple matches=\(canSelectMultipleMatches), Unlimited=\(hasUnlimitedDailyMatches), Ad-free=\(hasAdFreeExperience)")
+        print("📱 Ads shown: \(shouldShowAdsForCurrentUser)")
 #endif
     }
     

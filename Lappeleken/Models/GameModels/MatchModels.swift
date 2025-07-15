@@ -80,7 +80,7 @@ struct MatchEvent: Identifiable {
     let id: String
     let type: String // goal, assist, yellow_card, etc.
     let playerId: String
-    let playerName: String
+    let playerName: String?
     let minute: Int
     let teamId: String
     

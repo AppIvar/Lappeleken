@@ -2,7 +2,7 @@
 //  FootballDataMatchService.swift
 //  Lucky Football Slip
 //
-//  Created by Ivar Hovland on 20/05/2025.
+//  Clean implementation based on football-data.org v4 API
 //
 
 import Foundation
@@ -11,62 +11,301 @@ class FootballDataMatchService: MatchService {
     private let apiClient: APIClient
     private let apiKey: String
     
-    // Keep existing cache for backward compatibility
-    private var matchCache: [String: Match] = [:]
-    private var playerCache: [String: [Player]] = [:]
-    
     init(apiClient: APIClient, apiKey: String) {
         self.apiClient = apiClient
         self.apiKey = apiKey
     }
     
-    // MARK: - Competition Methods
+    // MARK: - MatchService Protocol Methods
     
     func fetchCompetitions() async throws -> [Competition] {
         let response: CompetitionsResponse = try await apiClient.footballDataRequest(endpoint: "competitions")
-        return response.competitions
-            .filter { ["PL", "BL1", "SA", "PD", "CL", "EL"].contains($0.code) }
-            .map { $0.toAppModel() }
+        return response.competitions.map { $0.toAppModel() }
     }
     
-    // MARK: - Enhanced Match Fetching Methods with Caching and Rate Limiting
+    func fetchLiveMatches(competitionCode: String? = nil) async throws -> [Match] {
+        return try await fetchAllRelevantMatches(competitionCode: competitionCode)
+    }
     
-    func fetchTodaysMatches() async throws -> [Match] {
-        let cacheKey = "today_matches"
+    func fetchUpcomingMatches(competitionCode: String? = nil) async throws -> [Match] {
+        let cacheKey = "upcoming_\(competitionCode ?? "all")"
         
-        // Check cache first
         if let cachedMatches = MatchCacheManager.shared.getCachedMatchList(for: cacheKey) {
-            print("📦 Using cached today's matches (\(cachedMatches.count) matches)")
             return cachedMatches
         }
         
-        let dateFormatter = DateFormatter()
-        dateFormatter.dateFormat = "yyyy-MM-dd"
-        let today = dateFormatter.string(from: Date())
-        
-        let endpoint = "matches?dateFrom=\(today)&dateTo=\(today)"
-        print("🗓️ Fetching today's matches with endpoint: \(endpoint)")
+        var endpoint = "matches?status=SCHEDULED,TIMED"
+        if let code = competitionCode {
+            endpoint += "&competitions=\(code)"
+        }
         
         let response: MatchesResponse = try await apiClient.footballDataRequest(endpoint: endpoint)
         let matches = response.matches.map { $0.toAppModel() }
         
-        // Cache the results
         MatchCacheManager.shared.cacheMatchList(matches, for: cacheKey)
-        
-        print("📊 Found \(matches.count) matches for today")
-        for match in matches {
-            print("  • \(match.homeTeam.name) vs \(match.awayTeam.name) (\(match.competition.name)) - \(match.status)")
-        }
-        
         return matches
     }
+    
+    func fetchMatchDetails(matchId: String) async throws -> MatchDetail {
+        if let cachedMatch = MatchCacheManager.shared.getCachedMatch(matchId) {
+            return MatchDetail(
+                match: cachedMatch,
+                venue: nil,
+                attendance: nil,
+                referee: nil,
+                homeScore: 0,
+                awayScore: 0
+            )
+        }
+        
+        let endpoint = "matches/\(matchId)"
+        
+        // Make custom request to get full match data
+        let url = URL(string: "https://api.football-data.org/v4/\(endpoint)")!
+        var request = URLRequest(url: url)
+        request.setValue(apiKey, forHTTPHeaderField: "X-Auth-Token")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 500
+            throw APIError.serverError(statusCode, "Failed to fetch match details")
+        }
+        
+        let apiMatch = try JSONDecoder().decode(APIMatch.self, from: data)
+        let match = apiMatch.toAppModel()
+        
+        MatchCacheManager.shared.cacheMatch(match)
+        
+        return MatchDetail(
+            match: match,
+            venue: nil,
+            attendance: nil,
+            referee: nil,
+            homeScore: 0,
+            awayScore: 0
+        )
+    }
+    
+    func fetchMatchPlayers(matchId: String) async throws -> [Player] {
+        if let cachedPlayers = MatchCacheManager.shared.getCachedPlayers(for: matchId) {
+            return cachedPlayers
+        }
+        
+        do {
+            let lineup = try await fetchMatchLineup(matchId: matchId)
+            let players = lineup.homeTeam.startingXI + lineup.homeTeam.substitutes +
+                         lineup.awayTeam.startingXI + lineup.awayTeam.substitutes
+            
+            MatchCacheManager.shared.cachePlayers(players, for: matchId)
+            return players
+        } catch {
+            print("❌ Failed to get players from lineup, trying team squads: \(error)")
+            
+            // Fallback: get teams from match and fetch their squads
+            let matchDetails = try await fetchMatchDetails(matchId: matchId)
+            
+            async let homeSquadTask = fetchTeamSquad(teamId: "\(matchDetails.match.homeTeam.id)")
+            async let awaySquadTask = fetchTeamSquad(teamId: "\(matchDetails.match.awayTeam.id)")
+            
+            let homeSquad = try await homeSquadTask
+            let awaySquad = try await awaySquadTask
+            
+            let players = homeSquad.players + awaySquad.players
+            MatchCacheManager.shared.cachePlayers(players, for: matchId)
+            return players
+        }
+    }
+    
+    func fetchMatchEvents(matchId: String) async throws -> [MatchEvent] {
+        let url = URL(string: "https://api.football-data.org/v4/matches/\(matchId)")!
+        var request = URLRequest(url: url)
+        request.setValue(apiKey, forHTTPHeaderField: "X-Auth-Token")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        
+        let (data, _) = try await URLSession.shared.data(for: request)
+        
+        // Parse the full match response
+        guard let jsonData = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw APIError.decodingError(NSError(domain: "JSON", code: 1, userInfo: nil))
+        }
+        
+        var events: [MatchEvent] = []
+        
+        // Process goals (including penalties and own goals)
+        if let goals = jsonData["goals"] as? [[String: Any]] {
+            for goal in goals {
+                if let minute = goal["minute"] as? Int,
+                   let type = goal["type"] as? String,
+                   let scorer = goal["scorer"] as? [String: Any],
+                   let scorerId = scorer["id"] as? Int,
+                   let scorerName = scorer["name"] as? String,
+                   let team = goal["team"] as? [String: Any],
+                   let teamId = team["id"] as? Int {
+                    
+                    // Create goal event
+                    events.append(MatchEvent(
+                        id: "goal_\(minute)_\(scorerId)",
+                        type: type, // "REGULAR", "PENALTY", or "OWN"
+                        playerId: "\(scorerId)",
+                        playerName: scorerName,
+                        minute: minute,
+                        teamId: "\(teamId)"
+                    ))
+                    
+                    // Create assist event if present
+                    if let assist = goal["assist"] as? [String: Any],
+                       let assistId = assist["id"] as? Int,
+                       let assistName = assist["name"] as? String {
+                        
+                        events.append(MatchEvent(
+                            id: "assist_\(minute)_\(assistId)",
+                            type: "ASSIST", // Custom type for assists
+                            playerId: "\(assistId)",
+                            playerName: assistName,
+                            minute: minute,
+                            teamId: "\(teamId)"
+                        ))
+                    }
+                }
+            }
+        }
+        
+        // Process bookings (cards)
+        if let bookings = jsonData["bookings"] as? [[String: Any]] {
+            for booking in bookings {
+                if let minute = booking["minute"] as? Int,
+                   let card = booking["card"] as? String,
+                   let player = booking["player"] as? [String: Any],
+                   let playerId = player["id"] as? Int,
+                   let playerName = player["name"] as? String,
+                   let team = booking["team"] as? [String: Any],
+                   let teamId = team["id"] as? Int {
+                    
+                    events.append(MatchEvent(
+                        id: "card_\(minute)_\(playerId)",
+                        type: card, // "YELLOW" or "RED"
+                        playerId: "\(playerId)",
+                        playerName: playerName,
+                        minute: minute,
+                        teamId: "\(teamId)"
+                    ))
+                }
+            }
+        }
+        
+        // Process substitutions
+        if let substitutions = jsonData["substitutions"] as? [[String: Any]] {
+            for sub in substitutions {
+                if let minute = sub["minute"] as? Int,
+                   let playerOut = sub["playerOut"] as? [String: Any],
+                   let playerOutId = playerOut["id"] as? Int,
+                   let playerOutName = playerOut["name"] as? String,
+                   let playerIn = sub["playerIn"] as? [String: Any],
+                   let playerInId = playerIn["id"] as? Int,
+                   let team = sub["team"] as? [String: Any],
+                   let teamId = team["id"] as? Int {
+                    
+                    events.append(MatchEvent(
+                        id: "sub_\(minute)_\(playerOutId)",
+                        type: "SUBSTITUTION",
+                        playerId: "\(playerOutId)",
+                        playerName: playerOutName,
+                        minute: minute,
+                        teamId: "\(teamId)",
+                        playerOffId: "\(playerOutId)",
+                        playerOnId: "\(playerInId)"
+                    ))
+                }
+            }
+        }
+        
+        return events.sorted { $0.minute < $1.minute }
+    }
+    
+    func startMonitoringMatch(matchId: String, updateInterval: TimeInterval, onUpdate: @escaping (MatchUpdate) -> Void) -> Task<Void, any Error> {
+        return smartMatchMonitoring(matchId: matchId, onUpdate: onUpdate)
+    }
+    
+    func fetchMatchLineup(matchId: String) async throws -> Lineup {
+        print("🎯 Fetching lineup for match \(matchId)")
+        
+        // Get match data using standard API call (lineup data is included automatically)
+        let url = URL(string: "https://api.football-data.org/v4/matches/\(matchId)")!
+        var request = URLRequest(url: url)
+        request.setValue(apiKey, forHTTPHeaderField: "X-Auth-Token")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 500
+            throw APIError.serverError(statusCode, "Failed to fetch match data")
+        }
+        
+        // Parse the full match response
+        guard let jsonData = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+            throw APIError.decodingError(NSError(domain: "JSON", code: 1, userInfo: nil))
+        }
+        
+        guard let homeTeamData = jsonData["homeTeam"] as? [String: Any],
+              let awayTeamData = jsonData["awayTeam"] as? [String: Any] else {
+            throw APIError.decodingError(NSError(domain: "Teams", code: 1, userInfo: nil))
+        }
+        
+        // Check if lineup data exists (this is the key - lineup data comes directly in the match response)
+        let homeLineup = homeTeamData["lineup"] as? [[String: Any]] ?? []
+        let awayLineup = awayTeamData["lineup"] as? [[String: Any]] ?? []
+        
+        if !homeLineup.isEmpty && !awayLineup.isEmpty {
+            print("✅ Real lineup data found!")
+            return try convertMatchDataToLineup(homeTeamData: homeTeamData, awayTeamData: awayTeamData)
+        } else {
+            print("⚠️ No lineup data - falling back to team squads")
+            // Fall back to team squad data
+            let homeTeamId = homeTeamData["id"] as? Int ?? 0
+            let awayTeamId = awayTeamData["id"] as? Int ?? 0
+            
+            return try await createLineupFromTeamSquads(
+                homeTeamId: String(homeTeamId),
+                awayTeamId: String(awayTeamId),
+                homeTeamData: homeTeamData,
+                awayTeamData: awayTeamData
+            )
+        }
+    }
+    
+    func fetchLiveMatchDetails(matchId: String) async throws -> MatchWithEvents {
+        let url = URL(string: "https://api.football-data.org/v4/matches/\(matchId)")!
+        var request = URLRequest(url: url)
+        request.setValue(apiKey, forHTTPHeaderField: "X-Auth-Token")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        
+        let (data, _) = try await URLSession.shared.data(for: request)
+        let apiMatch = try JSONDecoder().decode(APIMatch.self, from: data)
+        
+        return apiMatch.toMatchWithEvents()
+    }
+    
+    func fetchTeamSquad(teamId: String) async throws -> TeamSquad {
+        let endpoint = "teams/\(teamId)"
+        let response: TeamResponse = try await apiClient.footballDataRequest(endpoint: endpoint)
+        return response.toTeamSquad()
+    }
+    
+    func enhancedMatchMonitoring(matchId: String, updateInterval: TimeInterval, onUpdate: @escaping (MatchUpdate) -> Void) -> Task<Void, any Error> {
+        return smartMatchMonitoring(matchId: matchId, onUpdate: onUpdate)
+    }
+    
+    // MARK: - Additional Methods
     
     func fetchMatchesInDateRange(days: Int = 7) async throws -> [Match] {
         let cacheKey = "daterange_\(days)"
         
-        // Check cache first
         if let cachedMatches = MatchCacheManager.shared.getCachedMatchList(for: cacheKey) {
-            print("📦 Using cached date range matches (\(cachedMatches.count) matches)")
             return cachedMatches
         }
         
@@ -80,773 +319,480 @@ class FootballDataMatchService: MatchService {
         let toDate = dateFormatter.string(from: futureDate)
         
         let endpoint = "matches?dateFrom=\(fromDate)&dateTo=\(toDate)"
-        print("📅 Fetching matches from \(fromDate) to \(toDate)")
         
         let response: MatchesResponse = try await apiClient.footballDataRequest(endpoint: endpoint)
         let matches = response.matches.map { $0.toAppModel() }
         
-        // Cache the results
         MatchCacheManager.shared.cacheMatchList(matches, for: cacheKey)
-        
-        print("📊 Found \(matches.count) matches in date range")
-        
-        let matchesByCompetition = Dictionary(grouping: matches) { $0.competition.code }
-        for (competition, competitionMatches) in matchesByCompetition {
-            print("  \(competition): \(competitionMatches.count) matches")
-        }
-        
         return matches
     }
     
-    // MARK: - Main Match Service Protocol Methods with Robust Error Handling
-    
-    func fetchLiveMatches(competitionCode: String? = nil) async throws -> [Match] {
-        return try await fetchLiveMatchesFromCache(competitionCode: competitionCode)
-    }
-    
-    func fetchLiveMatchesWithFallback(competitionCode: String? = nil) async throws -> [Match] {
-        do {
-            // Call the actual implementation, not the wrapper
-            let matches = try await fetchLiveMatchesFromCache(competitionCode: competitionCode)
-            
-            if !matches.isEmpty {
-                return matches
-            }
-            
-            // Try upcoming matches if no live matches
-            let upcomingMatches = try await fetchUpcomingMatches(competitionCode: competitionCode)
-            
-            if !upcomingMatches.isEmpty {
-                return upcomingMatches
-            }
-            
-            // If still no matches and we're in a test/stub environment, return mock data
-            if AppConfig.useStubData || UserDefaults.standard.bool(forKey: "useBackupData") {
-                print("🧪 No real matches found, using mock data for testing")
-                return await EventDrivenManager.createMockMatches()
-            }
-            
-            return []
-            
-        } catch {
-            print("⚠️ API failed completely, using mock data for testing")
-            return await EventDrivenManager.createMockMatches()
-        }
-    }
-    
-    private func fetchLiveMatchesFromCache(competitionCode: String? = nil) async throws -> [Match] {
-        let cacheKey = "live_\(competitionCode ?? "all")"
-        
-        // Check cache first
-        if let cachedMatches = MatchCacheManager.shared.getCachedMatchList(for: cacheKey) {
-            print("📦 Using cached live matches (\(cachedMatches.count) matches)")
-            return cachedMatches
-        }
-        
-        print("🌐 Fetching fresh live matches from API")
-        
-        var endpoint = "matches?status=LIVE,IN_PLAY"
-        if let code = competitionCode {
-            endpoint += "&competitions=\(code)"
-        }
-        
-        print("🎯 Live matches endpoint: \(endpoint)")
-        let response: MatchesResponse = try await apiClient.footballDataRequest(endpoint: endpoint)
-        let matches = response.matches.map { $0.toAppModel() }
-        
-        // Cache the results
-        MatchCacheManager.shared.cacheMatchList(matches, for: cacheKey)
-        
-        if !matches.isEmpty {
-            print("✅ Found \(matches.count) live matches")
-            return matches
-        }
-        
-        print("⚪ No live matches found")
-        return []
-    }
-    
-    func fetchUpcomingMatches(competitionCode: String? = nil) async throws -> [Match] {
-        return try await fetchUpcomingMatchesFromCache(competitionCode: competitionCode)
-    }
-    
-    private func fetchUpcomingMatchesFromCache(competitionCode: String? = nil) async throws -> [Match] {
-        let cacheKey = "upcoming_\(competitionCode ?? "all")"
-        
-        if let cachedMatches = MatchCacheManager.shared.getCachedMatchList(for: cacheKey) {
-            print("📦 Using cached upcoming matches (\(cachedMatches.count) matches)")
-            return cachedMatches
-        }
-        
-        print("⏭️ Fetching upcoming matches...")
-        
-        // Try multiple strategies
-        let strategies: [() async throws -> [Match]] = [
-            // Strategy 1: Standard upcoming matches
-            { () async throws -> [Match] in
-                var endpoint = "matches?status=SCHEDULED"
-                if let code = competitionCode {
-                    endpoint += "&competitions=\(code)"
-                }
-                print("🎯 Strategy 1 - Endpoint: \(endpoint)")
-                let response: MatchesResponse = try await self.apiClient.footballDataRequest(endpoint: endpoint)
-                return response.matches.map { $0.toAppModel() }
-            },
-            
-            // Strategy 2: Today's matches
-            { () async throws -> [Match] in
-                print("🎯 Strategy 2 - Today's matches")
-                return try await self.fetchTodaysMatches()
-            },
-            
-            // Strategy 3: Next 7 days
-            { () async throws -> [Match] in
-                print("🎯 Strategy 3 - Next 7 days")
-                return try await self.fetchMatchesInDateRange(days: 7)
-            }
-        ]
-        
-        for (index, strategy) in strategies.enumerated() {
-            do {
-                let matches = try await strategy()
-                if !matches.isEmpty {
-                    print("✅ Strategy \(index + 1) found \(matches.count) matches")
-                    
-                    // Cache the results
-                    MatchCacheManager.shared.cacheMatchList(matches, for: cacheKey)
-                    
-                    return matches
-                }
-                print("⚪ Strategy \(index + 1) returned no matches")
-            } catch {
-                print("❌ Strategy \(index + 1) failed: \(error)")
-            }
-        }
-        
-        print("❌ All strategies failed, returning empty array")
-        return []
-    }
-    
-    // MARK: - Match Details and Players with Caching
-    
-    func fetchMatchDetails(matchId: String) async throws -> MatchDetail {
-        return try await fetchMatchDetailsFromCache(matchId: matchId)
-    }
-    
-    private func fetchMatchDetailsFromCache(matchId: String) async throws -> MatchDetail {
-        // Check cache first
-        if let cachedMatch = MatchCacheManager.shared.getCachedMatch(matchId) {
-            print("📦 Using cached match details for \(matchId)")
-            return MatchDetail(
-                match: cachedMatch,
-                venue: nil,
-                attendance: nil,
-                referee: nil,
-                homeScore: 0,
-                awayScore: 0
-            )
-        }
-        
-        print("🌐 Fetching fresh match details from API for \(matchId)")
-        let endpoint = "matches/\(matchId)"
-        let response: APIMatchDetail = try await apiClient.footballDataRequest(endpoint: endpoint)
-        let matchDetail = response.toAppModel()
-        
-        // Cache the match
-        MatchCacheManager.shared.cacheMatch(matchDetail.match)
-        
-        return matchDetail
-    }
-    
-    func fetchMatchPlayers(matchId: String) async throws -> [Player] {
-        return try await fetchMatchPlayersFromCache(matchId: matchId)
-    }
-    
-    private func fetchMatchPlayersFromCache(matchId: String) async throws -> [Player] {
-        // Check cache first
-        if let cachedPlayers = MatchCacheManager.shared.getCachedPlayers(for: matchId) {
-            print("📦 Using cached players for match \(matchId) (\(cachedPlayers.count) players)")
-            return cachedPlayers
-        }
-        
-        // Check if this is a mock match ID - if so, generate mock players
-        if matchId.hasPrefix("mock_") {
-            print("🧪 Detected mock match \(matchId), generating mock players")
-            let mockPlayers = await generateMockPlayersForMatch(matchId: matchId)
-            
-            // Cache the mock players
-            MatchCacheManager.shared.cachePlayers(mockPlayers, for: matchId)
-            
-            return mockPlayers
-        }
-        
-        print("🌐 Fetching fresh players from API for match \(matchId)")
-        
-        let endpoint = "matches/\(matchId)"
-        let response: APIMatchDetail = try await apiClient.footballDataRequest(endpoint: endpoint)
-        
-        var players: [Player] = []
-        
-        // Add home team players - handle optional squad
-        if let squad = response.homeTeam.squad, !squad.isEmpty {
-            for player in squad {
-                players.append(player.toAppModel(team: response.homeTeam.toAppModel()))
-            }
-        } else {
-            print("No squad data available for home team, generating dummy players")
-            let homeTeam = response.homeTeam.toAppModel()
-            players.append(contentsOf: generateDummyPlayers(for: homeTeam))
-        }
-        
-        // Add away team players - handle optional squad
-        if let squad = response.awayTeam.squad, !squad.isEmpty {
-            for player in squad {
-                players.append(player.toAppModel(team: response.awayTeam.toAppModel()))
-            }
-        } else {
-            print("No squad data available for away team, generating dummy players")
-            let awayTeam = response.awayTeam.toAppModel()
-            players.append(contentsOf: generateDummyPlayers(for: awayTeam))
-        }
-        
-        if players.isEmpty {
-            print("No players available from API, using backup data")
-            players = createDummyPlayers()
-        }
-        
-        // Cache the players
-        MatchCacheManager.shared.cachePlayers(players, for: matchId)
-        
-        return players
-    }
-    
-    @MainActor private func generateMockPlayersForMatch(matchId: String) -> [Player] {
-        // Get the teams from the mock matches
-        let mockMatches = EventDrivenManager.createMockMatches()
-        
-        guard let match = mockMatches.first(where: { $0.id == matchId }) else {
-            return createDummyPlayers()
-        }
-        
-        var players: [Player] = []
-        
-        // Generate players for home team
-        players.append(contentsOf: generateDummyPlayers(for: match.homeTeam))
-        
-        // Generate players for away team
-        players.append(contentsOf: generateDummyPlayers(for: match.awayTeam))
-        
-        return players
-    }
-    
-    // MARK: - Smart Match Monitoring
-    
-    func startMonitoringMatch(matchId: String, updateInterval: TimeInterval = 60, onUpdate: @escaping (MatchUpdate) -> Void) -> Task<Void, Never> {
-        return smartMatchMonitoring(matchId: matchId, onUpdate: onUpdate)
-    }
-    
-    func smartMatchMonitoring(matchId: String, onUpdate: @escaping (MatchUpdate) -> Void) -> Task<Void, Never> {
-        return Task {
+    func smartMatchMonitoring(matchId: String, onUpdate: @escaping (MatchUpdate) -> Void) -> Task<Void, any Error> {
+        return Task<Void, any Error> {
             var previousEvents: [MatchEvent] = []
             var consecutiveFailures = 0
-            var lastSuccessfulUpdate = Date()
             
             while !Task.isCancelled {
                 do {
-                    // Check rate limit before making call
                     guard APIRateLimiter.shared.canMakeCall() else {
                         let waitTime = APIRateLimiter.shared.timeUntilNextCall()
-                        print("⏳ Rate limited, waiting \(waitTime) seconds")
                         try await Task.sleep(nanoseconds: UInt64(waitTime * 1_000_000_000))
                         continue
                     }
                     
-                    // Get match details
                     let matchDetails = try await fetchMatchDetails(matchId: matchId)
-                    let currentTime = Date()
+                    let currentEvents = try await fetchMatchEvents(matchId: matchId)
                     
-                    // Smart interval based on match status and time
-                    let pollInterval = calculateSmartInterval(
-                        matchStatus: matchDetails.match.status,
-                        lastUpdate: lastSuccessfulUpdate,
-                        currentTime: currentTime
-                    )
-                    
-                    // Try to get events (this might not always be available)
-                    var newEvents: [MatchEvent] = []
-                    do {
-                        let events = try await fetchMatchEvents(matchId: matchId)
-                        newEvents = events.filter { event in
-                            !previousEvents.contains { $0.id == event.id }
-                        }
-                        
-                        if !newEvents.isEmpty {
-                            previousEvents.append(contentsOf: newEvents)
-                            print("🔔 Found \(newEvents.count) new events")
-                        }
-                    } catch {
-                        print("⚠️ Could not fetch events (this is normal for some matches): \(error)")
-                        // Continue without events - many matches don't provide live events
+                    let newEvents = currentEvents.filter { event in
+                        !previousEvents.contains { $0.id == event.id }
                     }
                     
-                    // Create update even if no new events (for match status changes)
-                    let update = MatchUpdate(
-                        match: matchDetails.match,
-                        newEvents: newEvents
-                    )
-                    
-                    await MainActor.run {
-                        onUpdate(update)
+                    if !newEvents.isEmpty {
+                        previousEvents.append(contentsOf: newEvents)
+                        print("🔔 Found \(newEvents.count) new events")
                     }
                     
-                    lastSuccessfulUpdate = currentTime
+                    let update = MatchUpdate(match: matchDetails.match, newEvents: newEvents)
+                    onUpdate(update)
+                    
                     consecutiveFailures = 0
                     
-                    print("📊 Next poll in \(pollInterval) seconds (Status: \(matchDetails.match.status))")
+                    let pollInterval = calculateSmartInterval(status: matchDetails.match.status)
                     try await Task.sleep(nanoseconds: UInt64(pollInterval * 1_000_000_000))
                     
                 } catch {
                     consecutiveFailures += 1
-                    let backoffDelay = min(300, 30 * consecutiveFailures) // Max 5 minutes
-                    
                     print("❌ Monitoring error (attempt \(consecutiveFailures)): \(error)")
-                    print("⏳ Backing off for \(backoffDelay) seconds")
                     
-                    do {
-                        try await Task.sleep(nanoseconds: UInt64(backoffDelay * 1_000_000_000))
-                    } catch {
-                        // If sleep is cancelled, break the loop
+                    if consecutiveFailures >= 5 {
+                        print("🛑 Too many consecutive failures, stopping monitoring")
                         break
                     }
+                    
+                    try await Task.sleep(nanoseconds: 30_000_000_000) // 30 seconds
                 }
             }
         }
     }
     
-    private func calculateSmartInterval(matchStatus: MatchStatus, lastUpdate: Date, currentTime: Date) -> TimeInterval {
-        let timeSinceLastUpdate = currentTime.timeIntervalSince(lastUpdate)
-        
-        switch matchStatus {
-        case .inProgress:
-            // During active play - more frequent updates but respect rate limits
-            if timeSinceLastUpdate < 120 { // Less than 2 minutes since last update
-                return 90  // 1.5 minutes
-            } else {
-                return 60  // 1 minute if it's been a while
-            }
-            
-        case .halftime:
-            // Less frequent during halftime
-            return 300 // 5 minutes
-            
-        case .upcoming:
-            // Very infrequent for upcoming matches
-            return 600 // 10 minutes
-            
-        case .completed:
-            // Stop monitoring completed matches
-            return 0
-            
-        case .unknown:
-            // Conservative interval for unknown status
-            return 180 // 3 minutes
-        case .finished:
-            return 0
-        case .postponed:
-            return 0
-        case .cancelled:
-            return 0
-        case .paused:
-            return 300
-        case .suspended:
-            return 300
+    // MARK: - Debug Methods
+    
+    func debugAPIAccess() async {
+        print("🔧 Testing API access...")
+        do {
+            let competitions = try await fetchCompetitions()
+            print("✅ API working: \(competitions.count) competitions available")
+        } catch {
+            print("❌ API failed: \(error)")
         }
     }
     
-    // MARK: - Legacy Methods (keeping for backward compatibility)
-    
-    func enhancedMatchMonitoring(matchId: String, updateInterval: TimeInterval = 60, onUpdate: @escaping (MatchUpdate) -> Void) -> Task<Void, Never> {
-        return smartMatchMonitoring(matchId: matchId, onUpdate: onUpdate)
-    }
-    
-    func fetchMatchEvents(matchId: String) async throws -> [MatchEvent] {
-        // For now, return empty events as most matches don't provide real-time events
-        // This would be enhanced with actual event endpoints when available
-        return []
-    }
-    
-    // MARK: - Premium Features
-    
-    func fetchMatchLineup(matchId: String) async throws -> Lineup {
-        let endpoints = [
-            "matches/\(matchId)/lineups",
-            "matches/\(matchId)"
-        ]
+    func debugRecentFinishedMatches() async {
+        print("🔧 === RECENT FINISHED MATCHES LINEUP DEBUG ===")
         
-        for (index, endpoint) in endpoints.enumerated() {
-            do {
-                print("🎯 Lineup attempt \(index + 1): \(endpoint)")
-                
-                if index == 0 {
-                    let response: APILineup = try await apiClient.footballDataRequest(endpoint: endpoint)
-                    return response.toAppModel()
-                } else {
-                    let response: APIMatchDetail = try await apiClient.footballDataRequest(endpoint: endpoint)
-                    
-                    let homeLineup = TeamLineup(
-                        team: response.homeTeam.toAppModel(),
-                        formation: nil,
-                        startingXI: response.homeTeam.squad?.prefix(11).map { $0.toAppModel(team: response.homeTeam.toAppModel()) } ?? [],
-                        substitutes: response.homeTeam.squad?.dropFirst(11).map { $0.toAppModel(team: response.homeTeam.toAppModel()) } ?? [],
-                        coach: nil
-                    )
-                    
-                    let awayLineup = TeamLineup(
-                        team: response.awayTeam.toAppModel(),
-                        formation: nil,
-                        startingXI: response.awayTeam.squad?.prefix(11).map { $0.toAppModel(team: response.awayTeam.toAppModel()) } ?? [],
-                        substitutes: response.awayTeam.squad?.dropFirst(11).map { $0.toAppModel(team: response.awayTeam.toAppModel()) } ?? [],
-                        coach: nil
-                    )
-                    
-                    return Lineup(homeTeam: homeLineup, awayTeam: awayLineup)
-                }
-            } catch {
-                print("❌ Lineup attempt \(index + 1) failed: \(error)")
-                if index == endpoints.count - 1 {
-                    throw error
-                }
-            }
-        }
-        
-        throw NSError(domain: "LineupError", code: 1, userInfo: [
-            NSLocalizedDescriptionKey: "All lineup fetch attempts failed"
-        ])
-    }
-    
-    func fetchLiveMatchDetails(matchId: String) async throws -> MatchWithEvents {
-        let endpoint = "matches/\(matchId)"
-        print("📊 Fetching live match details for match \(matchId)")
-        let response: APIMatchWithEvents = try await apiClient.footballDataRequest(endpoint: endpoint)
-        return response.toAppModel()
-    }
-    
-    func fetchTeamSquad(teamId: String) async throws -> TeamSquad {
-        let endpoint = "teams/\(teamId)"
-        print("👥 Fetching team squad for team \(teamId)")
-        let response: APITeamSquad = try await apiClient.footballDataRequest(endpoint: endpoint)
-        return response.toAppModel()
-    }
-    
-    // MARK: - Helper Methods
-    
-    private func createDummyPlayers() -> [Player] {
-        let arsenalTeam = Team(
-            name: "Arsenal FC",
-            shortName: "ARS",
-            logoName: "arsenal_logo",
-            primaryColor: "#EF0107"
-        )
-        
-        let manchesterCity = Team(
-            name: "Manchester City",
-            shortName: "MCI",
-            logoName: "mancity_logo",
-            primaryColor: "#6CABDD"
-        )
-        
-        var players: [Player] = []
-        
-        // Arsenal players
-        players.append(Player(name: "Bukayo Saka", team: arsenalTeam, position: .forward))
-        players.append(Player(name: "Martin Ødegaard", team: arsenalTeam, position: .midfielder))
-        players.append(Player(name: "Declan Rice", team: arsenalTeam, position: .midfielder))
-        
-        // Man City players
-        players.append(Player(name: "Erling Haaland", team: manchesterCity, position: .forward))
-        players.append(Player(name: "Kevin De Bruyne", team: manchesterCity, position: .midfielder))
-        players.append(Player(name: "Phil Foden", team: manchesterCity, position: .midfielder))
-        
-        return players
-    }
-    
-    private func generateDummyPlayers(for team: Team) -> [Player] {
-        var players: [Player] = []
-        
-        let positions = [
-            Player.Position.goalkeeper,
-            Player.Position.defender, Player.Position.defender, Player.Position.defender, Player.Position.defender,
-            Player.Position.midfielder, Player.Position.midfielder, Player.Position.midfielder,
-            Player.Position.forward, Player.Position.forward, Player.Position.forward
-        ]
-        
-        for i in 1...11 {
-            let position = positions[i-1]
-            let positionAbbr = String(position.rawValue.prefix(3)).uppercased()
-            
-            let player = Player(
-                name: "\(team.name) Player \(i) (\(positionAbbr))",
-                team: team,
-                position: position
-            )
-            players.append(player)
-        }
-        
-        return players
-    }
-}
-
-extension FootballDataMatchService {
-    
-    /// Fetch today's matches for lineup search - enhanced version
-    func fetchTodaysMatchesForLineupSearch() async throws -> [Match] {
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
         let today = Date()
-        let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd"
-        let dateString = formatter.string(from: today)
+        let threeDaysAgo = Calendar.current.date(byAdding: .day, value: -3, to: today)!
         
-        print("🔍 Fetching matches for lineup search on date: \(dateString)")
+        let fromDate = dateFormatter.string(from: threeDaysAgo)
+        let toDate = dateFormatter.string(from: today)
         
-        // Try multiple endpoints for better coverage
-        let endpoints = [
-            "matches?dateFrom=\(dateString)&dateTo=\(dateString)",
-            "competitions/PL/matches?dateFrom=\(dateString)&dateTo=\(dateString)", // Premier League
-            "competitions/CL/matches?dateFrom=\(dateString)&dateTo=\(dateString)", // Champions League
-            "competitions/ELC/matches?dateFrom=\(dateString)&dateTo=\(dateString)" // Europa League
-        ]
-        
-        var allMatches: [Match] = []
-        
-        for (index, endpoint) in endpoints.enumerated() {
-            do {
-                print("📊 Trying lineup search endpoint \(index + 1): \(endpoint)")
-                let response: MatchesResponse = try await apiClient.footballDataRequest(endpoint: endpoint)
-                let matches = response.matches.map { $0.toAppModel() }
+        do {
+            // Get recent finished matches (most likely to have lineup data)
+            let endpoint = "matches?status=FINISHED&dateFrom=\(fromDate)&dateTo=\(toDate)&competitions=PL,CL,BL1,FL1,PD,TIP,ELC,BSA"
+            print("🔍 Fetching recent finished matches: \(endpoint)")
+            
+            let response: MatchesResponse = try await apiClient.footballDataRequest(endpoint: endpoint)
+            print("✅ Found \(response.matches.count) finished matches in last 3 days")
+            
+            for match in response.matches.prefix(5) {
+                print("\n📋 Testing match: \(match.homeTeam.name) vs \(match.awayTeam.name)")
+                print("   ID: \(match.id), Competition: \(match.competition.name)")
+                print("   Status: \(match.status), Date: \(match.utcDate)")
                 
-                // Filter for matches that haven't started yet or are currently live
-                let relevantMatches = matches.filter { match in
-                    let now = Date()
-                    let matchTime = match.startTime // Use startTime instead of utcDate
-                    let timeDifference = matchTime.timeIntervalSince(now)
-                    
-                    // Include matches that start within 3 hours or are currently live
-                    return timeDifference > -7200 && timeDifference < 10800 // -2 hours to +3 hours
-                }
-                
-                allMatches.append(contentsOf: relevantMatches)
-                print("✅ Found \(relevantMatches.count) relevant matches from endpoint \(index + 1)")
-                
-            } catch {
-                print("❌ Lineup search endpoint \(index + 1) failed: \(error)")
-                // Continue trying other endpoints
+                await testMatchForLineupData(matchId: "\(match.id)")
             }
+            
+        } catch {
+            print("❌ Failed to fetch recent matches: \(error)")
         }
         
-        // Remove duplicates and sort by match time
-        let uniqueMatches = Array(Set(allMatches)).sorted { $0.startTime < $1.startTime }
-        
-        print("🎯 Total unique matches found for lineup search: \(uniqueMatches.count)")
-        return uniqueMatches
+        print("\n🔧 === END RECENT FINISHED MATCHES DEBUG ===")
     }
     
-    /// Enhanced lineup fetching with fallback strategies for lineup search
+    func debugUpcomingMatches() async {
+        print("🔧 === UPCOMING MATCHES LINEUP DEBUG ===")
+        
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        let today = Date()
+        let nextWeek = Calendar.current.date(byAdding: .day, value: 7, to: today)!
+        
+        let fromDate = dateFormatter.string(from: today)
+        let toDate = dateFormatter.string(from: nextWeek)
+        
+        do {
+            // Get upcoming matches
+            let endpoint = "matches?status=SCHEDULED,TIMED&dateFrom=\(fromDate)&dateTo=\(toDate)&competitions=PL,CL,BL1,FL1,PD,TIP,ELC,BSA"
+            print("🔍 Fetching upcoming matches: \(endpoint)")
+            
+            let response: MatchesResponse = try await apiClient.footballDataRequest(endpoint: endpoint)
+            print("✅ Found \(response.matches.count) upcoming matches in next 7 days")
+            
+            for match in response.matches.prefix(5) {
+                print("\n📋 Testing match: \(match.homeTeam.name) vs \(match.awayTeam.name)")
+                print("   ID: \(match.id), Competition: \(match.competition.name)")
+                print("   Status: \(match.status), Date: \(match.utcDate)")
+                
+                await testMatchForLineupData(matchId: "\(match.id)")
+            }
+            
+        } catch {
+            print("❌ Failed to fetch upcoming matches: \(error)")
+        }
+        
+        print("\n🔧 === END UPCOMING MATCHES DEBUG ===")
+    }
+    
+    // MARK: - Supporting Methods for Lineup Search
+    
+    func fetchTodaysMatchesForLineupSearch() async throws -> [Match] {
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        let today = dateFormatter.string(from: Date())
+        
+        let endpoint = "matches?dateFrom=\(today)&dateTo=\(today)"
+        let response: MatchesResponse = try await apiClient.footballDataRequest(endpoint: endpoint)
+        return response.matches.map { $0.toAppModel() }
+    }
+    
     func fetchMatchLineupForSearch(matchId: String) async throws -> Lineup {
-        print("🎯 Fetching lineup for search - match: \(matchId)")
+        return try await fetchMatchLineup(matchId: matchId)
+    }
+    
+    // MARK: - Private Helper Methods
+    
+    private func fetchAllRelevantMatches(competitionCode: String? = nil) async throws -> [Match] {
+        let cacheKey = "all_relevant_\(competitionCode ?? "all")"
         
-        let endpoints = [
-            "matches/\(matchId)/lineups",
-            "matches/\(matchId)"
-        ]
-        
-        for (index, endpoint) in endpoints.enumerated() {
-            do {
-                print("🔍 Lineup search attempt \(index + 1): \(endpoint)")
-                
-                if index == 0 {
-                    // Try dedicated lineup endpoint first
-                    let response: APILineup = try await apiClient.footballDataRequest(endpoint: endpoint)
-                    return response.toAppModel()
-                } else {
-                    // Fallback to match details and construct lineup from squad data
-                    let response: APIMatchDetailResponse = try await apiClient.footballDataRequest(endpoint: endpoint)
-                    return constructLineupFromSearchMatchDetail(response)
-                }
-                
-            } catch {
-                print("❌ Lineup search attempt \(index + 1) failed: \(error)")
-                if index == endpoints.count - 1 {
-                    // If all attempts fail, create a mock lineup with sample players
-                    return createFallbackLineupForSearch(matchId: matchId)
-                }
-            }
+        if let cachedMatches = MatchCacheManager.shared.getCachedMatchList(for: cacheKey) {
+            return cachedMatches
         }
         
-        throw NSError(domain: "LineupSearchError", code: 1, userInfo: [
-            NSLocalizedDescriptionKey: "Failed to fetch lineup for search"
-        ])
+        var endpoint = "matches?status=LIVE,IN_PLAY,SCHEDULED,TIMED,FINISHED"
+        if let code = competitionCode {
+            endpoint += "&competitions=\(code)"
+        }
+        
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        
+        let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: Date())!
+        let nextWeek = Calendar.current.date(byAdding: .day, value: 7, to: Date())!
+        
+        let fromDate = dateFormatter.string(from: yesterday)
+        let toDate = dateFormatter.string(from: nextWeek)
+        
+        endpoint += "&dateFrom=\(fromDate)&dateTo=\(toDate)"
+        
+        let response: MatchesResponse = try await apiClient.footballDataRequest(endpoint: endpoint)
+        let matches = response.matches.map { $0.toAppModel() }
+        
+        let sortedMatches = matches.sorted { match1, match2 in
+            if match1.status == .inProgress && match2.status != .inProgress {
+                return true
+            }
+            if match2.status == .inProgress && match1.status != .inProgress {
+                return false
+            }
+            return match1.startTime < match2.startTime
+        }
+        
+        MatchCacheManager.shared.cacheMatchList(sortedMatches, for: cacheKey)
+        return sortedMatches
     }
     
-    // MARK: - Helper Methods for Lineup Search
-    
-    private func constructLineupFromSearchMatchDetail(_ matchDetail: APIMatchDetailResponse) -> Lineup {
-        print("🔧 Constructing lineup from search match detail")
-        
-        let homeTeam = matchDetail.homeTeam.toAppModel()
-        let awayTeam = matchDetail.awayTeam.toAppModel()
-        
-        // Create starting XI and substitutes from squad data
-        let homeStartingXI = matchDetail.homeTeam.squad?.prefix(11).map {
-            $0.toAppModel(team: homeTeam)
-        } ?? []
-        let homeSubstitutes = matchDetail.homeTeam.squad?.dropFirst(11).prefix(7).map {
-            $0.toAppModel(team: homeTeam)
-        } ?? []
-        
-        let awayStartingXI = matchDetail.awayTeam.squad?.prefix(11).map {
-            $0.toAppModel(team: awayTeam)
-        } ?? []
-        let awaySubstitutes = matchDetail.awayTeam.squad?.dropFirst(11).prefix(7).map {
-            $0.toAppModel(team: awayTeam)
-        } ?? []
-        
-        let homeLineup = TeamLineup(
-            team: homeTeam,
-            formation: "4-4-2", // Default formation
-            startingXI: Array(homeStartingXI),
-            substitutes: Array(homeSubstitutes),
-            coach: nil
-        )
-        
-        let awayLineup = TeamLineup(
-            team: awayTeam,
-            formation: "4-4-2", // Default formation
-            startingXI: Array(awayStartingXI),
-            substitutes: Array(awaySubstitutes),
-            coach: nil
-        )
-        
-        return Lineup(homeTeam: homeLineup, awayTeam: awayLineup)
+    private func testMatchForLineupData(matchId: String) async {
+        do {
+            // Make raw API call to see actual response structure
+            let url = URL(string: "https://api.football-data.org/v4/matches/\(matchId)")!
+            var request = URLRequest(url: url)
+            request.setValue(apiKey, forHTTPHeaderField: "X-Auth-Token")
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            
+            let (data, response) = try await URLSession.shared.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse,
+                  httpResponse.statusCode == 200 else {
+                print("   ❌ API call failed: \(response)")
+                return
+            }
+            
+            guard let jsonData = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                print("   ❌ Failed to parse JSON")
+                return
+            }
+            
+            // Check for lineup data
+            if let homeTeam = jsonData["homeTeam"] as? [String: Any],
+               let awayTeam = jsonData["awayTeam"] as? [String: Any] {
+                
+                let homeLineup = homeTeam["lineup"] as? [[String: Any]] ?? []
+                let awayLineup = awayTeam["lineup"] as? [[String: Any]] ?? []
+                let homeBench = homeTeam["bench"] as? [[String: Any]] ?? []
+                let awayBench = awayTeam["bench"] as? [[String: Any]] ?? []
+                
+                if !homeLineup.isEmpty && !awayLineup.isEmpty {
+                    print("   ✅ ✅ LINEUP DATA FOUND!")
+                    print("      🏠 Home: \(homeLineup.count) starters, \(homeBench.count) bench")
+                    print("      🏃 Away: \(awayLineup.count) starters, \(awayBench.count) bench")
+                    
+                    // Show formation if available
+                    if let homeFormation = homeTeam["formation"] as? String {
+                        print("      🏠 Home formation: \(homeFormation)")
+                    }
+                    if let awayFormation = awayTeam["formation"] as? String {
+                        print("      🏃 Away formation: \(awayFormation)")
+                    }
+                    
+                    // Show sample players
+                    if let firstPlayer = homeLineup.first,
+                       let playerName = firstPlayer["name"] as? String,
+                       let position = firstPlayer["position"] as? String {
+                        print("      👤 Sample player: \(playerName) (\(position))")
+                    }
+                    
+                } else {
+                    print("   ⚠️ No lineup data available")
+                    print("      🏠 Home lineup: \(homeLineup.count) players")
+                    print("      🏃 Away lineup: \(awayLineup.count) players")
+                    
+                    // Check if squad data is available instead
+                    if let homeSquad = homeTeam["squad"] as? [[String: Any]],
+                       let awaySquad = awayTeam["squad"] as? [[String: Any]] {
+                        print("      📋 Squad data available: Home \(homeSquad.count), Away \(awaySquad.count)")
+                    } else {
+                        print("      ❌ No squad data either")
+                    }
+                }
+                
+                // Check for event data
+                if let goals = jsonData["goals"] as? [[String: Any]] {
+                    print("      ⚽ Goals: \(goals.count)")
+                }
+                if let bookings = jsonData["bookings"] as? [[String: Any]] {
+                    print("      📋 Bookings: \(bookings.count)")
+                }
+                if let substitutions = jsonData["substitutions"] as? [[String: Any]] {
+                    print("      🔄 Substitutions: \(substitutions.count)")
+                }
+            }
+            
+        } catch {
+            print("   ❌ Error testing match: \(error)")
+        }
     }
     
-    private func createFallbackLineupForSearch(matchId: String) -> Lineup {
-        print("🎲 Creating fallback lineup for search with sample players")
+    private func convertMatchDataToLineup(homeTeamData: [String: Any], awayTeamData: [String: Any]) throws -> Lineup {
+        print("🔄 Converting real match lineup data")
         
-        // Create two teams for the fallback
+        let homeLineupData = homeTeamData["lineup"] as? [[String: Any]] ?? []
+        let homeBenchData = homeTeamData["bench"] as? [[String: Any]] ?? []
+        let homeFormation = homeTeamData["formation"] as? String ?? "4-4-2"
+        
+        let awayLineupData = awayTeamData["lineup"] as? [[String: Any]] ?? []
+        let awayBenchData = awayTeamData["bench"] as? [[String: Any]] ?? []
+        let awayFormation = awayTeamData["formation"] as? String ?? "4-4-2"
+        
         let homeTeam = Team(
-            name: "Home Team",
-            shortName: "HOME",
+            id: UUID(uuidString: "00000000-0000-0000-0000-\(String(format: "%012d", homeTeamData["id"] as? Int ?? 0))")!,
+            name: homeTeamData["name"] as? String ?? "Home Team",
+            shortName: homeTeamData["shortName"] as? String ?? "HOME",
             logoName: "team_logo",
             primaryColor: "#1a73e8"
         )
         
         let awayTeam = Team(
-            name: "Away Team",
-            shortName: "AWAY",
+            id: UUID(uuidString: "00000000-0000-0000-0000-\(String(format: "%012d", awayTeamData["id"] as? Int ?? 0))")!,
+            name: awayTeamData["name"] as? String ?? "Away Team",
+            shortName: awayTeamData["shortName"] as? String ?? "AWAY",
             logoName: "team_logo",
-            primaryColor: "#dc2626"
+            primaryColor: "#e74c3c"
         )
         
-        // Create sample players for both teams
-        let homeStartingXI = createSamplePlayersForSearch(for: homeTeam, count: 11, prefix: "Home")
-        let homeSubstitutes = createSamplePlayersForSearch(for: homeTeam, count: 7, prefix: "Home Sub")
+        let homeStartingXI = homeLineupData.compactMap { playerData -> Player? in
+            guard let id = playerData["id"] as? Int,
+                  let name = playerData["name"] as? String else { return nil }
+            
+            let position = playerData["position"] as? String
+            
+            return Player(
+                apiId: String(id),
+                name: name,
+                team: homeTeam,
+                position: mapPosition(position)
+            )
+        }
         
-        let awayStartingXI = createSamplePlayersForSearch(for: awayTeam, count: 11, prefix: "Away")
-        let awaySubstitutes = createSamplePlayersForSearch(for: awayTeam, count: 7, prefix: "Away Sub")
+        let homeBench = homeBenchData.compactMap { playerData -> Player? in
+            guard let id = playerData["id"] as? Int,
+                  let name = playerData["name"] as? String else { return nil }
+            
+            let position = playerData["position"] as? String
+            
+            return Player(
+                apiId: String(id),
+                name: name,
+                team: homeTeam,
+                position: mapPosition(position)
+            )
+        }
+        
+        let awayStartingXI = awayLineupData.compactMap { playerData -> Player? in
+            guard let id = playerData["id"] as? Int,
+                  let name = playerData["name"] as? String else { return nil }
+            
+            let position = playerData["position"] as? String
+            
+            return Player(
+                apiId: String(id),
+                name: name,
+                team: awayTeam,
+                position: mapPosition(position)
+            )
+        }
+        
+        let awayBench = awayBenchData.compactMap { playerData -> Player? in
+            guard let id = playerData["id"] as? Int,
+                  let name = playerData["name"] as? String else { return nil }
+            
+            let position = playerData["position"] as? String
+            
+            return Player(
+                apiId: String(id),
+                name: name,
+                team: awayTeam,
+                position: mapPosition(position)
+            )
+        }
         
         let homeLineup = TeamLineup(
             team: homeTeam,
-            formation: "4-4-2",
+            formation: homeFormation,
             startingXI: homeStartingXI,
-            substitutes: homeSubstitutes,
+            substitutes: homeBench,
             coach: nil
         )
         
         let awayLineup = TeamLineup(
             team: awayTeam,
-            formation: "4-4-2",
+            formation: awayFormation,
             startingXI: awayStartingXI,
-            substitutes: awaySubstitutes,
+            substitutes: awayBench,
             coach: nil
         )
+        
+        print("✅ Converted real lineup data: Home \(homeStartingXI.count) starters, Away \(awayStartingXI.count) starters")
         
         return Lineup(homeTeam: homeLineup, awayTeam: awayLineup)
     }
     
-    private func createSamplePlayersForSearch(for team: Team, count: Int, prefix: String) -> [Player] {
-        let positions: [Player.Position] = [.goalkeeper, .defender, .defender, .defender, .defender, .midfielder, .midfielder, .midfielder, .midfielder, .forward, .forward]
-        var players: [Player] = []
+    private func createLineupFromTeamSquads(homeTeamId: String, awayTeamId: String, homeTeamData: [String: Any], awayTeamData: [String: Any]) async throws -> Lineup {
+        print("🔄 Creating lineup from team squads")
         
-        for i in 0..<count {
-            let position = i < positions.count ? positions[i] : .midfielder
-            let player = Player(
-                name: "\(prefix) Player \(i + 1)",
-                team: team,
-                position: position
-            )
-            players.append(player)
-        }
+        async let homeSquadTask = fetchTeamSquad(teamId: homeTeamId)
+        async let awaySquadTask = fetchTeamSquad(teamId: awayTeamId)
         
-        return players
-    }
-}
-
-// MARK: - Supporting API Models for Lineup Search
-
-struct APIMatchDetailResponse: Codable {
-    let id: Int
-    let homeTeam: APITeamDetailResponse
-    let awayTeam: APITeamDetailResponse
-    let competition: APICompetition
-    let utcDate: String
-    let status: String
-    
-    func toAppModel() -> Match {
-        let dateFormatter = ISO8601DateFormatter()
-        let date = dateFormatter.date(from: utcDate) ?? Date()
+        let homeSquad = try await homeSquadTask
+        let awaySquad = try await awaySquadTask
         
-        return Match(
-            id: String(id),
-            homeTeam: homeTeam.toAppModel(),
-            awayTeam: awayTeam.toAppModel(),
-            startTime: date,
-            status: MatchStatus.fromString(status),
-            competition: competition.toAppModel()
-        )
-    }
-}
-
-struct APITeamDetailResponse: Codable {
-    let id: Int
-    let name: String
-    let shortName: String?
-    let crest: String?
-    let squad: [APIPlayer]?
-    
-    func toAppModel() -> Team {
-        return Team(
-            name: name,
-            shortName: shortName ?? String(name.prefix(3)).uppercased(),
+        // Create team objects with correct names from match data
+        let homeTeam = Team(
+            id: UUID(uuidString: "00000000-0000-0000-0000-\(String(format: "%012d", homeTeamData["id"] as? Int ?? 0))")!,
+            name: homeTeamData["name"] as? String ?? homeSquad.team.name,
+            shortName: homeTeamData["shortName"] as? String ?? homeSquad.team.shortName,
             logoName: "team_logo",
             primaryColor: "#1a73e8"
         )
+        
+        let awayTeam = Team(
+            id: UUID(uuidString: "00000000-0000-0000-0000-\(String(format: "%012d", awayTeamData["id"] as? Int ?? 0))")!,
+            name: awayTeamData["name"] as? String ?? awaySquad.team.name,
+            shortName: awayTeamData["shortName"] as? String ?? awaySquad.team.shortName,
+            logoName: "team_logo",
+            primaryColor: "#e74c3c"
+        )
+        
+        // Create mock lineups from squad data
+        let homeLineup = createMockLineupFromSquad(squad: homeSquad.players, team: homeTeam)
+        let awayLineup = createMockLineupFromSquad(squad: awaySquad.players, team: awayTeam)
+        
+        print("✅ Created lineup from squads: Home \(homeLineup.startingXI.count) starters, Away \(awayLineup.startingXI.count) starters")
+        
+        return Lineup(homeTeam: homeLineup, awayTeam: awayLineup)
     }
-}
-
-// MARK: - MatchStatus Extension
-
-extension MatchStatus {
-    static func fromString(_ statusString: String) -> MatchStatus {
-        switch statusString.uppercased() {
-        case "IN_PLAY", "LIVE", "PAUSED":
-            return .inProgress
-        case "SCHEDULED", "TIMED":
-            return .upcoming
-        case "FINISHED", "FINAL", "FULL_TIME":
-            return .completed
-        case "HALFTIME":
-            return .halftime
+    
+    private func createMockLineupFromSquad(squad: [Player], team: Team) -> TeamLineup {
+        // Group players by position
+        let goalkeepers = squad.filter { $0.position == .goalkeeper }
+        let defenders = squad.filter { $0.position == .defender }
+        let midfielders = squad.filter { $0.position == .midfielder }
+        let forwards = squad.filter { $0.position == .forward }
+        
+        var startingXI: [Player] = []
+        
+        // Build a 4-3-3 formation
+        if let gk = goalkeepers.first {
+            startingXI.append(gk)
+        }
+        
+        startingXI.append(contentsOf: Array(defenders.prefix(4)))
+        startingXI.append(contentsOf: Array(midfielders.prefix(3)))
+        startingXI.append(contentsOf: Array(forwards.prefix(3)))
+        
+        // Fill remaining spots if needed
+        let remainingPlayers = squad.filter { !startingXI.contains($0) }
+        let needed = 11 - startingXI.count
+        startingXI.append(contentsOf: Array(remainingPlayers.prefix(needed)))
+        
+        // Rest go to bench
+        let substitutes = squad.filter { !startingXI.contains($0) }
+        
+        return TeamLineup(
+            team: team,
+            formation: "4-3-3",
+            startingXI: startingXI,
+            substitutes: Array(substitutes.prefix(12)),
+            coach: nil
+        )
+    }
+    
+    private func mapPosition(_ positionString: String?) -> Player.Position {
+        guard let position = positionString?.lowercased() else { return .midfielder }
+        
+        switch position {
+        case "goalkeeper":
+            return .goalkeeper
+        case "centre-back", "center-back", "right-back", "left-back", "defence":
+            return .defender
+        case "central midfield", "defensive midfield", "attacking midfield", "midfield", "right winger", "left winger":
+            return .midfielder
+        case "centre-forward", "offence":
+            return .forward
         default:
-            return .unknown
+            return .midfielder
+        }
+    }
+    
+    private func calculateSmartInterval(status: MatchStatus) -> TimeInterval {
+        switch status {
+        case .inProgress: return 30
+        case .halftime: return 300
+        case .upcoming: return 600
+        case .completed, .finished, .postponed, .cancelled: return 0
+        case .paused, .suspended: return 300
+        case .unknown: return 180
         }
     }
 }
