@@ -19,6 +19,7 @@ struct AppConfig {
         static let multipleMatchSelection = true    // ← Premium: Select multiple live matches
         static let unlimitedDailyMatches = true     // ← Premium: No 1-per-day limit
         static let adFreeExperience = false          // ← Premium: Remove all ads
+        static let lineupSearchAccess = true
     }
     
     /// Ad configuration
@@ -72,6 +73,15 @@ struct AppConfig {
         
         // Show ads for everyone else
         return true
+    }
+    
+    @MainActor
+    static var canAccessLineupSearch: Bool {
+        if !subscriptionEnabled {
+            return PremiumFeatures.lineupSearchAccess
+        }
+        // When subscription is enabled, check actual premium status
+        return AppPurchaseManager.shared.currentTier == .premium || isFreeLiveTestingActive
     }
     
     // MARK: - Environment Configuration

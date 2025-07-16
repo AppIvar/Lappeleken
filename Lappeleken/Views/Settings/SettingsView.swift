@@ -797,6 +797,101 @@ struct SettingsView: View {
                 }
             }
             
+            // LIVE MODE TESTING SECTION (NEW)
+            VStack(alignment: .leading, spacing: 12) {
+                // Header
+                HStack {
+                    Image(systemName: "hammer.and.wrench.fill")
+                        .foregroundColor(AppDesignSystem.Colors.primary)
+                    
+                    Text("Live Mode Testing")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
+                    
+                    Spacer()
+                }
+                
+                // Navigation to full test suite
+                NavigationLink(destination: DebugTestView()) {
+                    HStack {
+                        Image(systemName: "testtube.2")
+                            .foregroundColor(AppDesignSystem.Colors.primary)
+                            .frame(width: 20)
+                        
+                        Text("Open Test Suite")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(AppDesignSystem.Colors.primaryText)
+                        
+                        Spacer()
+                        
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 12))
+                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    }
+                    .padding(12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(AppDesignSystem.Colors.primary.opacity(0.1))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(AppDesignSystem.Colors.primary.opacity(0.3), lineWidth: 1)
+                            )
+                    )
+                }
+                
+                // Quick test buttons
+                HStack(spacing: 8) {
+                    Button("Smoke Test") {
+                        Task {
+                            await LiveModeTestRunner.shared.smokeTest()
+                        }
+                    }
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.orange)
+                    .cornerRadius(6)
+                    
+                    Button("Betting Flow") {
+                        Task {
+                            await LiveModeTestRunner.shared.quickBettingTest()
+                        }
+                    }
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.green)
+                    .cornerRadius(6)
+                    
+                    Button("API Test") {
+                        Task {
+                            await LiveModeTestRunner.shared.quickAPITest()
+                        }
+                    }
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.purple)
+                    .cornerRadius(6)
+                }
+            }
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color.blue.opacity(0.1))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.blue.opacity(0.3), lineWidth: 1)
+                    )
+            )
+
+            // Then add a divider if you want
+            Divider()
+                .padding(.vertical, 8)
+            
             // FEATURE FLAGS CONTROLS
             featureFlagsDebugSection
             
@@ -827,6 +922,7 @@ struct SettingsView: View {
                 )
         )
     }
+    
     
     // MARK: - Feature Flags Debug Section (NEW)
 

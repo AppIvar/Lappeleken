@@ -9,7 +9,7 @@ import Foundation
 import SwiftUI
 
 // Enhanced Player model with better stats tracking
-struct Player: Identifiable, Codable, Equatable {
+struct Player: Identifiable, Codable, Equatable, Hashable {
     var id = UUID()
     var apiId: String?
     var name: String
@@ -22,6 +22,10 @@ struct Player: Identifiable, Codable, Equatable {
     var assists: Int = 0
     var yellowCards: Int = 0
     var redCards: Int = 0
+    
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
     
     enum Position: String, CaseIterable, Codable {
         case goalkeeper = "Goalkeeper"

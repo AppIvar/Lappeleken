@@ -156,7 +156,7 @@ struct HowToPlayView: View {
             }
             
             VStack(spacing: 12) {
-                Text("How to Play Lappeleken")
+                Text("How to Play Lucky Football Slip")
                     .font(.system(size: 28, weight: .bold, design: .rounded))
                     .foregroundStyle(
                         LinearGradient(

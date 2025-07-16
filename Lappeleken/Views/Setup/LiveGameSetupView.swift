@@ -30,6 +30,9 @@ struct LiveGameSetupView: View {
     @State private var isConnected = true
     @State private var showingRateLimit = false
     @State private var nextUpdateTime = 90
+    @State private var showingLineupChoiceAlert = false
+    @State private var pendingMatchId: String?
+    @State private var pendingMatchName: String?
 
     
     private let steps = ["Matches", "Participants", "Set Bets", "Select Players", "Review"]
@@ -91,25 +94,30 @@ struct LiveGameSetupView: View {
                 // Already in setup, so just dismiss
             })
         }
-        .alert(isPresented: $showingPlayerUnavailableAlert) {
-            Alert(
-                title: Text("Lineup Not Available Yet"),
-                message: Text(unavailableMatchesMessage),
-                primaryButton: .default(Text("Continue with Placeholders")) {
-                    isPresentingAlert = false
-                    if let nextStep = temporaryStep, nextStep < steps.count {
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            currentStep = nextStep
-                        }
-                    }
-                    temporaryStep = nil
-                },
-                secondaryButton: .cancel(Text("Go Back")) {
-                    isPresentingAlert = false
-                    temporaryStep = nil
+        .alert("Lineup Not Available", isPresented: $showingLineupChoiceAlert) {
+            Button("Use Full Squad") {
+                if let matchId = pendingMatchId {
+                    loadFullSquadForMatch(matchId)
                 }
-            )
+                clearPendingMatch()
+            }
+            
+            Button("Go Back") {
+                clearPendingMatch()
+            }
+            
+            Button("Cancel", role: .cancel) {
+                clearPendingMatch()
+            }
+        } message: {
+            Text("Lineups are not available yet for \(pendingMatchName ?? "this match"). Lineups are usually not available until 1-2 hours before match start.\n\nWould you like to use the full squad instead, or go back and try again later?")
         }
+    }
+    
+    // Helper method to clear pending match data
+    private func clearPendingMatch() {
+        pendingMatchId = nil
+        pendingMatchName = nil
     }
     
     private var connectionStatusBar: some View {
@@ -645,34 +653,257 @@ struct LiveGameSetupView: View {
     
     private var playersSelectionView: some View {
         VStack(alignment: .leading, spacing: AppDesignSystem.Layout.standardPadding) {
-            Text("Select Players")
-                .font(AppDesignSystem.Typography.headingFont)
-                .foregroundColor(AppDesignSystem.Colors.primaryText)
+            // Header with select all controls
+            HStack {
+                Text("Select Starting XI Players")
+                    .font(AppDesignSystem.Typography.headingFont)
+                
+                Spacer()
+                
+                // Select All Controls
+                HStack(spacing: 12) {
+                    Button(action: {
+                        selectAllStartingXIPlayers()
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(AppDesignSystem.Colors.success)
+                            Text("Select All")
+                                .font(AppDesignSystem.Typography.captionFont)
+                        }
+                    }
+                    .disabled(getStartingXIPlayers().isEmpty)
+                    
+                    Button(action: {
+                        deselectAllPlayers()
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(AppDesignSystem.Colors.error)
+                            Text("Clear All")
+                                .font(AppDesignSystem.Typography.captionFont)
+                        }
+                    }
+                    .disabled(selectedPlayerIds.isEmpty)
+                }
+            }
             
-            // Check if we're using dummy players
+            // Live mode explanation
+            Text("Only starting XI players are assigned to participants. Substitutes will automatically replace them if substitutions occur during the match.")
+                .font(AppDesignSystem.Typography.bodyFont)
+                .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 20)
+            
+            // Selection summary
+            if !gameSession.availablePlayers.isEmpty {
+                HStack {
+                    let startingXIPlayers = getStartingXIPlayers()
+                    let substitutePlayers = getSubstitutePlayers()
+                    
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("\(selectedPlayerIds.count) of \(startingXIPlayers.count) starting XI selected")
+                            .font(AppDesignSystem.Typography.captionFont)
+                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                        
+                        if substitutePlayers.count > 0 {
+                            Text("+ \(substitutePlayers.count) substitutes will be added automatically")
+                                .font(AppDesignSystem.Typography.captionFont)
+                                .foregroundColor(AppDesignSystem.Colors.info)
+                        }
+                    }
+                    
+                    Spacer()
+                    
+                    // Team-specific select buttons
+                    let teamGroups = Dictionary(grouping: startingXIPlayers, by: { $0.team.id })
+                    
+                    if teamGroups.count > 1 {
+                        Menu {
+                            ForEach(Array(teamGroups.keys).sorted(), id: \.self) { teamId in
+                                if let teamPlayers = teamGroups[teamId], let team = teamPlayers.first?.team {
+                                    Button(action: {
+                                        selectTeamStartingXIPlayers(teamId: teamId)
+                                    }) {
+                                        HStack {
+                                            Text("Select \(team.name)")
+                                            Spacer()
+                                            Text("(\(teamPlayers.count))")
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            Divider()
+                            
+                            Button(action: {
+                                deselectAllPlayers()
+                            }) {
+                                HStack {
+                                    Image(systemName: "xmark.circle")
+                                    Text("Clear All")
+                                }
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "person.3.sequence.fill")
+                                Text("By Team")
+                                    .font(AppDesignSystem.Typography.captionFont)
+                            }
+                            .foregroundColor(AppDesignSystem.Colors.primary)
+                        }
+                    }
+                }
+            }
+            
+            // Dummy players warning (existing code)
             let hasDummyPlayers = gameSession.availablePlayers.contains { $0.name.contains("Player ") }
-            
             if hasDummyPlayers {
                 dummyPlayersWarningView
             }
             
-            Text("Choose players to include in your game. These will be randomly assigned to participants.")
-                .font(AppDesignSystem.Typography.bodyFont)
-                .foregroundColor(AppDesignSystem.Colors.secondaryText)
-            
             if selectedPlayerIds.isEmpty {
-                Text("Select at least one player to continue")
+                Text("Select at least one starting XI player to continue")
                     .font(AppDesignSystem.Typography.captionFont)
                     .foregroundColor(AppDesignSystem.Colors.error)
                     .padding(.top, 4)
             }
             
-            // Group players by team
+            // Players list organized by Starting XI and Substitutes
             if gameSession.availablePlayers.isEmpty {
                 emptyPlayersView
             } else {
-                playersListView
+                organizedPlayersListView
             }
+        }
+    }
+    
+    // MARK: - Starting XI Helper Methods
+
+    private func getStartingXIPlayers() -> [Player] {
+        // First check if we have lineup data
+        if !gameSession.matchLineups.isEmpty {
+            return gameSession.availablePlayers.filter { player in
+                // Check if this player is in starting XI based on lineup data
+                for lineup in gameSession.matchLineups.values {
+                    if lineup.homeTeam.startingXI.contains(where: { $0.id == player.id }) ||
+                       lineup.awayTeam.startingXI.contains(where: { $0.id == player.id }) {
+                        return true
+                    }
+                }
+                return false
+            }
+        } else {
+            // If no lineup data (using full squad), treat all players as selectable
+            // You can either return all players or create a mock starting XI
+            print("🔍 No lineup data available, treating all players as selectable")
+            return gameSession.availablePlayers
+        }
+    }
+
+    private func getSubstitutePlayers() -> [Player] {
+        // First check if we have lineup data
+        if !gameSession.matchLineups.isEmpty {
+            return gameSession.availablePlayers.filter { player in
+                // Check if this player is a substitute based on lineup data
+                for lineup in gameSession.matchLineups.values {
+                    if lineup.homeTeam.substitutes.contains(where: { $0.id == player.id }) ||
+                       lineup.awayTeam.substitutes.contains(where: { $0.id == player.id }) {
+                        return true
+                    }
+                }
+                return false
+            }
+        } else {
+            // If no lineup data (using full squad), return empty array
+            // since we're treating all players as selectable starting XI
+            print("🔍 No lineup data available, no substitutes to show")
+            return []
+        }
+    }
+
+    private func selectAllStartingXIPlayers() {
+        let startingXIPlayers = getStartingXIPlayers()
+        selectedPlayerIds = Set(startingXIPlayers.map { $0.id })
+        
+        // Haptic feedback
+        let impact = UIImpactFeedbackGenerator(style: .medium)
+        impact.impactOccurred()
+        
+        // Clear any existing error
+        error = nil
+    }
+
+    private func selectTeamStartingXIPlayers(teamId: UUID) {
+        let startingXIPlayers = getStartingXIPlayers()
+        let teamStartingXIPlayerIds = startingXIPlayers
+            .filter { $0.team.id == teamId }
+            .map { $0.id }
+        
+        // Add team starting XI players to selection
+        selectedPlayerIds.formUnion(teamStartingXIPlayerIds)
+        
+        // Haptic feedback
+        let impact = UIImpactFeedbackGenerator(style: .medium)
+        impact.impactOccurred()
+        
+        // Clear any existing error
+        error = nil
+    }
+
+
+    // Add these helper methods to LiveGameSetupView
+
+    private func selectAllPlayers() {
+        selectedPlayerIds = Set(gameSession.availablePlayers.map { $0.id })
+        
+        // Haptic feedback
+        let impact = UIImpactFeedbackGenerator(style: .medium)
+        impact.impactOccurred()
+        
+        // Clear any existing error
+        error = nil
+    }
+
+    private func deselectAllPlayers() {
+        selectedPlayerIds.removeAll()
+        
+        // Haptic feedback
+        let impact = UIImpactFeedbackGenerator(style: .light)
+        impact.impactOccurred()
+    }
+
+    private func selectTeamPlayers(teamId: UUID) {
+        let teamPlayerIds = gameSession.availablePlayers
+            .filter { $0.team.id == teamId }
+            .map { $0.id }
+        
+        // Add team players to selection (don't replace existing selection)
+        selectedPlayerIds.formUnion(teamPlayerIds)
+        
+        // Haptic feedback
+        let impact = UIImpactFeedbackGenerator(style: .medium)
+        impact.impactOccurred()
+        
+        // Clear any existing error
+        error = nil
+    }
+
+    // Enhanced player selection with keyboard shortcuts and better UX
+    private func togglePlayerSelection(_ player: Player) {
+        if selectedPlayerIds.contains(player.id) {
+            selectedPlayerIds.remove(player.id)
+        } else {
+            selectedPlayerIds.insert(player.id)
+        }
+        
+        // Haptic feedback
+        let impact = UIImpactFeedbackGenerator(style: .light)
+        impact.impactOccurred()
+        
+        // Clear error when user makes selection
+        if !selectedPlayerIds.isEmpty {
+            error = nil
         }
     }
     
@@ -720,30 +951,318 @@ struct LiveGameSetupView: View {
         .padding(.top, 40)
     }
     
-    private var playersListView: some View {
-        let teamGroups = Dictionary(grouping: gameSession.availablePlayers, by: { $0.team.id })
+    private var organizedPlayersListView: some View {
+        let startingXIPlayers = getStartingXIPlayers()
+        let substitutePlayers = getSubstitutePlayers()
         
-        return ForEach(Array(teamGroups.keys).sorted(), id: \.self) { teamId in
-            if let teamPlayers = teamGroups[teamId], let team = teamPlayers.first?.team {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text(team.name)
+        return VStack(spacing: 16) {
+            // Check if we have lineup data
+            if gameSession.matchLineups.isEmpty {
+                // No lineup data - show all players as selectable with a note
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack {
+                        Image(systemName: "info.circle.fill")
+                            .foregroundColor(AppDesignSystem.Colors.info)
+                        
+                        Text("Full Squad Mode")
+                            .font(AppDesignSystem.Typography.headingFont)
+                            .foregroundColor(AppDesignSystem.Colors.info)
+                    }
+                    
+                    Text("Official lineup not available. Select players from the full squad. All selected players will be treated as starting XI.")
+                        .font(AppDesignSystem.Typography.bodyFont)
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                        .padding(.bottom, 8)
+                    
+                    // Group all players by team
+                    let allPlayersByTeam = getPlayersByTeam(startingXIPlayers)
+                    ForEach(allPlayersByTeam, id: \.team.id) { teamData in
+                        FullSquadTeamSection(
+                            team: teamData.team,
+                            players: teamData.players,
+                            selectedPlayerIds: $selectedPlayerIds,
+                            onSelectTeam: { selectTeamPlayers(teamId: teamData.team.id) },
+                            onTogglePlayer: { player in togglePlayerSelection(player) }
+                        )
+                    }
+                }
+            } else {
+                // Normal lineup data available
+                // Starting XI Section
+                if !startingXIPlayers.isEmpty {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Starting XI Players")
+                            .font(AppDesignSystem.Typography.headingFont)
+                            .foregroundColor(AppDesignSystem.Colors.primaryText)
+                        
+                        // Group starting XI by team
+                        let startingXIByTeam = getPlayersByTeam(startingXIPlayers)
+                        ForEach(startingXIByTeam, id: \.team.id) { teamData in
+                            StartingXITeamSection(
+                                team: teamData.team,
+                                players: teamData.players,
+                                selectedPlayerIds: $selectedPlayerIds,
+                                onSelectTeam: { selectTeamStartingXIPlayers(teamId: teamData.team.id) },
+                                onTogglePlayer: { player in togglePlayerSelection(player) }
+                            )
+                        }
+                    }
+                }
+                
+                // Divider
+                if !startingXIPlayers.isEmpty && !substitutePlayers.isEmpty {
+                    Divider()
+                        .padding(.vertical, 8)
+                }
+                
+                // Substitutes Section
+                if !substitutePlayers.isEmpty {
+                    VStack(alignment: .leading, spacing: 16) {
+                        Text("Substitutes")
+                            .font(AppDesignSystem.Typography.headingFont)
+                            .foregroundColor(AppDesignSystem.Colors.primaryText)
+                        
+                        Text("These players will automatically replace starting XI players if substitutions occur during the match.")
+                            .font(AppDesignSystem.Typography.bodyFont)
+                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                            .padding(.bottom, 8)
+                        
+                        // Group substitutes by team
+                        let substitutesByTeam = getPlayersByTeam(substitutePlayers)
+                        ForEach(substitutesByTeam, id: \.team.id) { teamData in
+                            SubstituteTeamSection(
+                                team: teamData.team,
+                                players: teamData.players
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    private struct FullSquadTeamSection: View {
+        let team: Team
+        let players: [Player]
+        @Binding var selectedPlayerIds: Set<UUID>
+        let onSelectTeam: () -> Void
+        let onTogglePlayer: (Player) -> Void
+        
+        var body: some View {
+            VStack(alignment: .leading, spacing: 12) {
+                // Team header
+                HStack {
+                    Circle()
+                        .fill(AppDesignSystem.TeamColors.getColor(for: team))
+                        .frame(width: 24, height: 24)
+                    
+                    Text("\(team.name) - Full Squad")
                         .font(AppDesignSystem.Typography.subheadingFont)
                         .foregroundColor(AppDesignSystem.TeamColors.getColor(for: team))
-                        .padding(.top, 16)
                     
-                    ForEach(teamPlayers) { player in
-                        PlayerCard(
+                    Text("(\(players.count))")
+                        .font(AppDesignSystem.Typography.captionFont)
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    
+                    Spacer()
+                    
+                    Button(action: onSelectTeam) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(AppDesignSystem.Colors.primary)
+                            Text("Select All")
+                                .font(AppDesignSystem.Typography.captionFont)
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(AppDesignSystem.Colors.primary.opacity(0.1))
+                .cornerRadius(8)
+                
+                // Players
+                VStack(spacing: 8) {
+                    ForEach(players, id: \.id) { player in
+                        FullSquadPlayerCard(
                             player: player,
                             isSelected: selectedPlayerIds.contains(player.id),
-                            action: {
-                                togglePlayerSelection(player)
-                            }
+                            onToggleSelection: { onTogglePlayer(player) }
                         )
                     }
                 }
             }
         }
     }
+    
+    private struct FullSquadPlayerCard: View {
+        let player: Player
+        let isSelected: Bool
+        let onToggleSelection: () -> Void
+        
+        var body: some View {
+            Button(action: onToggleSelection) {
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(player.name)
+                            .font(AppDesignSystem.Typography.bodyFont)
+                            .fontWeight(.medium)
+                            .foregroundColor(AppDesignSystem.Colors.primaryText)
+                            .multilineTextAlignment(.leading)
+                        
+                        HStack {
+                            Text(player.position.rawValue)
+                                .font(AppDesignSystem.Typography.captionFont)
+                                .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                            
+                            Spacer()
+                            
+                            // Full squad indicator
+                            HStack(spacing: 4) {
+                                Image(systemName: "person.3.fill")
+                                    .font(.caption)
+                                    .foregroundColor(AppDesignSystem.Colors.primary)
+                                Text("Squad Player")
+                                    .font(AppDesignSystem.Typography.captionFont)
+                                    .foregroundColor(AppDesignSystem.Colors.primary)
+                            }
+                        }
+                    }
+                    
+                    Spacer()
+                    
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .foregroundColor(isSelected ? AppDesignSystem.Colors.primary : AppDesignSystem.Colors.secondaryText)
+                        .font(.title3)
+                }
+                .padding()
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(isSelected ? AppDesignSystem.Colors.primary.opacity(0.1) : AppDesignSystem.Colors.cardBackground)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(isSelected ? AppDesignSystem.Colors.primary : AppDesignSystem.Colors.secondaryText.opacity(0.3), lineWidth: 1)
+                        )
+                )
+            }
+            .buttonStyle(PlainButtonStyle())
+        }
+    }
+
+    // Helper method to group players by team and return sorted teams
+    private func getPlayersByTeam(_ players: [Player]) -> [TeamPlayersData] {
+        let groupedDict = Dictionary(grouping: players, by: { $0.team })
+        
+        return groupedDict.map { (team, players) in
+            TeamPlayersData(team: team, players: players)
+        }.sorted { $0.team.name < $1.team.name }
+    }
+
+    // Data structure for team-players pairing
+    private struct TeamPlayersData {
+        let team: Team
+        let players: [Player]
+    }
+
+    // Starting XI Team Section Component
+    private struct StartingXITeamSection: View {
+        let team: Team
+        let players: [Player]
+        @Binding var selectedPlayerIds: Set<UUID>
+        let onSelectTeam: () -> Void
+        let onTogglePlayer: (Player) -> Void
+        
+        var body: some View {
+            VStack(alignment: .leading, spacing: 12) {
+                // Team header
+                HStack {
+                    Circle()
+                        .fill(AppDesignSystem.TeamColors.getColor(for: team))
+                        .frame(width: 24, height: 24)
+                    
+                    Text("\(team.name) - Starting XI")
+                        .font(AppDesignSystem.Typography.subheadingFont)
+                        .foregroundColor(AppDesignSystem.TeamColors.getColor(for: team))
+                    
+                    Text("(\(players.count))")
+                        .font(AppDesignSystem.Typography.captionFont)
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    
+                    Spacer()
+                    
+                    Button(action: onSelectTeam) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(AppDesignSystem.Colors.success)
+                            Text("Select All")
+                                .font(AppDesignSystem.Typography.captionFont)
+                        }
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(AppDesignSystem.Colors.success.opacity(0.1))
+                .cornerRadius(8)
+                
+                // Players
+                VStack(spacing: 8) {
+                    ForEach(players, id: \.id) { player in
+                        StartingXIPlayerCard(
+                            player: player,
+                            isSelected: selectedPlayerIds.contains(player.id),
+                            onToggleSelection: { onTogglePlayer(player) }
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    // Substitute Team Section Component
+    private struct SubstituteTeamSection: View {
+        let team: Team
+        let players: [Player]
+        
+        var body: some View {
+            VStack(alignment: .leading, spacing: 12) {
+                // Team header
+                HStack {
+                    Circle()
+                        .fill(AppDesignSystem.TeamColors.getColor(for: team))
+                        .frame(width: 24, height: 24)
+                    
+                    Text("\(team.name) - Substitutes")
+                        .font(AppDesignSystem.Typography.subheadingFont)
+                        .foregroundColor(AppDesignSystem.TeamColors.getColor(for: team))
+                    
+                    Text("(\(players.count))")
+                        .font(AppDesignSystem.Typography.captionFont)
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    
+                    Spacer()
+                    
+                    HStack(spacing: 4) {
+                        Image(systemName: "clock.fill")
+                            .foregroundColor(AppDesignSystem.Colors.accent)
+                        Text("Auto-added")
+                            .font(AppDesignSystem.Typography.captionFont)
+                            .foregroundColor(AppDesignSystem.Colors.accent)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background(AppDesignSystem.Colors.accent.opacity(0.1))
+                .cornerRadius(8)
+                
+                // Players
+                VStack(spacing: 8) {
+                    ForEach(players, id: \.id) { player in
+                        SubstitutePlayerCard(player: player)
+                    }
+                }
+            }
+        }
+    }
+
     
     private var reviewView: some View {
         VStack(alignment: .leading, spacing: AppDesignSystem.Layout.standardPadding) {
@@ -992,12 +1511,42 @@ struct LiveGameSetupView: View {
             
         case 3: // Player selection
             guard !selectedPlayerIds.isEmpty else {
-                error = "Please select at least one player to continue."
+                error = "Please select at least one starting XI player to continue."
                 return
             }
             
-            // Update gameSession.selectedPlayers with the chosen players
-            gameSession.selectedPlayers = gameSession.availablePlayers.filter { selectedPlayerIds.contains($0.id) }
+            // Only add selected starting XI players to gameSession.selectedPlayers
+            let startingXIPlayers = getStartingXIPlayers()
+            let selectedStartingXI = startingXIPlayers.filter { selectedPlayerIds.contains($0.id) }
+            
+            // Add all substitutes automatically
+            let substitutePlayers = getSubstitutePlayers()
+            
+            // Combine: selected starting XI + all substitutes
+            let allPlayersToAdd = selectedStartingXI + substitutePlayers
+            
+            // Remove duplicates and update available players
+            var uniquePlayersToAdd: [Player] = []
+            var seenIds: Set<UUID> = []
+
+            for player in allPlayersToAdd {
+                if !seenIds.contains(player.id) {
+                    uniquePlayersToAdd.append(player)
+                    seenIds.insert(player.id)
+                }
+            }
+            
+            // Update gameSession with all players (starting XI + substitutes)
+            for player in uniquePlayersToAdd {
+                if !gameSession.availablePlayers.contains(where: { $0.id == player.id }) {
+                    gameSession.availablePlayers.append(player)
+                }
+            }
+            
+            // Only selected starting XI players are initially "selected"
+            gameSession.selectedPlayers = selectedStartingXI
+            
+            print("✅ Added \(selectedStartingXI.count) starting XI players and \(substitutePlayers.count) substitutes")
             
         case 4: // Review (final step)
             // Start the game instead of incrementing
@@ -1048,7 +1597,6 @@ struct LiveGameSetupView: View {
                 }
                 
                 var allPlayers: [Player] = []
-                var matchesWithoutLineups: [Match] = []
                 
                 print("🔄 Loading players for \(matchIdsToLoad.count) matches...")
                 
@@ -1068,9 +1616,18 @@ struct LiveGameSetupView: View {
                             allPlayers.append(contentsOf: lineupPlayers)
                             print("✅ Loaded \(lineupPlayers.count) real players from lineup")
                         }
+                    } catch LineupError.notAvailableYet {
+                        // Show choice alert instead of automatically falling back
+                        await MainActor.run {
+                            self.isLoading = false
+                            self.pendingMatchId = matchId
+                            self.pendingMatchName = "\(match.homeTeam.name) vs \(match.awayTeam.name)"
+                            self.showingLineupChoiceAlert = true
+                        }
+                        return
                     } catch {
-                        print("❌ No lineup available for \(match.homeTeam.name) vs \(match.awayTeam.name): \(error)")
-                        matchesWithoutLineups.append(match)
+                        print("❌ Error loading players for \(match.homeTeam.name) vs \(match.awayTeam.name): \(error)")
+                        // For other errors, continue to next match
                     }
                     
                     // Rate limiting between requests
@@ -1089,13 +1646,7 @@ struct LiveGameSetupView: View {
                             self.currentStep += 1
                         }
                     } else {
-                        // No real players available
-                        if !matchesWithoutLineups.isEmpty {
-                            let matchNames = matchesWithoutLineups.map { "\($0.homeTeam.name) vs \($0.awayTeam.name)" }.joined(separator: ", ")
-                            self.error = "Lineups are not available for: \(matchNames)\n\nPlease try:\n• Selecting a different match\n• Waiting closer to kickoff time\n• Choosing a Premier League match"
-                        } else {
-                            self.error = "No lineup data available for selected matches."
-                        }
+                        self.error = "No player data available for selected matches."
                     }
                     
                     gameSession.objectWillChange.send()
@@ -1104,7 +1655,41 @@ struct LiveGameSetupView: View {
             } catch {
                 await MainActor.run {
                     self.isLoading = false
-                    self.error = "Error loading lineups: \(error.localizedDescription)"
+                    self.error = "Error loading players: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+    
+    private func loadFullSquadForMatch(_ matchId: String) {
+        isLoading = true
+        
+        Task {
+            do {
+                if let footballService = gameSession.matchService as? FootballDataMatchService {
+                    let squadPlayers = try await footballService.fetchMatchSquad(matchId: matchId)
+                    
+                    await MainActor.run {
+                        self.isLoading = false
+                        gameSession.availablePlayers = squadPlayers
+                        
+                        print("✅ Loaded full squad: \(squadPlayers.count) players")
+                        
+                        if self.currentStep < self.steps.count - 1 {
+                            self.currentStep += 1
+                        }
+                        
+                        gameSession.objectWillChange.send()
+                    }
+                } else {
+                    throw NSError(domain: "SquadError", code: 1, userInfo: [
+                        NSLocalizedDescriptionKey: "Match service not available"
+                    ])
+                }
+            } catch {
+                await MainActor.run {
+                    self.isLoading = false
+                    self.error = "Error loading squad: \(error.localizedDescription)"
                 }
             }
         }
@@ -1147,14 +1732,6 @@ struct LiveGameSetupView: View {
             } else {
                 selectedMatchIds.insert(match.id)
             }
-        }
-    }
-    
-    private func togglePlayerSelection(_ player: Player) {
-        if selectedPlayerIds.contains(player.id) {
-            selectedPlayerIds.remove(player.id)
-        } else {
-            selectedPlayerIds.insert(player.id)
         }
     }
     
@@ -1494,6 +2071,109 @@ struct MatchSelectionCard: View {
         case .suspended:
             return ("Suspended", AppDesignSystem.Colors.warning)
         }
+    }
+}
+
+struct StartingXIPlayerCard: View {
+    let player: Player
+    let isSelected: Bool
+    let onToggleSelection: () -> Void
+    
+    var body: some View {
+        Button(action: onToggleSelection) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(player.name)
+                        .font(AppDesignSystem.Typography.bodyFont)
+                        .fontWeight(.medium)
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
+                        .multilineTextAlignment(.leading)
+                    
+                    HStack {
+                        Text(player.position.rawValue)
+                            .font(AppDesignSystem.Typography.captionFont)
+                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                        
+                        Spacer()
+                        
+                        // Starting XI indicator
+                        HStack(spacing: 4) {
+                            Image(systemName: "person.fill")
+                                .font(.caption)
+                                .foregroundColor(AppDesignSystem.Colors.success)
+                            Text("Starting XI")
+                                .font(AppDesignSystem.Typography.captionFont)
+                                .foregroundColor(AppDesignSystem.Colors.success)
+                        }
+                    }
+                }
+                
+                Spacer()
+                
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .foregroundColor(isSelected ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.secondaryText)
+                    .font(.title3)
+            }
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isSelected ? AppDesignSystem.Colors.success.opacity(0.1) : AppDesignSystem.Colors.cardBackground)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(isSelected ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.secondaryText.opacity(0.3), lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+}
+
+struct SubstitutePlayerCard: View {
+    let player: Player
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(player.name)
+                    .font(AppDesignSystem.Typography.bodyFont)
+                    .fontWeight(.medium)
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                    .multilineTextAlignment(.leading)
+                
+                HStack {
+                    Text(player.position.rawValue)
+                        .font(AppDesignSystem.Typography.captionFont)
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    
+                    Spacer()
+                    
+                    // Substitute indicator
+                    HStack(spacing: 4) {
+                        Image(systemName: "arrow.2.squarepath")
+                            .font(.caption)
+                            .foregroundColor(AppDesignSystem.Colors.accent)
+                        Text("Substitute")
+                            .font(AppDesignSystem.Typography.captionFont)
+                            .foregroundColor(AppDesignSystem.Colors.accent)
+                    }
+                }
+            }
+            
+            Spacer()
+            
+            Image(systemName: "clock.fill")
+                .foregroundColor(AppDesignSystem.Colors.accent)
+                .font(.title3)
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(AppDesignSystem.Colors.accent.opacity(0.05))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(AppDesignSystem.Colors.accent.opacity(0.3), lineWidth: 1)
+                )
+        )
     }
 }
 

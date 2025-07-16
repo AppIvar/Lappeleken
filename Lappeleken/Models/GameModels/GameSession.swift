@@ -27,7 +27,7 @@ class GameSession: ObservableObject, Codable {
 
     private var dataService: GameDataService
     private var matchMonitoringTask: Task<Void, Error>?
-    private var matchService: MatchService?
+    internal var matchService: MatchService?
     private var lastEventBackup: (event: GameEvent, participantBalances: [UUID: Double])? = nil
     
     // Default initializer
@@ -191,6 +191,14 @@ class GameSession: ObservableObject, Codable {
             }
         } catch {
             print("❌ Failed to fetch lineup for match \(matchId): \(error)")
+            
+            // Check if it's the specific LineupError.notAvailableYet by checking the error description
+            if error.localizedDescription.contains("Lineup data not available yet") {
+                // Re-throw the specific error
+                throw LineupError.notAvailableYet
+            }
+            
+            // For other errors, throw as-is
             throw error
         }
     }
@@ -675,6 +683,22 @@ class GameSession: ObservableObject, Codable {
         
         return nil
     }
+    
+    func fetchMatchSquad(matchId: String) async throws -> [Player] {
+        guard let matchService = matchService else {
+            throw NSError(domain: "SquadError", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "Match service not available"
+            ])
+        }
+        
+        if let footballService = matchService as? FootballDataMatchService {
+            return try await footballService.fetchMatchSquad(matchId: matchId)
+        } else {
+            throw NSError(domain: "SquadError", code: 2, userInfo: [
+                NSLocalizedDescriptionKey: "Football service not available"
+            ])
+        }
+    }
 
     
     private func handleSubstitution(_ event: MatchEvent) {
@@ -1080,7 +1104,7 @@ class GameSession: ObservableObject, Codable {
         }
     }
     
-    func substitutePlayer(playerOff: Player, playerOn: Player) {
+    func substitutePlayer(playerOff: Player, playerOn: Player, minute: Int? = nil) {
         let timestamp = Date()
         
         // Create a substitution record
@@ -1088,7 +1112,8 @@ class GameSession: ObservableObject, Codable {
             from: playerOff,
             to: playerOn,
             timestamp: timestamp,
-            team: playerOff.team
+            team: playerOff.team,
+            minute: minute
         )
         
         substitutions.append(substitution)
@@ -1115,22 +1140,39 @@ class GameSession: ObservableObject, Codable {
                 // Keep the player who was substituted out in the history array
                 participants[i].substitutedPlayers.append(updatedPlayerOff)
                 
-                // Add the new player coming on
+                // Add the new player to active players
                 participants[i].selectedPlayers.append(updatedPlayerOn)
                 
-                // Add the new player to the available players if not already there
-                if !availablePlayers.contains(where: { $0.id == playerOn.id }) {
-                    availablePlayers.append(updatedPlayerOn)
-                }
+                // ALSO update selectedPlayers at session level
+                selectedPlayers.removeAll { $0.id == playerOff.id }
+                selectedPlayers.append(updatedPlayerOn)
                 
-                print("Substitution: \(playerOff.name) ➝ \(playerOn.name) for participant \(participants[i].name)")
+                print("✅ Substitution completed: \(playerOff.name) → \(updatedPlayerOn.name) for participant \(participants[i].name)")
                 break
             }
         }
         
-        // Force UI update
+        // Notify UI to update
         objectWillChange.send()
     }
+    
+    func handleLiveSubstitution(playerOutId: String, playerInId: String, minute: Int, teamId: String) {
+        // Find the player going out
+        guard let playerOut = selectedPlayers.first(where: { $0.apiId == playerOutId }) else {
+            print("⚠️ Player going out not found in selected players")
+            return
+        }
+        
+        // Find the substitute coming in
+        guard let playerIn = availablePlayers.first(where: { $0.apiId == playerInId }) else {
+            print("⚠️ Substitute player not found in available players")
+            return
+        }
+        
+        // Use the existing substitutePlayer method
+        substitutePlayer(playerOff: playerOut, playerOn: playerIn, minute: minute)
+    }
+
     
     // Debug method to check current state
     func debugCurrentState() {

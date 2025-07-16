@@ -20,7 +20,7 @@ struct LineupSearchView: View {
     @State private var showError = false
     @State private var searchPhase: SearchPhase = .initial
     @State private var selectedPlayers: Set<UUID> = []
-    @State private var showAdRequired = false
+    @State private var showFeatureInfo = false
     
     enum SearchPhase {
         case initial
@@ -28,7 +28,7 @@ struct LineupSearchView: View {
         case matchSelection
         case loadingLineup
         case playerSelection
-        case rewardRequired
+        case featureInfo
     }
     
     var body: some View {
@@ -40,7 +40,7 @@ struct LineupSearchView: View {
                 // Main content
                 Group {
                     switch searchPhase {
-                    case .initial, .rewardRequired:
+                    case .initial, .featureInfo:
                         initialView
                     case .loadingMatches:
                         loadingView("Searching for today's matches...")
@@ -73,13 +73,8 @@ struct LineupSearchView: View {
             } message: {
                 Text(errorMessage)
             }
-            .alert("Watch Ad to Continue", isPresented: $showAdRequired) {
-                Button("Watch Ad") {
-                    showRewardedAd()
-                }
-                Button("Cancel", role: .cancel) { }
-            } message: {
-                Text("Watch a short ad to unlock team lineup search and add professional players to your game!")
+            .sheet(isPresented: $showFeatureInfo) {
+                featureInfoSheet
             }
         }
     }
@@ -104,14 +99,37 @@ struct LineupSearchView: View {
                 }
                 
                 Spacer()
+                
+                // Info button for feature explanation
+                Button(action: {
+                    showFeatureInfo = true
+                }) {
+                    Image(systemName: "info.circle")
+                        .foregroundColor(.blue)
+                        .font(.title3)
+                }
             }
             
-            if searchPhase == .rewardRequired {
+            // Feature status banner
+            if AppConfig.canAccessLineupSearch {
                 HStack {
-                    Image(systemName: "gift.fill")
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(.green)
+                    
+                    Text("Feature available during testing period")
+                        .font(.subheadline)
+                        .foregroundColor(.green)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color.green.opacity(0.1))
+                .cornerRadius(8)
+            } else {
+                HStack {
+                    Image(systemName: "lock.circle.fill")
                         .foregroundColor(.orange)
                     
-                    Text("Premium feature - Watch ad to unlock")
+                    Text("Premium feature - Coming soon")
                         .font(.subheadline)
                         .foregroundColor(.orange)
                 }
@@ -147,18 +165,25 @@ struct LineupSearchView: View {
             }
             
             VStack(spacing: 12) {
-                Button("Search Today's Matches") {
-                    if searchPhase == .rewardRequired {
-                        showAdRequired = true
-                    } else {
+                if AppConfig.canAccessLineupSearch {
+                    Button("Search Today's Matches") {
                         searchForMatches()
                     }
-                }
-                .buttonStyle(.borderedProminent)
-                .font(.headline)
-                
-                if searchPhase != .rewardRequired {
+                    .buttonStyle(.borderedProminent)
+                    .font(.headline)
+                    
                     Text("Powered by football-data.org")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                } else {
+                    Button("Feature Not Available") {
+                        showFeatureInfo = true
+                    }
+                    .buttonStyle(.bordered)
+                    .font(.headline)
+                    .disabled(true)
+                    
+                    Text("This feature will be available in a future update")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -167,7 +192,144 @@ struct LineupSearchView: View {
             Spacer()
         }
         .onAppear {
-            checkAdRequirement()
+            checkFeatureAccess()
+        }
+    }
+    
+    private var featureInfoSheet: some View {
+        NavigationView {
+            VStack(spacing: 24) {
+                // Header
+                VStack(spacing: 16) {
+                    Image(systemName: "magnifyingglass.circle.fill")
+                        .font(.system(size: 50))
+                        .foregroundColor(.blue)
+                    
+                    Text("Lineup Search Feature")
+                        .font(.title2)
+                        .fontWeight(.bold)
+                    
+                    Text("Import real team lineups with professional players from today's matches.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 20)
+                }
+                
+                // Feature status
+                VStack(spacing: 16) {
+                    if AppConfig.canAccessLineupSearch {
+                        // Available during testing
+                        VStack(spacing: 12) {
+                            HStack {
+                                Image(systemName: "gift.fill")
+                                    .font(.system(size: 24))
+                                    .foregroundColor(.green)
+                                
+                                Text("Available During Testing")
+                                    .font(.system(size: 18, weight: .bold))
+                                    .foregroundColor(.green)
+                                
+                                Spacer()
+                            }
+                            
+                            Text("This feature is currently available for free during our testing period. We're excited to have you try it out and would love your feedback!")
+                                .font(.system(size: 14))
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.leading)
+                        }
+                        .padding()
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Color.green.opacity(0.1))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Color.green.opacity(0.3), lineWidth: 1)
+                                )
+                        )
+                    } else {
+                        // Not available
+                        VStack(spacing: 12) {
+                            HStack {
+                                Image(systemName: "lock.fill")
+                                    .font(.system(size: 24))
+                                    .foregroundColor(.orange)
+                                
+                                Text("Premium Feature")
+                                    .font(.system(size: 18, weight: .bold))
+                                    .foregroundColor(.orange)
+                                
+                                Spacer()
+                            }
+                            
+                            Text("This feature may require a premium subscription in the future. We're currently working on making it available for everyone.")
+                                .font(.system(size: 14))
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.leading)
+                        }
+                        .padding()
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Color.orange.opacity(0.1))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Color.orange.opacity(0.3), lineWidth: 1)
+                                )
+                        )
+                    }
+                }
+                
+                // How it works
+                VStack(spacing: 16) {
+                    Text("How It Works")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(.primary)
+                    
+                    VStack(spacing: 12) {
+                        featureStepRow("1", "Search", "Find today's football matches")
+                        featureStepRow("2", "Select", "Choose a match to view lineups")
+                        featureStepRow("3", "Import", "Add professional players to your game")
+                    }
+                }
+                .padding()
+                .background(
+                    RoundedRectangle(cornerRadius: 16)
+                        .fill(Color(UIColor.systemBackground))
+                        .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
+                )
+                
+                Spacer()
+            }
+            .padding(20)
+            .navigationTitle("Feature Info")
+            .navigationBarItems(
+                trailing: Button("Done") {
+                    showFeatureInfo = false
+                }
+            )
+        }
+    }
+    
+    private func featureStepRow(_ number: String, _ title: String, _ description: String) -> some View {
+        HStack(spacing: 12) {
+            Text(number)
+                .font(.system(size: 16, weight: .bold))
+                .foregroundColor(.white)
+                .frame(width: 24, height: 24)
+                .background(Color.blue)
+                .clipShape(Circle())
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(.primary)
+                
+                Text(description)
+                    .font(.system(size: 14))
+                    .foregroundColor(.secondary)
+            }
+            
+            Spacer()
         }
     }
     
@@ -270,39 +432,16 @@ struct LineupSearchView: View {
     
     // MARK: - Helper Methods
     
-    private func checkAdRequirement() {
-        // Check if user needs to watch ad for this feature
-        if AppPurchaseManager.shared.currentTier == .free {
-            // For free users, require rewarded ad
-            searchPhase = .rewardRequired
-        } else {
-            // Premium users get direct access
-            searchPhase = .initial
-        }
-    }
-    
-    private func showRewardedAd() {
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let rootViewController = windowScene.windows.first?.rootViewController else {
-            showErrorMessage(message: "Cannot show ad at this time")
-            return
-        }
-        
-        adManager.showRewardedAd(from: rootViewController) { [self] success in
-            DispatchQueue.main.async {
-                if success {
-                    // Ad watched successfully, grant access
-                    searchPhase = .initial
-                    // Track the rewarded ad usage
-                    adManager.trackAdImpression(type: "rewarded_lineup_search")
-                } else {
-                    showErrorMessage(message: "Ad failed to load. Please try again later.")
-                }
-            }
-        }
+    private func checkFeatureAccess() {
+        searchPhase = .initial
     }
     
     private func searchForMatches() {
+        guard AppConfig.canAccessLineupSearch else {
+            showFeatureInfo = true
+            return
+        }
+        
         searchPhase = .loadingMatches
         
         Task {
@@ -387,6 +526,7 @@ struct LineupSearchView: View {
         showError = true
     }
 }
+
 
 // MARK: - Match Card Component
 

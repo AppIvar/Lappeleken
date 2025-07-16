@@ -256,7 +256,7 @@ class FootballDataMatchService: MatchService {
             throw APIError.decodingError(NSError(domain: "Teams", code: 1, userInfo: nil))
         }
         
-        // Check if lineup data exists (this is the key - lineup data comes directly in the match response)
+        // Check if lineup data exists
         let homeLineup = homeTeamData["lineup"] as? [[String: Any]] ?? []
         let awayLineup = awayTeamData["lineup"] as? [[String: Any]] ?? []
         
@@ -264,20 +264,53 @@ class FootballDataMatchService: MatchService {
             print("✅ Real lineup data found!")
             return try convertMatchDataToLineup(homeTeamData: homeTeamData, awayTeamData: awayTeamData)
         } else {
-            print("⚠️ No lineup data - falling back to team squads")
-            // Fall back to team squad data
-            let homeTeamId = homeTeamData["id"] as? Int ?? 0
-            let awayTeamId = awayTeamData["id"] as? Int ?? 0
-            
-            return try await createLineupFromTeamSquads(
-                homeTeamId: String(homeTeamId),
-                awayTeamId: String(awayTeamId),
-                homeTeamData: homeTeamData,
-                awayTeamData: awayTeamData
-            )
+            print("⚠️ No lineup data available")
+            // Throw the specific error
+            throw LineupError.notAvailableYet
         }
     }
     
+    
+    func fetchMatchSquad(matchId: String) async throws -> [Player] {
+        print("👥 Fetching full squad for match \(matchId)")
+        
+        let url = URL(string: "https://api.football-data.org/v4/matches/\(matchId)")!
+        var request = URLRequest(url: url)
+        request.setValue(apiKey, forHTTPHeaderField: "X-Auth-Token")
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200 else {
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 500
+            throw APIError.serverError(statusCode, "Failed to fetch match data")
+        }
+        
+        guard let jsonData = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let homeTeamData = jsonData["homeTeam"] as? [String: Any],
+              let awayTeamData = jsonData["awayTeam"] as? [String: Any] else {
+            throw APIError.decodingError(NSError(domain: "JSON", code: 1, userInfo: nil))
+        }
+        
+        // Get team IDs and fetch their full squads
+        let homeTeamId = homeTeamData["id"] as? Int ?? 0
+        let awayTeamId = awayTeamData["id"] as? Int ?? 0
+        
+        async let homeSquadTask = fetchTeamSquad(teamId: String(homeTeamId))
+        async let awaySquadTask = fetchTeamSquad(teamId: String(awayTeamId))
+        
+        let homeSquad = try await homeSquadTask
+        let awaySquad = try await awaySquadTask
+        
+        let allPlayers = homeSquad.players + awaySquad.players
+        print("✅ Fetched full squad: \(allPlayers.count) players")
+        
+        return allPlayers
+    }
+    
+
+
     func fetchLiveMatchDetails(matchId: String) async throws -> MatchWithEvents {
         let url = URL(string: "https://api.football-data.org/v4/matches/\(matchId)")!
         var request = URLRequest(url: url)
@@ -796,3 +829,288 @@ class FootballDataMatchService: MatchService {
         }
     }
 }
+
+
+#if DEBUG
+extension FootballDataMatchService {
+    
+    /// Create a mock live match for testing
+    func createMockLiveMatch() -> Match {
+        let homeTeam = Team(
+            name: "Bayern Munich",
+            shortName: "BAY",
+            logoName: "bayern_logo",
+            primaryColor: "#DC052D"
+        )
+        
+        let awayTeam = Team(
+            name: "Borussia Dortmund",
+            shortName: "BVB",
+            logoName: "dortmund_logo",
+            primaryColor: "#FDE100"
+        )
+        
+        let bundesliga = Competition(
+            id: "BL1",
+            name: "Bundesliga",
+            code: "BL1"
+        )
+        
+        return Match(
+            id: "mock_live_\(UUID().uuidString)",
+            homeTeam: homeTeam,
+            awayTeam: awayTeam,
+            startTime: Date().addingTimeInterval(-1800),
+            status: .inProgress,
+            competition: bundesliga
+        )
+    }
+    
+    /// Comprehensive match simulation for testing the entire live mode flow
+    func simulateCompleteMatch(duration: TimeInterval = 300) async throws -> String {
+        print("🎮 Starting Complete Match Simulation...")
+        let startTime = Date()
+        
+        // 1. Create mock match
+        let mockMatch = createMockLiveMatch()
+        print("⚽ Created mock match: \(mockMatch.homeTeam.name) vs \(mockMatch.awayTeam.name)")
+        
+        // 2. Generate mock players
+        let mockPlayers = generateMockPlayers()
+        print("👥 Generated \(mockPlayers.count) mock players")
+        
+        // 3. Create mock lineup
+        let mockLineup = createMockLineup(players: mockPlayers, match: mockMatch)
+        print("📋 Created mock lineup")
+        
+        // 4. Simulate match events over time
+        var simulatedEvents: [MatchEvent] = []
+        let eventCount = Int(duration / 30) // One event every 30 seconds
+        
+        for i in 0..<eventCount {
+            let eventTime = startTime.addingTimeInterval(TimeInterval(i * 30))
+            let mockEvent = generateRandomMatchEvent(
+                minute: min(i * 2, 90),
+                players: mockPlayers,
+                match: mockMatch
+            )
+            simulatedEvents.append(mockEvent)
+            
+            print("🔔 Generated event \(i+1): \(mockEvent.type) by \(mockEvent.playerName ?? "Unknown") at \(mockEvent.minute)'")
+        }
+        
+        // 5. Test event processing
+        print("\n🧪 Testing Event Processing:")
+        for event in simulatedEvents {
+            let betEventType = mapEventTypeToBet(event.type)
+            print("  \(event.type) → \(betEventType.rawValue)")
+        }
+        
+        // 6. Test rate limiting
+        print("\n⏱️ Testing Rate Limiting:")
+        await testRateLimiting()
+        
+        // 7. Test caching
+        print("\n💾 Testing Caching:")
+        await testCaching(match: mockMatch, players: mockPlayers)
+        
+        let endTime = Date()
+        let duration = endTime.timeIntervalSince(startTime)
+        
+        return """
+        ✅ Complete Match Simulation Finished
+        Duration: \(String(format: "%.2f", duration))s
+        Events Generated: \(simulatedEvents.count)
+        Players: \(mockPlayers.count)
+        Status: Success
+        """
+    }
+    
+    private func generateMockPlayers() -> [Player] {
+        var players: [Player] = []
+        
+        let homeTeam = Team(
+            name: "Bayern Munich",
+            shortName: "BAY",
+            logoName: "bayern_logo",
+            primaryColor: "#DC052D"
+        )
+        
+        let awayTeam = Team(
+            name: "Borussia Dortmund",
+            shortName: "BVB",
+            logoName: "dortmund_logo",
+            primaryColor: "#FDE100"
+        )
+        
+        // Home team players
+        let homePlayerNames = ["Manuel Neuer", "Joshua Kimmich", "Leon Goretzka", "Thomas Müller", "Robert Lewandowski", "Serge Gnabry", "Kingsley Coman", "Alphonso Davies", "Dayot Upamecano", "Matthijs de Ligt", "Jamal Musiala"]
+        
+        for (index, name) in homePlayerNames.enumerated() {
+            players.append(Player(
+                apiId: "home_\(index)",
+                name: name,
+                team: homeTeam,
+                position: getPositionForIndex(index)
+            ))
+        }
+        
+        // Away team players
+        let awayPlayerNames = ["Gregor Kobel", "Mats Hummels", "Jude Bellingham", "Marco Reus", "Erling Haaland", "Jadon Sancho", "Raphaël Guerreiro", "Emre Can", "Nico Schlotterbeck", "Donyell Malen", "Julian Brandt"]
+        
+        for (index, name) in awayPlayerNames.enumerated() {
+            players.append(Player(
+                apiId: "away_\(index)",
+                name: name,
+                team: awayTeam,
+                position: getPositionForIndex(index)
+            ))
+        }
+        
+        return players
+    }
+    
+    private func getPositionForIndex(_ index: Int) -> Player.Position {
+        switch index {
+        case 0: return .goalkeeper
+        case 1...4: return .defender
+        case 5...8: return .midfielder
+        default: return .forward
+        }
+    }
+    
+    private func createMockLineup(players: [Player], match: Match) -> Lineup {
+        let homePlayers = players.filter { $0.team.name == match.homeTeam.name }
+        let awayPlayers = players.filter { $0.team.name == match.awayTeam.name }
+        
+        let homeLineup = TeamLineup(
+            team: match.homeTeam,
+            formation: "4-3-3",
+            startingXI: Array(homePlayers.prefix(11)),
+            substitutes: Array(homePlayers.suffix(from: 11)),
+            coach: nil
+        )
+        
+        let awayLineup = TeamLineup(
+            team: match.awayTeam,
+            formation: "4-2-3-1",
+            startingXI: Array(awayPlayers.prefix(11)),
+            substitutes: Array(awayPlayers.suffix(from: 11)),
+            coach: nil
+        )
+        
+        return Lineup(homeTeam: homeLineup, awayTeam: awayLineup)
+    }
+    
+    private func generateRandomMatchEvent(minute: Int, players: [Player], match: Match) -> MatchEvent {
+        let eventTypes = ["REGULAR", "YELLOW", "RED", "SUBSTITUTION", "PENALTY", "OWN"]
+        let randomType = eventTypes.randomElement()!
+        let randomPlayer = players.randomElement()!
+        
+        return MatchEvent(
+            id: "sim_\(UUID().uuidString)",
+            type: randomType,
+            playerId: randomPlayer.apiId ?? "unknown",  // FIX: Handle optional apiId
+            playerName: randomPlayer.name,
+            minute: minute,
+            teamId: randomPlayer.team.id.uuidString
+        )
+    }
+    
+    private func mapEventTypeToBet(_ eventType: String) -> Bet.EventType {
+        switch eventType.uppercased() {
+        case "REGULAR", "PENALTY": return .goal
+        case "YELLOW": return .yellowCard
+        case "RED": return .redCard
+        case "OWN": return .ownGoal
+        case "SUBSTITUTION": return .goal // Substitutions don't have direct bet mapping
+        default: return .goal
+        }
+    }
+    
+    private func testRateLimiting() async {
+        print("  Testing API rate limiter...")
+        for i in 1...3 {
+            let canCall = APIRateLimiter.shared.canMakeCall()
+            print("    Call \(i): \(canCall ? "✅ Allowed" : "❌ Limited")")
+            if canCall {
+                APIRateLimiter.shared.recordCall()
+            }
+        }
+    }
+    
+    private func testCaching(match: Match, players: [Player]) async {
+        print("  Testing match caching...")
+        
+        // Test match caching
+        MatchCacheManager.shared.cacheMatch(match)
+        if let cachedMatch = MatchCacheManager.shared.getCachedMatch(match.id) {
+            print("    ✅ Match caching working")
+        } else {
+            print("    ❌ Match caching failed")
+        }
+        
+        // Test player caching
+        MatchCacheManager.shared.cachePlayers(players, for: match.id)
+        if let cachedPlayers = MatchCacheManager.shared.getCachedPlayers(for: match.id) {
+            print("    ✅ Player caching working (\(cachedPlayers.count) players)")
+        } else {
+            print("    ❌ Player caching failed")
+        }
+    }
+    
+    /// Quick test for betting flow with simulated events
+    func testBettingFlow() async {
+        print("💰 Testing Betting Flow...")
+        
+        // Create a mock game session
+        let mockGameSession = GameSession()
+        mockGameSession.isLiveMode = true
+        
+        // Add mock participants
+        let participant1 = Participant(name: "Alice")
+        let participant2 = Participant(name: "Bob")
+        mockGameSession.participants = [participant1, participant2]
+        
+        // Add mock bets
+        let goalBet = Bet(eventType: .goal, amount: 5.0)
+        let cardBet = Bet(eventType: .yellowCard, amount: -2.0)
+        mockGameSession.bets = [goalBet, cardBet]
+        
+        // Add mock players
+        let mockPlayers = generateMockPlayers()
+        mockGameSession.availablePlayers = mockPlayers
+        mockGameSession.selectedPlayers = Array(mockPlayers.prefix(6))
+        
+        // FIX: Use GameSession's assignPlayersRandomly method instead of assignedParticipant
+        mockGameSession.assignPlayersRandomly()
+        
+        // Simulate events
+        print("  Simulating betting events...")
+        for i in 1...3 {
+            let randomPlayer = mockGameSession.selectedPlayers.randomElement()!
+            let eventTypes: [Bet.EventType] = [.goal, .yellowCard, .assist]
+            let randomEventType = eventTypes.randomElement()!
+            
+            // FIX: Use correct GameEvent constructor
+            let gameEvent = GameEvent(
+                player: randomPlayer,
+                eventType: randomEventType,
+                timestamp: Date()
+            )
+            
+            mockGameSession.events.append(gameEvent)
+            
+            // FIX: Check participant assignment through GameSession logic
+            if let participantWithPlayer = mockGameSession.participants.first(where: { participant in
+                participant.selectedPlayers.contains { $0.id == randomPlayer.id }
+            }),
+               let bet = mockGameSession.bets.first(where: { $0.eventType == randomEventType }) {
+                print("    Event \(i): \(randomPlayer.name) (\(randomEventType.rawValue)) → \(participantWithPlayer.name) \(bet.amount > 0 ? "wins" : "pays") $\(abs(bet.amount))")
+            }
+        }
+        
+        print("  ✅ Betting flow test complete")
+    }
+}
+#endif
