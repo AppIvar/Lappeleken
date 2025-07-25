@@ -128,7 +128,8 @@ class EventSyncManager: ObservableObject {
                         player: nil,
                         team: matchDetails.match.homeTeam,
                         timestamp: matchDetails.match.startTime,
-                        description: "Match started"
+                        description: "Match started",
+                        substitutePlayer: nil
                     )
                     events.append(kickoffEvent)
                 }
@@ -141,7 +142,8 @@ class EventSyncManager: ObservableObject {
                         player: nil,
                         team: matchDetails.match.homeTeam,
                         timestamp: Date(),
-                        description: "Match finished"
+                        description: "Match finished",
+                        substitutePlayer: nil
                     )
                     events.append(fulltimeEvent)
                 }
@@ -225,7 +227,8 @@ class EventSyncManager: ObservableObject {
                     player: nil, // We don't know which player scored
                     team: match.homeTeam,
                     timestamp: Date().addingTimeInterval(-TimeInterval.random(in: 60...600)), // Sometime in last 10 minutes
-                    description: "Goal scored (detected from score change)"
+                    description: "Goal scored (detected from score change)",
+                    substitutePlayer: nil
                 )
                 events.append(goalEvent)
             }
@@ -238,7 +241,8 @@ class EventSyncManager: ObservableObject {
                     player: nil,
                     team: match.awayTeam,
                     timestamp: Date().addingTimeInterval(-TimeInterval.random(in: 60...600)),
-                    description: "Goal scored (detected from score change)"
+                    description: "Goal scored (detected from score change)",
+                    substitutePlayer: nil
                 )
                 events.append(goalEvent)
             }
@@ -276,7 +280,8 @@ class EventSyncManager: ObservableObject {
             player: nil, // You'd map this if player info is available
             team: team,
             timestamp: Date(), // Fix: Use current time as fallback
-            description: "Match event" // Fix: Use generic description
+            description: "Match event",
+            substitutePlayer: nil
         )
     }
 
@@ -305,7 +310,8 @@ class EventSyncManager: ObservableObject {
                 player: randomPlayer,
                 team: randomPlayer.team,
                 timestamp: eventTime,
-                description: "Mock missed event for testing"
+                description: "Mock missed event for testing",
+                substitutePlayer: nil
             )
             
             events.append(event)

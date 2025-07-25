@@ -24,6 +24,7 @@ class GameSession: ObservableObject, Codable {
     @Published var matchEvents: [MatchEvent] = []
     @Published var canUndoLastEvent: Bool = false
     @Published var customEventMappings: [UUID: String] = [:]
+    @Published var processedEventIds: Set<String> = []
 
     private var dataService: GameDataService
     private var matchMonitoringTask: Task<Void, Error>?
@@ -217,14 +218,17 @@ class GameSession: ObservableObject, Codable {
         return players
     }
     
-    func startMonitoringMatch(_ match: Match) {
+    @MainActor func startMonitoringMatch(_ match: Match) {
         guard isLiveMode, let matchService = matchService else { return }
         
-        // Cancel existing monitoring
-        matchMonitoringTask?.cancel()
+        // Cancel any existing monitoring first
+        stopAllMonitoring()
         
         print("🎯 Starting match monitoring for: \(match.homeTeam.name) vs \(match.awayTeam.name)")
         print("🔧 Using service type: \(type(of: matchService))")
+        
+        // Clear processed events when starting new monitoring
+        processedEventIds.removeAll()
         
         // Start monitoring based on service type
         if let footballService = matchService as? FootballDataMatchService {
@@ -256,7 +260,6 @@ class GameSession: ObservableObject, Codable {
             )
         }
     }
-    
     func selectMatch(_ match: Match) async {
         await selectMatchRobust(match)
     }
@@ -643,9 +646,29 @@ class GameSession: ObservableObject, Codable {
     }
     
     private func processLiveEvent(_ event: MatchEvent) {
+        // CRITICAL: Prevent duplicate events
+        let eventKey = "\(event.id)_\(event.minute)_\(event.type)_\(event.playerId)"
+        
+        if processedEventIds.contains(eventKey) {
+            print("🚫 Duplicate event detected and skipped: \(eventKey)")
+            return
+        }
+        
+        // Mark this event as processed
+        processedEventIds.insert(eventKey)
+        
+        print("🔥 Processing new live event: \(event.type) at \(event.minute)' by \(event.playerName ?? "Unknown")")
+        
         // Look up player by API ID first, then fallback to name
         guard let player = findPlayerForEvent(event) else {
             print("❌ Could not find player for event: \(event.playerName ?? "Unknown") (ID: \(event.playerId))")
+            return
+        }
+        
+        // Handle substitutions separately
+        if event.type.lowercased() == "substitution" {
+            print("🔄 Processing substitution...")
+            handleSubstitution(event)
             return
         }
         
@@ -655,14 +678,10 @@ class GameSession: ObservableObject, Codable {
             return
         }
         
-        // Handle substitutions
-        if event.type == "substitution" {
-            handleSubstitution(event)
-        } else {
-            // Credit the participant who owns this player
-            Task { @MainActor in
-                recordEvent(player: player, eventType: eventType)
-            }
+        // Record the event
+        Task { @MainActor in
+            print("⚽ Recording event: \(eventType.rawValue) for \(player.name)")
+            recordEvent(player: player, eventType: eventType)
         }
     }
     
@@ -702,16 +721,103 @@ class GameSession: ObservableObject, Codable {
 
     
     private func handleSubstitution(_ event: MatchEvent) {
+        print("🔄 Handling substitution event...")
+        
         guard let playerOffId = event.playerOffId,
-              let playerOnId = event.playerOnId,
-              let playerOff = availablePlayers.first(where: { $0.apiId == playerOffId }),
-              let playerOn = findOrCreatePlayerFromAPI(apiId: playerOnId) else {
-            print("❌ Could not process substitution")
+              let playerOnId = event.playerOnId else {
+            print("❌ Substitution missing player IDs: off=\(event.playerOffId ?? "nil"), on=\(event.playerOnId ?? "nil")")
             return
         }
         
-        substitutePlayer(playerOff: playerOff, playerOn: playerOn)
+        // Find player going off (must be in selected players)
+        guard let playerOff = selectedPlayers.first(where: { $0.apiId == playerOffId }) else {
+            print("❌ Player going off not found in selected players: \(playerOffId)")
+            return
+        }
+        
+        // Find substitute coming in (check available players first, then try to fetch if needed)
+        var playerOn: Player?
+        
+        // First try to find in available players
+        playerOn = availablePlayers.first(where: { $0.apiId == playerOnId })
+        
+        if playerOn == nil {
+            print("⚠️ Substitute player not found in available players, trying to find by name...")
+            
+            // Fallback: try to find by name if available in event
+            if let substituteName = event.playerName {
+                playerOn = availablePlayers.first(where: {
+                    $0.name.lowercased() == substituteName.lowercased()
+                })
+            }
+        }
+        
+        if playerOn == nil {
+            print("❌ Could not find substitute player: \(playerOnId)")
+            return
+        }
+        
+        guard let playerOnFound = playerOn else { return }
+        
+        print("✅ Substitution: \(playerOff.name) OFF → \(playerOnFound.name) ON")
+        
+        // Perform the substitution
+        substitutePlayer(playerOff: playerOff, playerOn: playerOnFound, minute: event.minute)
     }
+    
+    @MainActor func stopAllMonitoring() {
+        print("🛑 Stopping ALL monitoring systems...")
+        
+        // Stop match monitoring task
+        matchMonitoringTask?.cancel()
+        matchMonitoringTask = nil
+        
+        // Stop event-driven monitoring
+        EventDrivenManager.shared.stopMonitoring(for: self)
+        
+        // Stop background monitoring
+        BackgroundTaskManager.shared.stopBackgroundMonitoring(for: self)
+        
+        print("✅ All monitoring stopped")
+    }
+    
+    @MainActor func setupEventDrivenMode() {
+        guard isLiveMode else { return }
+        print("🎯 Setting up event-driven mode for game \(id)")
+        
+        // IMPORTANT: Stop any existing monitoring first
+        stopAllMonitoring()
+        
+        // Clear processed events when starting fresh
+        processedEventIds.removeAll()
+        
+        // Track usage for free users
+        AppConfig.recordLiveMatchUsage()
+        
+        // Start only ONE monitoring system
+        EventDrivenManager.shared.startMonitoring(for: self)
+        
+        print("✅ Event-driven mode setup complete")
+    }
+    
+    // Add method to manually clear processed events (useful for testing)
+    @MainActor func clearProcessedEvents() {
+        processedEventIds.removeAll()
+        print("🧹 Cleared processed events cache")
+    }
+
+    // Enhanced debug method
+    @MainActor func debugEventStatus() -> String {
+        return """
+        📊 Event Processing Status:
+        - Total events recorded: \(events.count)
+        - Processed event IDs: \(processedEventIds.count)
+        - Active monitoring: \(matchMonitoringTask != nil ? "YES" : "NO")
+        - EventDriven active: \(EventDrivenManager.shared.getActiveGamesCount() > 0 ? "YES" : "NO")
+        - Last 3 processed IDs: \(Array(processedEventIds.suffix(3)))
+        """
+    }
+
     
     private func findOrCreatePlayerFromAPI(apiId: String) -> Player? {
         // First try to find existing player
@@ -1333,14 +1439,6 @@ class GameSession: ObservableObject, Codable {
             print("❌ Error fetching players for match \(matchId): \(error)")
             throw error
         }
-    }
-    
-    @MainActor func setupEventDrivenMode() {
-        guard isLiveMode else { return }
-        print("🎯 Setting up event-driven mode for game \(id)")
-        
-        // Start event-driven monitoring
-        startRealEventDrivenMode()
     }
 
     @MainActor func cleanupEventDrivenMode() {

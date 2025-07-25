@@ -17,6 +17,7 @@ struct LiveMatchEvent {
     let team: Team
     let timestamp: Date
     let description: String
+    let substitutePlayer: Player?
     
     enum LiveEventType: String, CaseIterable {
         case goal = "GOAL"
@@ -101,6 +102,14 @@ class EventDrivenManager: ObservableObject {
         print("📡 Processing event update: \(update.newEvents.count) new events")
         
         for liveEvent in update.newEvents {
+            // Handle substitutions separately
+            if liveEvent.type == .substitution {
+                // We need to get both player IDs from the original MatchEvent
+                // This requires passing more data through the LiveMatchEvent
+                print("🔄 Substitution detected - should be handled in GameSession")
+                continue
+            }
+            
             if let gameEvent = convertToGameEvent(liveEvent, in: gameSession) {
                 gameSession.recordEvent(player: gameEvent.player, eventType: gameEvent.eventType)
                 print("✅ Recorded event: \(gameEvent.eventType) for \(gameEvent.player.name)")
@@ -115,7 +124,6 @@ class EventDrivenManager: ObservableObject {
         
         gameSession.objectWillChange.send()
     }
-    
     private func showMissedEventNotification(_ event: LiveMatchEvent, in gameSession: GameSession) {
         let matchName = "\(gameSession.selectedMatch?.homeTeam.shortName ?? "HOME") vs \(gameSession.selectedMatch?.awayTeam.shortName ?? "AWAY")"
         
@@ -134,6 +142,17 @@ class EventDrivenManager: ObservableObject {
     }
     
     private func convertToGameEvent(_ liveEvent: LiveMatchEvent, in gameSession: GameSession) -> (player: Player, eventType: Bet.EventType)? {
+        // Handle substitutions separately - don't convert them to bet events
+        if liveEvent.type == .substitution {
+            // Process the substitution in GameSession instead
+            if let playerOff = liveEvent.player {
+                // This should call handleSubstitution in GameSession
+                // But we need the substitute player info, which might not be in liveEvent.player
+                print("🔄 Substitution detected but needs separate handling in GameSession")
+            }
+            return nil // Don't create a bet event for substitutions
+        }
+        
         guard let eventPlayer = liveEvent.player,
               let ourPlayer = gameSession.selectedPlayers.first(where: { $0.id == eventPlayer.id }) else {
             return nil
@@ -251,6 +270,27 @@ class GameEventMonitor {
     }
     
     private func convertAPIEventToLiveEvent(_ apiEvent: MatchEvent) -> LiveMatchEvent? {
+        if apiEvent.type.lowercased() == "substitution" {
+            // For substitutions, we need both players
+            guard let playerOff = findPlayerForEvent(apiEvent),
+                  let playerOnId = apiEvent.playerOnId,
+                  let playerOn = gameSession.selectedPlayers.first(where: { $0.apiId == playerOnId }) else {
+                return nil
+            }
+            
+            return LiveMatchEvent(
+                id: apiEvent.id,
+                type: .substitution,
+                minute: apiEvent.minute,
+                player: playerOff,  // Player going OFF
+                team: playerOff.team,
+                timestamp: Date(),
+                description: "Substitution: \(playerOff.name) OFF → \(playerOn.name) ON",
+                substitutePlayer: playerOn  // Player coming ON
+            )
+        }
+        
+        // Handle regular events...
         guard let player = findPlayerForEvent(apiEvent) else {
             return nil
         }
@@ -264,7 +304,8 @@ class GameEventMonitor {
             player: player,
             team: player.team,
             timestamp: Date(),
-            description: "\(player.name) - \(eventType.rawValue)"
+            description: "\(player.name) - \(eventType.rawValue)",
+            substitutePlayer: nil
         )
     }
     
@@ -314,7 +355,8 @@ class GameEventMonitor {
             player: randomPlayer,
             team: randomPlayer.team,
             timestamp: Date(),
-            description: "Demo: \(randomPlayer.name) - \(randomEventType.rawValue)"
+            description: "Demo: \(randomPlayer.name) - \(randomEventType.rawValue)",
+            substitutePlayer: nil
         )
         
         print("🧪 Generated demo event: \(randomEventType.rawValue) for \(randomPlayer.name)")
