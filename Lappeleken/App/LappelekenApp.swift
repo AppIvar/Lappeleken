@@ -10,8 +10,12 @@ import BackgroundTasks
 
 @main
 struct LuckyFootballSlipApp: App {
+    let notificationDelegate = NotificationDelegate()
     
     init() {
+        
+        UNUserNotificationCenter.current().delegate = notificationDelegate
+
         // Initialize background tasks
         BackgroundTaskManager.shared.registerBackgroundTasks()
         

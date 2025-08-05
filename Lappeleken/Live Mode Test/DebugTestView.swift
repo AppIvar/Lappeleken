@@ -81,9 +81,21 @@ struct DebugTestView: View {
                     )
                     
                     testButton(
+                        title: "Substitution Flow",
+                        icon: "arrow.triangle.2.circlepath",
+                        action: { await runQuickSubstitutionTest() }
+                    )
+                    
+                    testButton(
                         title: "Smoke Test",
                         icon: "flame",
                         action: { await runSmokeTest() }
+                    )
+                    
+                    testButton(
+                        title: "Notification System",
+                        icon: "bell",
+                        action: { await runQuickNotificationTest() }
                     )
                 }
             }
@@ -235,6 +247,16 @@ struct DebugTestView: View {
         currentTest = ""
     }
     
+    private func runQuickSubstitutionTest() async {
+        isRunningTests = true
+        currentTest = "Testing Substitution Flow..."
+        
+        await LiveModeTestRunner.shared.quickSubstitutionTest()
+        
+        isRunningTests = false
+        currentTest = ""
+    }
+    
     private func runFullTestSuite() async {
         isRunningTests = true
         currentTest = "Running Full Test Suite..."
@@ -257,6 +279,16 @@ struct DebugTestView: View {
         } catch {
             print("Match simulation failed: \(error)")
         }
+        
+        isRunningTests = false
+        currentTest = ""
+    }
+    
+    private func runQuickNotificationTest() async {
+        isRunningTests = true
+        currentTest = "Testing Notification System..."
+        
+        await LiveModeTestRunner.shared.quickNotificationTest()
         
         isRunningTests = false
         currentTest = ""

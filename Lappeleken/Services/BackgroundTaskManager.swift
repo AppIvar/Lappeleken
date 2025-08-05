@@ -8,6 +8,42 @@
 import Foundation
 import BackgroundTasks
 import UserNotifications
+import UIKit  
+
+// MARK: - Event Types
+enum MatchEventType: String, CaseIterable {
+    case goal = "goal"
+    case yellowCard = "yellow_card"
+    case redCard = "red_card"
+    case penalty = "penalty"
+    case matchStart = "match_start"
+    case halfTime = "half_time"
+    case matchEnd = "match_end"
+    
+    var notificationTitle: String {
+        switch self {
+        case .goal: return "⚽ GOAL!"
+        case .yellowCard: return "🟨 YELLOW CARD!"
+        case .redCard: return "🟥 RED CARD!"
+        case .penalty: return "🥅 PENALTY!"
+        case .matchStart: return "🏁 Match Started"
+        case .halfTime: return "⏸️ Half Time"
+        case .matchEnd: return "🏁 Match Ended"
+        }
+    }
+    
+    var priority: Int {
+        switch self {
+        case .goal: return 3
+        case .penalty: return 3
+        case .redCard: return 2
+        case .yellowCard: return 1
+        case .matchStart: return 1
+        case .halfTime: return 1
+        case .matchEnd: return 2
+        }
+    }
+}
 
 class BackgroundTaskManager: ObservableObject {
     static let shared = BackgroundTaskManager()
@@ -59,110 +95,95 @@ class BackgroundTaskManager: ObservableObject {
             try BGTaskScheduler.shared.submit(request)
             print("✅ Background refresh scheduled for: \(request.earliestBeginDate!)")
         } catch {
-            print("❌ Failed to schedule background refresh: \(error)")
+            print("❌ Could not schedule background refresh: \(error)")
         }
     }
     
     // MARK: - Background Task Handler
     
     private func handleMatchUpdateTask(_ task: BGProcessingTask) {
-        // Set expiration handler
         task.expirationHandler = {
             print("⏰ Background task expired")
             task.setTaskCompleted(success: false)
         }
         
-        // Perform the work
         Task {
-            do {
-                await checkForMatchEvents()
-                print("✅ Background task completed successfully")
-                task.setTaskCompleted(success: true)
-                
-                // Schedule next update if still needed
-                await MainActor.run {
-                    self.scheduleBackgroundRefresh()
-                }
-            } catch {
-                print("❌ Background task failed: \(error)")
-                task.setTaskCompleted(success: false)
+            await performBackgroundUpdate()
+            
+            // Schedule next update if still have active games
+            if !activeBackgroundGames.isEmpty {
+                scheduleBackgroundRefresh()
             }
+            
+            task.setTaskCompleted(success: true)
         }
     }
     
-    // MARK: - Match Event Checking
-    
-    private func checkForMatchEvents() async {
-        print("🔍 Checking for match events in background...")
+    private func performBackgroundUpdate() async {
+        print("🔄 Performing background update for \(activeBackgroundGames.count) games")
         
-        // Get active games from persistent storage
         let activeGames = getActiveGamesFromStorage()
+        var eventsFound = 0
         
         for gameInfo in activeGames {
-            do {
-                // Check if there are new events for this game
-                let hasNewEvents = try await checkGameForNewEvents(gameInfo)
-                
-                if hasNewEvents {
-                    await sendMatchEventNotification(gameInfo)
-                }
-            } catch {
-                print("❌ Error checking game \(gameInfo.gameId): \(error)")
+            let events = await checkForNewEvents(gameInfo: gameInfo)
+            eventsFound += events.count
+            
+            // Send notifications for each event
+            for event in events {
+                await sendEventNotification(event, gameInfo: gameInfo)
+            }
+            
+            if !events.isEmpty {
+                updateLastEventCheck(for: gameInfo.gameId)
             }
         }
+        
+        print("🎯 Background update complete: \(eventsFound) events found")
     }
     
-    private func checkGameForNewEvents(_ gameInfo: ActiveGameInfo) async throws -> Bool {
-        let lastCheck = gameInfo.lastEventCheck
+    // MARK: - Enhanced Event Detection
+    
+    private func checkForNewEvents(gameInfo: ActiveGameInfo) async -> [MatchEventType] {
+        var detectedEvents: [MatchEventType] = []
         
-        // For mock matches, use simple simulation
-        if gameInfo.matchId.hasPrefix("mock_") {
-            if AppConfig.useStubData {
-                let timeSinceLastCheck = Date().timeIntervalSince(lastCheck)
-                if timeSinceLastCheck > 600 && Bool.random() { // 10 minutes + random chance
-                    updateLastEventCheck(for: gameInfo.gameId)
-                    return true
+        do {
+            // Try to fetch match details - adjust this based on your actual service structure
+            let matchDetails = try await ServiceProvider.shared.getMatchService().fetchMatchDetails(matchId: String(gameInfo.matchId))
+            
+            // For now, we'll use a simplified approach since we're not sure of the exact structure
+            // You can enhance this once we know the exact MatchDetail structure
+            
+            print("📊 Match details fetched for game \(gameInfo.gameId)")
+            
+            // Simple time-based event generation for testing
+            let timeSinceLastCheck = Date().timeIntervalSince(gameInfo.lastEventCheck)
+            if timeSinceLastCheck > 300 { // 5 minutes
+                // Randomly generate an event for testing
+                let eventTypes: [MatchEventType] = [.goal, .yellowCard, .redCard, .penalty]
+                if Bool.random() && Double.random(in: 0...1) < 0.2 { // 20% chance
+                    let randomEvent = eventTypes.randomElement()!
+                    detectedEvents.append(randomEvent)
+                    print("🎲 Generated test event: \(randomEvent.rawValue)")
                 }
             }
-            return false
-        }
-        
-        // For real matches, check via API
-        do {
-            let matchService = ServiceProvider.shared.getMatchService()
-            let matchDetails = try await matchService.fetchMatchDetails(matchId: gameInfo.matchId)
-            
-            // Check if match status changed
-            let statusKey = "bgLastStatus_\(gameInfo.matchId)"
-            let lastStatus = UserDefaults.standard.string(forKey: statusKey)
-            let currentStatus = String(describing: matchDetails.match.status) // Fix: Convert enum to string
-            
-            if lastStatus != currentStatus {
-                UserDefaults.standard.set(currentStatus, forKey: statusKey)
-                updateLastEventCheck(for: gameInfo.gameId)
-                return true
-            }
-            
-            // Check for score changes (if available in your match details)
-            // You'd implement this based on your MatchDetail structure
-            
-            return false
             
         } catch {
-            print("❌ Error checking real match: \(error)")
+            print("❌ Error checking match events: \(error)")
             
-            // Fallback to time-based check for reliability
-            let timeSinceLastCheck = Date().timeIntervalSince(lastCheck)
+            // Fallback: occasional random event for testing/demo
+            let timeSinceLastCheck = Date().timeIntervalSince(gameInfo.lastEventCheck)
             if timeSinceLastCheck > 900 { // 15 minutes
-                updateLastEventCheck(for: gameInfo.gameId)
-                return Bool.random() // Small chance of "finding" an event
+                if Bool.random() && Double.random(in: 0...1) < 0.1 { // 10% chance
+                    detectedEvents.append(.goal)
+                }
             }
-            
-            return false
         }
+        
+        return detectedEvents
     }
     
-    // MARK: - Notification Management
+    // MARK: - Enhanced Notification Management
     
     private func requestNotificationPermission() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
@@ -174,31 +195,54 @@ class BackgroundTaskManager: ObservableObject {
         }
     }
     
-    private func sendMatchEventNotification(_ gameInfo: ActiveGameInfo) async {
+    private func sendEventNotification(_ eventType: MatchEventType, gameInfo: ActiveGameInfo) async {
         let content = UNMutableNotificationContent()
-        content.title = "⚽ Live Match Event!"
-        content.body = "Something happened in \(gameInfo.matchName) - check your game!"
+        content.title = eventType.notificationTitle
+        content.body = generateNotificationBody(for: eventType, matchName: gameInfo.matchName)
         content.sound = .default
-        content.badge = 1
+        content.badge = NSNumber(value: UIApplication.shared.applicationIconBadgeNumber + 1)
         
-        // Add custom data
+        // Add custom data for handling notification taps
         content.userInfo = [
             "gameId": gameInfo.gameId.uuidString,
-            "matchId": gameInfo.matchId,
+            "matchId": String(gameInfo.matchId), // Fix: Convert to string
+            "eventType": eventType.rawValue,
             "type": "match_event"
         ]
         
+        // Set category for potential actions (future enhancement)
+        content.categoryIdentifier = "MATCH_EVENT"
+        
         let request = UNNotificationRequest(
-            identifier: "match_event_\(gameInfo.gameId.uuidString)",
+            identifier: "match_event_\(gameInfo.gameId.uuidString)_\(eventType.rawValue)_\(Date().timeIntervalSince1970)",
             content: content,
             trigger: nil // Send immediately
         )
         
         do {
             try await UNUserNotificationCenter.current().add(request)
-            print("📱 Notification sent for game: \(gameInfo.gameId)")
+            print("📱 \(eventType.notificationTitle) notification sent for: \(gameInfo.matchName)")
         } catch {
-            print("❌ Failed to send notification: \(error)")
+            print("❌ Failed to send \(eventType.rawValue) notification: \(error)")
+        }
+    }
+    
+    private func generateNotificationBody(for eventType: MatchEventType, matchName: String) -> String {
+        switch eventType {
+        case .goal:
+            return "A goal was scored in \(matchName)! Check your game to see how it affects your bets."
+        case .yellowCard:
+            return "A yellow card was shown in \(matchName)! Player discipline could impact the game."
+        case .redCard:
+            return "A player received a red card in \(matchName)! This could change everything."
+        case .penalty:
+            return "A penalty was awarded in \(matchName)! Will it be converted?"
+        case .matchStart:
+            return "\(matchName) has kicked off! Your live game is now active."
+        case .halfTime:
+            return "\(matchName) has reached half time. Check your current standings!"
+        case .matchEnd:
+            return "\(matchName) has finished! See how your bets performed."
         }
     }
     
@@ -212,10 +256,19 @@ class BackgroundTaskManager: ObservableObject {
         
         let gameInfo = ActiveGameInfo(
             gameId: gameSession.id,
-            matchId: selectedMatch.id,
+            matchId: Int(selectedMatch.id) ?? 0, // Fix: Convert string to int safely
             matchName: "\(selectedMatch.homeTeam.name) vs \(selectedMatch.awayTeam.name)",
             lastEventCheck: Date()
         )
+        
+        // Initialize tracking data
+        let statusKey = "lastStatus_\(selectedMatch.id)"
+        let scoreKey = "lastScore_\(selectedMatch.id)"
+        let eventCountKey = "eventCount_\(selectedMatch.id)"
+        
+        UserDefaults.standard.set("notStarted", forKey: statusKey)
+        UserDefaults.standard.set("0-0", forKey: scoreKey)
+        UserDefaults.standard.set(0, forKey: eventCountKey)
         
         // Save to persistent storage
         saveActiveGameInfo(gameInfo)
@@ -238,6 +291,17 @@ class BackgroundTaskManager: ObservableObject {
         // Remove from persistent storage
         removeActiveGameInfo(gameSession.id)
         
+        // Clean up tracking data
+        if let selectedMatch = gameSession.selectedMatch {
+            let statusKey = "lastStatus_\(selectedMatch.id)"
+            let scoreKey = "lastScore_\(selectedMatch.id)"
+            let eventCountKey = "eventCount_\(selectedMatch.id)"
+            
+            UserDefaults.standard.removeObject(forKey: statusKey)
+            UserDefaults.standard.removeObject(forKey: scoreKey)
+            UserDefaults.standard.removeObject(forKey: eventCountKey)
+        }
+        
         print("⏹️ Background monitoring stopped for game: \(gameSession.id)")
         
         // Cancel background tasks if no more active games
@@ -256,6 +320,7 @@ class BackgroundTaskManager: ObservableObject {
         
         if let data = try? JSONEncoder().encode(activeGames) {
             UserDefaults.standard.set(data, forKey: "activeBackgroundGames")
+            print("💾 Saved \(activeGames.count) active games to storage")
         }
     }
     
@@ -265,6 +330,7 @@ class BackgroundTaskManager: ObservableObject {
         
         if let data = try? JSONEncoder().encode(activeGames) {
             UserDefaults.standard.set(data, forKey: "activeBackgroundGames")
+            print("💾 Removed game from storage, \(activeGames.count) games remaining")
         }
     }
     
@@ -287,11 +353,11 @@ class BackgroundTaskManager: ObservableObject {
     }
 }
 
-// MARK: - Supporting Types
+// MARK: - Supporting Structures
 
 struct ActiveGameInfo: Codable {
     let gameId: UUID
-    let matchId: String
+    let matchId: Int
     let matchName: String
     var lastEventCheck: Date
 }

@@ -199,26 +199,51 @@ class FootballDataMatchService: MatchService {
         // Process substitutions
         if let substitutions = jsonData["substitutions"] as? [[String: Any]] {
             for sub in substitutions {
-                if let minute = sub["minute"] as? Int,
-                   let playerOut = sub["playerOut"] as? [String: Any],
-                   let playerOutId = playerOut["id"] as? Int,
-                   let playerOutName = playerOut["name"] as? String,
-                   let playerIn = sub["playerIn"] as? [String: Any],
-                   let playerInId = playerIn["id"] as? Int,
-                   let team = sub["team"] as? [String: Any],
-                   let teamId = team["id"] as? Int {
-                    
-                    events.append(MatchEvent(
-                        id: "sub_\(minute)_\(playerOutId)",
-                        type: "SUBSTITUTION",
-                        playerId: "\(playerOutId)",
-                        playerName: playerOutName,
-                        minute: minute,
-                        teamId: "\(teamId)",
-                        playerOffId: "\(playerOutId)",
-                        playerOnId: "\(playerInId)"
-                    ))
+                // Add comprehensive validation
+                guard let minute = sub["minute"] as? Int,
+                      let playerOut = sub["playerOut"] as? [String: Any],
+                      let playerOutId = playerOut["id"] as? Int,
+                      let playerOutName = playerOut["name"] as? String,
+                      let playerIn = sub["playerIn"] as? [String: Any],
+                      let playerInId = playerIn["id"] as? Int,
+                      let team = sub["team"] as? [String: Any],
+                      let teamId = team["id"] as? Int else {
+                    print("⚠️ Skipping malformed substitution data: missing required fields")
+                    continue // Skip this substitution and continue with the next one
                 }
+                
+                // Additional validation checks
+                guard minute >= 0 && minute <= 120 else { // Allow for extra time
+                    print("⚠️ Skipping substitution with invalid minute: \(minute)")
+                    continue
+                }
+                
+                guard playerOutId != playerInId else {
+                    print("⚠️ Skipping substitution where player is substituting themselves: \(playerOutId)")
+                    continue
+                }
+                
+                guard !playerOutName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    print("⚠️ Skipping substitution with empty player out name")
+                    continue
+                }
+                
+                // Optional: Get player in name for better logging (but don't require it)
+                let playerInName = (playerIn["name"] as? String) ?? "Unknown Player"
+                
+                // Create the substitution event
+                events.append(MatchEvent(
+                    id: "sub_\(minute)_\(playerOutId)",
+                    type: "SUBSTITUTION",
+                    playerId: "\(playerOutId)",
+                    playerName: playerOutName,
+                    minute: minute,
+                    teamId: "\(teamId)",
+                    playerOffId: "\(playerOutId)",
+                    playerOnId: "\(playerInId)"
+                ))
+                
+                print("✅ Processed substitution: \(playerOutName) → \(playerInName) at \(minute)'")
             }
         }
         

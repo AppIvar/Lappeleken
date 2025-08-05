@@ -84,16 +84,6 @@ class EventSyncManager: ObservableObject {
     private func fetchMissedEvents(for gameInfo: ActiveGameInfo) async throws -> [LiveMatchEvent] {
         let lastBackgroundTime = UserDefaults.standard.object(forKey: "lastAppBackgroundTime") as? Date ?? Date().addingTimeInterval(-3600)
         
-        // Handle mock matches for testing
-        if gameInfo.matchId.hasPrefix("mock_") {
-            if AppConfig.useStubData {
-                return await generateMissedMockEvents(for: gameInfo, since: lastBackgroundTime)
-            } else {
-                print("🧪 Skipping mock events in production mode")
-                return []
-            }
-        }
-        
         // Real API integration for production matches
         return try await fetchRealMatchEvents(for: gameInfo, since: lastBackgroundTime)
     }
@@ -103,7 +93,8 @@ class EventSyncManager: ObservableObject {
         
         do {
             // Get current match details to check for status changes
-            let matchDetails = try await matchService.fetchMatchDetails(matchId: gameInfo.matchId)
+            // Fix: Convert matchId to String since it's stored as Int
+            let matchDetails = try await matchService.fetchMatchDetails(matchId: String(gameInfo.matchId))
             
             // Store previous match status to detect changes
             let previousStatusKey = "lastMatchStatus_\(gameInfo.matchId)"
@@ -120,7 +111,8 @@ class EventSyncManager: ObservableObject {
                 print("📊 Match status changed from \(previousStatus) to \(currentStatus)")
                 
                 // Create status change events
-                if matchDetails.match.status == .inProgress && previousStatus == "upcoming" {
+                // Fix: Compare with string representations instead of enum values
+                if currentStatus == "inProgress" && previousStatus == "upcoming" {
                     let kickoffEvent = LiveMatchEvent(
                         id: "kickoff_\(gameInfo.matchId)_\(Date().timeIntervalSince1970)",
                         type: .kickoff,
@@ -134,7 +126,8 @@ class EventSyncManager: ObservableObject {
                     events.append(kickoffEvent)
                 }
                 
-                if matchDetails.match.status == .completed {
+                // Fix: Compare with string representation
+                if currentStatus == "completed" {
                     let fulltimeEvent = LiveMatchEvent(
                         id: "fulltime_\(gameInfo.matchId)_\(Date().timeIntervalSince1970)",
                         type: .fulltime,
@@ -151,7 +144,8 @@ class EventSyncManager: ObservableObject {
             
             // Try to fetch actual match events (this might not always be available)
             do {
-                let matchEvents = try await matchService.fetchMatchEvents(matchId: gameInfo.matchId)
+                // Fix: Convert matchId to String
+                let matchEvents = try await matchService.fetchMatchEvents(matchId: String(gameInfo.matchId))
                 
                 // Filter events that happened after the background time
                 let recentEvents = matchEvents.filter { event in
@@ -187,7 +181,7 @@ class EventSyncManager: ObservableObject {
             #if DEBUG
             if AppConfig.useStubData {
                 print("🧪 Falling back to mock events for testing")
-                return await generateMissedMockEvents(for: gameInfo, since: backgroundTime)
+                return []
             }
             #endif
             
@@ -283,42 +277,6 @@ class EventSyncManager: ObservableObject {
             description: "Match event",
             substitutePlayer: nil
         )
-    }
-
-    
-    private func generateMissedMockEvents(for gameInfo: ActiveGameInfo, since backgroundTime: Date) async -> [LiveMatchEvent] {
-        let timeMissed = Date().timeIntervalSince(backgroundTime)
-        let eventCount = min(Int(timeMissed / 600), 3) // Max 3 events, 1 per 10 minutes
-        
-        guard eventCount > 0 else { return [] }
-        
-        var events: [LiveMatchEvent] = []
-        
-        guard let gameSession = getCurrentGameSession(for: gameInfo.gameId),
-              !gameSession.selectedPlayers.isEmpty else {
-            return []
-        }
-        
-        for i in 0..<eventCount {
-            let eventTime = backgroundTime.addingTimeInterval(TimeInterval(i * 600))
-            let randomPlayer = gameSession.selectedPlayers.randomElement()!
-            
-            let event = LiveMatchEvent(
-                id: "missed_mock_\(UUID().uuidString)",
-                type: [.goal, .assist, .yellowCard].randomElement()!,
-                minute: Int.random(in: 1...90),
-                player: randomPlayer,
-                team: randomPlayer.team,
-                timestamp: eventTime,
-                description: "Mock missed event for testing",
-                substitutePlayer: nil
-            )
-            
-            events.append(event)
-        }
-        
-        print("🧪 Generated \(events.count) mock missed events")
-        return events
     }
     
     // MARK: - Rest of the methods stay the same...

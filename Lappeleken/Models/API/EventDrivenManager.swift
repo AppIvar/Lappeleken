@@ -265,7 +265,7 @@ class GameEventMonitor {
             return apiEvents.compactMap { convertAPIEventToLiveEvent($0) }
         } catch {
             print("⚠️ Real API failed, using demo events: \(error)")
-            return generateDemoEvents()
+            return []
         }
     }
     
@@ -337,31 +337,6 @@ class GameEventMonitor {
         return newEvents
     }
     
-    private func generateDemoEvents() -> [LiveMatchEvent] {
-        guard pollCount % 5 == 0,
-              !gameSession.selectedPlayers.isEmpty,
-              Int.random(in: 1...10) <= 3 else {
-            return []
-        }
-        
-        let randomPlayer = gameSession.selectedPlayers.randomElement()!
-        let eventTypes: [LiveMatchEvent.LiveEventType] = [.goal, .yellowCard, .assist, .redCard]
-        let randomEventType = eventTypes.randomElement()!
-        
-        let demoEvent = LiveMatchEvent(
-            id: "demo_\(UUID().uuidString.prefix(8))",
-            type: randomEventType,
-            minute: Int.random(in: 1...90),
-            player: randomPlayer,
-            team: randomPlayer.team,
-            timestamp: Date(),
-            description: "Demo: \(randomPlayer.name) - \(randomEventType.rawValue)",
-            substitutePlayer: nil
-        )
-        
-        print("🧪 Generated demo event: \(randomEventType.rawValue) for \(randomPlayer.name)")
-        return [demoEvent]
-    }
     
     private func calculatePollingInterval() -> TimeInterval {
         switch match.status {
