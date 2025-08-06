@@ -210,16 +210,18 @@ class GameHistoryManager: ObservableObject {
     }
 }
 
-// MARK: - SavedGameSession Model (moved here for consistency)
+// MARK: - SavedGameSession Model
 
 struct SavedGameSession: Identifiable, Codable {
-    let id: UUID
+    var id: UUID
     let name: String
     let dateSaved: Date
     let participants: [Participant]
     let events: [GameEvent]
     let selectedPlayers: [Player]
     let bets: [Bet]
+    let timestamp: Date
+    let isLiveMode: Bool
     
     init(from gameSession: GameSession, name: String) {
         self.id = UUID()
@@ -229,5 +231,7 @@ struct SavedGameSession: Identifiable, Codable {
         self.events = gameSession.events
         self.selectedPlayers = gameSession.selectedPlayers
         self.bets = gameSession.bets
+        self.timestamp = Date()
+        self.isLiveMode = gameSession.isLiveMode
     }
 }

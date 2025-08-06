@@ -12,12 +12,14 @@ struct GameEvent: Identifiable, Codable {
     let player: Player
     let eventType: Bet.EventType
     let timestamp: Date
-    let customEventName: String? 
+    let minute: Int?
+    let customEventName: String?
     
-    init(player: Player, eventType: Bet.EventType, timestamp: Date, customEventName: String? = nil) {
+    init(player: Player, eventType: Bet.EventType, timestamp: Date, minute: Int? = nil, customEventName: String? = nil) {
         self.player = player
         self.eventType = eventType
         self.timestamp = timestamp
+        self.minute = minute
         self.customEventName = customEventName
     }
 }

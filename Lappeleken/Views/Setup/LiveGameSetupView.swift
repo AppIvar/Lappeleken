@@ -1779,6 +1779,11 @@ struct LiveGameSetupView: View {
         } else {
             print("❌ Warning: No match selected for live mode")
         }
+        
+        if gameSession.isLiveMode {
+            gameSession.startMatch()
+            print("⏱️ Match timer started for live game")
+        }
 
         // Randomly assign players to participants
         gameSession.assignPlayersRandomly()

@@ -27,17 +27,6 @@ struct ContentView: View {
         NavigationView {
             if activeGame {
                 GameView(gameSession: gameSession)
-                    .toolbar {
-                        ToolbarItem(placement: .navigationBarTrailing) {
-                            Button("End Game") {
-                                // Add cleanup before showing summary
-                                if gameSession.isLiveMode {
-                                    gameSession.cleanupEventDrivenMode()
-                                }
-                                showSummaryView = true
-                            }
-                        }
-                    }
                     .onAppear {
                         // Show save prompt when game view appears (game has started)
                         // BUT skip it if we're continuing a saved game

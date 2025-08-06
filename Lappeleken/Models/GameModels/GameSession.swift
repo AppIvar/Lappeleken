@@ -25,6 +25,12 @@ class GameSession: ObservableObject, Codable {
     @Published var canUndoLastEvent: Bool = false
     @Published var customEventMappings: [UUID: String] = [:]
     @Published var processedEventIds: Set<String> = []
+    @Published var matchStartTime: Date?
+    @Published var isMatchActive: Bool = false
+    @Published var currentSaveName: String? = nil
+    @Published var hasBeenSaved: Bool = false
+    
+    internal var saveId: UUID? = nil
 
     private var dataService: GameDataService
     private var matchMonitoringTask: Task<Void, Error>?
@@ -268,24 +274,82 @@ class GameSession: ObservableObject, Codable {
         return try await fetchMatchPlayersRobust(for: matchId)
     }
     
-    func saveGame(name: String) {
-        print("🎮 Starting to save game: \(name)")
+    func saveGame(name: String, isUpdate: Bool = false) {
+        print("🎮 Starting to save game: \(name) (isUpdate: \(isUpdate))")
         
-        // Use the SavedGameSession method from HistoryView
+        let finalName = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?
+            "Game \(DateFormatter.localizedString(from: Date(), dateStyle: .short, timeStyle: .short))" :
+            name
+        
+        if isUpdate && hasBeenSaved && currentSaveName != nil {
+            // Update existing save
+            updateExistingSave(name: finalName)
+        } else {
+            // Create new save
+            createNewSave(name: finalName)
+        }
+    }
+    
+    private func createNewSave(name: String) {
         let savedGame = SavedGameSession(from: self, name: name)
         var savedGames = GameHistoryManager.shared.getSavedGameSessions()
+        
+        // Remove existing save with same ID if it exists (for overwrites)
+        if let saveId = saveId {
+            savedGames.removeAll { $0.id == saveId }
+        }
+        
         savedGames.append(savedGame)
         
-        // Save to UserDefaults using the working method
+        // Save to UserDefaults
         if let encoded = try? JSONEncoder().encode(savedGames) {
             UserDefaults.standard.set(encoded, forKey: "savedGameSessions")
-            print("✅ Game saved successfully: \(name)")
             
-            // Update the published property
+            // Update tracking properties
+            self.currentSaveName = name
+            self.hasBeenSaved = true
+            self.saveId = savedGame.id
+            
+            print("✅ Game saved successfully: \(name)")
             GameHistoryManager.shared.objectWillChange.send()
         } else {
             print("❌ Failed to encode and save game")
         }
+    }
+
+    private func updateExistingSave(name: String) {
+        var savedGames = GameHistoryManager.shared.getSavedGameSessions()
+        
+        // Find and update the existing save
+        if let saveId = saveId,
+           let index = savedGames.firstIndex(where: { $0.id == saveId }) {
+            
+            // Create updated save with same ID
+            var updatedSave = SavedGameSession(from: self, name: name)
+            updatedSave.id = saveId // Keep the same ID
+            
+            savedGames[index] = updatedSave
+            
+            if let encoded = try? JSONEncoder().encode(savedGames) {
+                UserDefaults.standard.set(encoded, forKey: "savedGameSessions")
+                
+                self.currentSaveName = name
+                
+                print("✅ Game updated successfully: \(name)")
+                GameHistoryManager.shared.objectWillChange.send()
+            } else {
+                print("❌ Failed to encode and update game")
+            }
+        } else {
+            // Fallback to new save if we can't find the existing one
+            createNewSave(name: name)
+        }
+    }
+
+    // Add method to check if save name exists
+    func saveNameExists(_ name: String) -> Bool {
+        let savedGames = GameHistoryManager.shared.getSavedGameSessions()
+        return savedGames.contains { $0.name == name && $0.id != saveId }
     }
 
     func debugSaveStatus() {
@@ -394,8 +458,21 @@ class GameSession: ObservableObject, Codable {
 
     
     // Record an event
-    @MainActor func recordEvent(player: Player, eventType: Bet.EventType) {
-        let event = GameEvent(player: player, eventType: eventType, timestamp: Date())
+    @MainActor func recordEvent(player: Player, eventType: Bet.EventType, minute: Int? = nil) {
+        let eventMinute: Int?
+        
+        if let minute = minute {
+            // Use provided minute (from API or manual input)
+            eventMinute = minute
+        } else if isLiveMode, isMatchActive {
+            // For live mode, calculate current match minute
+            eventMinute = getCurrentMatchMinute()
+        } else {
+            // For manual mode, don't set a minute (will be nil)
+            eventMinute = nil
+        }
+        
+        let event = GameEvent(player: player, eventType: eventType, timestamp: Date(), minute: eventMinute)
         events.append(event)
         
         // Helper function to update player stats based on event type
@@ -461,7 +538,7 @@ class GameSession: ObservableObject, Codable {
         calculatePayments(for: event)
         
         // Debug: print event recorded
-        print("Event recorded: \(eventType.rawValue) for \(player.name)")
+        print("Event recorded: \(eventType.rawValue) for \(player.name) at \(eventMinute != nil ? "\(eventMinute!)'" : "unknown time")")
         
         canUndoLastEvent = true
         
@@ -470,6 +547,17 @@ class GameSession: ObservableObject, Codable {
         
         // Notify observers of the changes
         objectWillChange.send()
+    }
+    
+    func startMatch() {
+        matchStartTime = Date()
+        isMatchActive = true
+        print("⏱️ Match timer started")
+    }
+
+    func stopMatch() {
+        isMatchActive = false
+        print("⏱️ Match timer stopped")
     }
     
     @MainActor func undoLastEvent() {
@@ -489,6 +577,13 @@ class GameSession: ObservableObject, Codable {
         
         print("🔄 Undid event: \(lastEvent.eventType.rawValue) for \(lastEvent.player.name)")
     }
+    
+    func getCurrentMatchMinute() -> Int {
+        guard let startTime = matchStartTime, isMatchActive else { return 0 }
+        let elapsed = Date().timeIntervalSince(startTime)
+        return min(Int(elapsed / 60), 120) // Cap at 120 minutes (90 + 30 extra time)
+    }
+
     
     private func reversePayments(for event: GameEvent) {
         // Find the bet for this event type
@@ -678,10 +773,10 @@ class GameSession: ObservableObject, Codable {
             return
         }
         
-        // Record the event
+        // Record the event WITH the minute from the API
         Task { @MainActor in
-            print("⚽ Recording event: \(eventType.rawValue) for \(player.name)")
-            recordEvent(player: player, eventType: eventType)
+            print("⚽ Recording event: \(eventType.rawValue) for \(player.name) at \(event.minute)'")
+            recordEvent(player: player, eventType: eventType, minute: event.minute)
         }
     }
     

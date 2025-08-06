@@ -14,10 +14,11 @@ struct GameView: View {
     @State private var showingEventSheet = false
     @State private var showingSubstitutionSheet = false
     @State private var showingAutoSavePrompt = false
-    @State private var autoSaveGameName = ""
     @State private var selectedCustomEventName: String? = nil
     @State private var showMissedEventsBanner = false
     @State private var missedEventsInfo: (count: Int, matchName: String) = (0, "")
+    @State private var showingSaveGameSheet = false
+    @State private var showingEndGameConfirmation = false
     
     var body: some View {
         VStack(spacing: 0) {
@@ -75,8 +76,24 @@ struct GameView: View {
             SubstitutionView(gameSession: gameSession)
         }
         .sheet(isPresented: $showingAutoSavePrompt) {
-            autoSaveGamePrompt
+            UnifiedSaveGameSheet(gameSession: gameSession, isPresented: $showingAutoSavePrompt)
         }
+        .sheet(isPresented: $showingSaveGameSheet) {
+            UnifiedSaveGameSheet(gameSession: gameSession, isPresented: $showingSaveGameSheet)
+        }
+        .alert("End Game", isPresented: $showingEndGameConfirmation) {
+            Button("End Without Saving", role: .destructive) {
+                endGameWithoutSaving()
+            }
+            Button("Save & End") {
+                showingEndGameConfirmation = false
+                showingSaveGameSheet = true
+            }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Are you sure you want to quit the game? Any unsaved progress will be lost.\n\nYou can save your progress before ending the game.")
+        }
+        
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("MissedEventsFound"))) { notification in
             print("🔔 Received MissedEventsFound notification")
             print("🔔 Notification userInfo: \(notification.userInfo ?? [:])")
@@ -175,6 +192,20 @@ struct GameView: View {
                 
                 Spacer()
                 
+                // Current minute display for live games
+                if gameSession.isLiveMode && gameSession.isMatchActive, gameSession.matchStartTime != nil {
+                    let currentMinute = gameSession.getCurrentMatchMinute()
+                    Text("\(currentMinute)'")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(AppDesignSystem.Colors.success)
+                        )
+                }
+                
                 // Live indicator if it's a live game
                 if gameSession.isLiveMode {
                     HStack(spacing: 6) {
@@ -190,6 +221,49 @@ struct GameView: View {
                     .padding(.vertical, 4)
                     .background(AppDesignSystem.Colors.success.opacity(0.1))
                     .cornerRadius(8)
+                }
+            }
+            
+            // Add save and end buttons row
+            HStack(spacing: 12) {
+                // Save game button
+                Button(action: {
+                    showingSaveGameSheet = true
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "square.and.arrow.down")
+                            .font(.system(size: 14))
+                        Text("Save Game")
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    .foregroundColor(AppDesignSystem.Colors.primary)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(AppDesignSystem.Colors.primary.opacity(0.1))
+                    )
+                }
+                
+                Spacer()
+                
+                // End game button
+                Button(action: {
+                    showingEndGameConfirmation = true
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "xmark.circle")
+                            .font(.system(size: 14))
+                        Text("End Game")
+                            .font(.system(size: 14, weight: .semibold))
+                    }
+                    .foregroundColor(AppDesignSystem.Colors.error)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(AppDesignSystem.Colors.error.opacity(0.1))
+                    )
                 }
             }
             
@@ -232,6 +306,13 @@ struct GameView: View {
                 .fill(AppDesignSystem.Colors.cardBackground)
                 .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 4)
         )
+    }
+
+    private func endGameWithoutSaving() {
+        showingEndGameConfirmation = false
+        gameSession.stopMatch() // Stop the match timer
+        cleanupGame()
+        // You'll need to add navigation logic here based on how you handle dismissing GameView
     }
     
     // MARK: - Event Type Breakdown
@@ -731,73 +812,6 @@ struct GameView: View {
         }
     }
     
-    // MARK: - Auto Save Prompt
-    
-    private var autoSaveGamePrompt: some View {
-        NavigationView {
-            VStack(spacing: 24) {
-                Image(systemName: "externaldrive.badge.plus")
-                    .font(.system(size: 60))
-                    .foregroundColor(AppDesignSystem.Colors.primary)
-                
-                Text("Quick Save Game")
-                    .font(.system(size: 24, weight: .bold, design: .rounded))
-                    .foregroundColor(AppDesignSystem.Colors.primaryText)
-                
-                Text("Save your game progress so you can continue later or share with friends.")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                    .multilineTextAlignment(.center)
-                
-                TextField("Game name (optional)", text: $autoSaveGameName)
-                    .font(.system(size: 16, weight: .medium))
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(AppDesignSystem.Colors.cardBackground)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(AppDesignSystem.Colors.primary.opacity(0.3), lineWidth: 1)
-                            )
-                    )
-                
-                Button("Save Game") {
-                    let finalGameName = autoSaveGameName.isEmpty ?
-                        "Game \\(Date().formatted(date: .abbreviated, time: .shortened))" :
-                        autoSaveGameName
-                    
-                    GameHistoryManager.shared.saveGameSession(gameSession, name: finalGameName)
-                    
-                    showingAutoSavePrompt = false
-                    autoSaveGameName = ""
-                }
-                .font(.system(size: 16, weight: .bold, design: .rounded))
-                .foregroundColor(.white)
-                .padding(.vertical, 16)
-                .padding(.horizontal, 24)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    AppDesignSystem.Colors.primary,
-                                    AppDesignSystem.Colors.primary.opacity(0.8)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                )
-                .vibrantButton()
-            }
-            .padding(24)
-            .background(AppDesignSystem.Colors.background)
-            .navigationTitle("Quick Save")
-            .navigationBarTitleDisplayMode(.inline)
-        }
-    }
-    
     // MARK: - Helper Functions
     
     private func eventIcon(_ eventType: Bet.EventType) -> String {
@@ -1034,21 +1048,39 @@ struct CompactEventRow: View {
                 )
             
             VStack(alignment: .leading, spacing: 2) {
-                Text(event.player.name)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                HStack {
+                    Text(event.player.name)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
+                    
+                    Spacer()
+                    
+                    // Add minute display
+                    if let minute = event.minute {
+                        Text("\(minute)'")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(
+                                RoundedRectangle(cornerRadius: 4)
+                                    .fill(eventColor)
+                            )
+                    }
+                }
                 
-                // Use the proper event display name instead of rawValue
-                Text(gameSession.getEventDisplayName(for: event))
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                HStack {
+                    Text(gameSession.getEventDisplayName(for: event))
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    
+                    Spacer()
+                    
+                    Text(timeFormatter.string(from: event.timestamp))
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                }
             }
-            
-            Spacer()
-            
-            Text(timeFormatter.string(from: event.timestamp))
-                .font(.system(size: 11, weight: .medium))
-                .foregroundColor(AppDesignSystem.Colors.secondaryText)
         }
         .padding(.vertical, 4)
     }
