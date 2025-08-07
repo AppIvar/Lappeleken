@@ -9,6 +9,7 @@ import SwiftUI
 
 struct GameView: View {
     @ObservedObject var gameSession: GameSession
+    @Binding var shouldShowSummary: Bool
     @State private var selectedPlayer: Player? = nil
     @State private var selectedEventType: Bet.EventType? = nil
     @State private var showingEventSheet = false
@@ -19,9 +20,19 @@ struct GameView: View {
     @State private var missedEventsInfo: (count: Int, matchName: String) = (0, "")
     @State private var showingSaveGameSheet = false
     @State private var showingEndGameConfirmation = false
+    @State private var shouldEndGameAfterSave = false
+    
+    init(gameSession: GameSession, shouldShowSummary: Binding<Bool>) {
+        self.gameSession = gameSession
+        self._shouldShowSummary = shouldShowSummary
+    }
+
     
     var body: some View {
         VStack(spacing: 0) {
+            
+            customNavigationHeader
+            
             // Missed events banner
             if showMissedEventsBanner {
                 MissedEventsBanner(
@@ -68,7 +79,8 @@ struct GameView: View {
                 .accentColor(AppDesignSystem.Colors.primary)
             }
         }
-        .navigationTitle("Lucky Football Slip")
+        .navigationBarHidden(true)
+        
         .sheet(isPresented: $showingEventSheet) {
             recordEventView
         }
@@ -80,13 +92,25 @@ struct GameView: View {
         }
         .sheet(isPresented: $showingSaveGameSheet) {
             UnifiedSaveGameSheet(gameSession: gameSession, isPresented: $showingSaveGameSheet)
+                .onDisappear {
+                    if shouldEndGameAfterSave {
+                        shouldEndGameAfterSave = false
+                        cleanupGame()
+                        
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            shouldShowSummary = true
+                        }
+                    }
+                }
         }
+    
         .alert("End Game", isPresented: $showingEndGameConfirmation) {
             Button("End Without Saving", role: .destructive) {
                 endGameWithoutSaving()
             }
             Button("Save & End") {
                 showingEndGameConfirmation = false
+                shouldEndGameAfterSave = true // Set flag
                 showingSaveGameSheet = true
             }
             Button("Cancel", role: .cancel) { }
@@ -132,6 +156,32 @@ struct GameView: View {
         .onAppear {
             // Ensure custom events are properly mapped
             gameSession.autoFixCustomEventsOnGameStart()
+        }
+    }
+    
+    private var customNavigationHeader: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Lucky Football Slip")
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                Spacer()
+                
+                // Optional: Add any header actions here if needed
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 10)
+            .padding(.bottom, 16)
+            .background(
+                AppDesignSystem.Colors.background
+                    .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+            )
+            
+            // Divider line
+            Rectangle()
+                .fill(AppDesignSystem.Colors.secondaryText.opacity(0.2))
+                .frame(height: 0.5)
         }
     }
     
@@ -310,9 +360,11 @@ struct GameView: View {
 
     private func endGameWithoutSaving() {
         showingEndGameConfirmation = false
-        gameSession.stopMatch() // Stop the match timer
+        gameSession.stopMatch()
         cleanupGame()
-        // You'll need to add navigation logic here based on how you handle dismissing GameView
+        
+        // Directly set the binding
+        shouldShowSummary = true
     }
     
     // MARK: - Event Type Breakdown

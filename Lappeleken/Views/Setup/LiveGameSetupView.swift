@@ -33,6 +33,7 @@ struct LiveGameSetupView: View {
     @State private var showingLineupChoiceAlert = false
     @State private var pendingMatchId: String?
     @State private var pendingMatchName: String?
+    @State private var expandedLeagues = Set<String>()
 
     
     private let steps = ["Matches", "Participants", "Set Bets", "Select Players", "Review"]
@@ -372,9 +373,163 @@ struct LiveGameSetupView: View {
         .padding(.top, 40)
     }
     
+    struct LeagueGroup {
+        let league: String
+        let name: String
+        let matches: [Match]
+    }
+
+    struct DateGroup {
+        let date: Date
+        let matches: [Match]
+    }
+
+    // MARK: - Matches List view
+
     private var matchesListView: some View {
         VStack(spacing: 12) {
-            ForEach(gameSession.availableMatches) { match in
+            ForEach(leagueGroups, id: \.league) { leagueGroup in
+                leagueDropdownSection(leagueGroup)
+            }
+        }
+    }
+
+
+    private var matchesByLeague: [String: [Match]] {
+        Dictionary(grouping: gameSession.availableMatches) { match in
+            match.competition.code
+        }
+    }
+
+    private var leagueOrder: [String] {
+        ["TIP", "WC", "CL", "BL1", "DED", "BSA", "PD", "FL1", "ELC", "PPL", "EC", "SA", "PL"]
+    }
+
+    private var sortedLeagueCodes: [String] {
+        matchesByLeague.keys.sorted { league1, league2 in
+            let index1 = leagueOrder.firstIndex(of: league1) ?? leagueOrder.count
+            let index2 = leagueOrder.firstIndex(of: league2) ?? leagueOrder.count
+            return index1 < index2
+        }
+    }
+
+    private var leagueGroups: [LeagueGroup] {
+        sortedLeagueCodes.compactMap { leagueCode in
+            guard let leagueMatches = matchesByLeague[leagueCode] else { return nil }
+            return LeagueGroup(
+                league: leagueCode,
+                name: leagueMatches.first?.competition.name ?? leagueCode,
+                matches: leagueMatches
+            )
+        }
+    }
+    
+    
+
+    private func leagueDropdownSection(_ leagueGroup: LeagueGroup) -> some View {
+        VStack(spacing: 0) {
+            // Clickable header
+            Button(action: {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    if expandedLeagues.contains(leagueGroup.league) {
+                        expandedLeagues.remove(leagueGroup.league)
+                    } else {
+                        expandedLeagues.insert(leagueGroup.league)
+                    }
+                }
+            }) {
+                leagueDropdownHeader(leagueGroup)
+            }
+            .buttonStyle(PlainButtonStyle())
+            
+            // Expandable content
+            if expandedLeagues.contains(leagueGroup.league) {
+                VStack(spacing: 8) {
+                    ForEach(dateGroups(for: leagueGroup.matches), id: \.date) { dateGroup in
+                        dateSection(dateGroup, showDateHeader: dateGroups(for: leagueGroup.matches).count > 1)
+                    }
+                }
+                .padding(.top, 8)
+                .transition(.asymmetric(
+                    insertion: .opacity.combined(with: .move(edge: .top)),
+                    removal: .opacity.combined(with: .move(edge: .top))
+                ))
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(AppDesignSystem.Colors.cardBackground)
+                .shadow(
+                    color: AppDesignSystem.Colors.primary.opacity(0.1),
+                    radius: expandedLeagues.contains(leagueGroup.league) ? 8 : 4,
+                    x: 0,
+                    y: 2
+                )
+        )
+        .padding(.vertical, 4)
+    }
+
+    private func leagueDropdownHeader(_ leagueGroup: LeagueGroup) -> some View {
+        HStack {
+            // League info
+            VStack(alignment: .leading, spacing: 4) {
+                Text(leagueGroup.name)
+                    .font(AppDesignSystem.Typography.subheadingFont.bold())
+                    .foregroundColor(AppDesignSystem.Colors.primary)
+                
+                Text("\(leagueGroup.matches.count) match\(leagueGroup.matches.count == 1 ? "" : "es")")
+                    .font(AppDesignSystem.Typography.captionFont)
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+            }
+            
+            Spacer()
+            
+            // Selected matches indicator
+            let selectedCount = leagueGroup.matches.filter { match in
+                selectedMatchIds.contains(match.id)
+            }.count
+            
+            if selectedCount > 0 {
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundColor(AppDesignSystem.Colors.success)
+                        .font(.system(size: 14))
+                    
+                    Text("\(selectedCount)")
+                        .font(AppDesignSystem.Typography.captionFont.bold())
+                        .foregroundColor(AppDesignSystem.Colors.success)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(
+                    Capsule()
+                        .fill(AppDesignSystem.Colors.success.opacity(0.1))
+                )
+            }
+            
+            // Dropdown arrow
+            Image(systemName: expandedLeagues.contains(leagueGroup.league) ? "chevron.up" : "chevron.down")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                .rotationEffect(.degrees(expandedLeagues.contains(leagueGroup.league) ? 0 : 0))
+                .animation(.easeInOut(duration: 0.2), value: expandedLeagues.contains(leagueGroup.league))
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .contentShape(Rectangle()) // Makes entire area tappable
+    }
+
+    private func dateSection(_ dateGroup: DateGroup, showDateHeader: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if showDateHeader {
+                Text(formatDate(dateGroup.date))
+                    .font(AppDesignSystem.Typography.captionFont.bold())
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    .padding(.leading, 16)
+                    .padding(.top, 4)
+            }
+            
+            ForEach(dateGroup.matches, id: \.id) { match in
                 MatchSelectionCard(
                     match: match,
                     isSelected: selectedMatchIds.contains(match.id),
@@ -382,8 +537,64 @@ struct LiveGameSetupView: View {
                         toggleMatchSelection(match)
                     }
                 )
+                .padding(.horizontal, 8)
             }
         }
+        .padding(.bottom, 8)
+    }
+
+    // Helper functions
+    private func dateGroups(for matches: [Match]) -> [DateGroup] {
+        let matchesByDate = Dictionary(grouping: matches) { match in
+            Calendar.current.startOfDay(for: match.startTime)
+        }
+        
+        return matchesByDate.keys.sorted().map { date in
+            let sortedMatches = matchesByDate[date]?.sorted { $0.startTime < $1.startTime } ?? []
+            return DateGroup(date: date, matches: sortedMatches)
+        }
+    }
+
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        let calendar = Calendar.current
+        
+        if calendar.isDateInToday(date) {
+            return "Today"
+        } else if calendar.isDateInTomorrow(date) {
+            return "Tomorrow"
+        } else if calendar.isDate(date, equalTo: Date(), toGranularity: .weekOfYear) {
+            formatter.dateFormat = "EEEE" // Day of week
+            return formatter.string(from: date)
+        } else {
+            formatter.dateStyle = .medium
+            formatter.timeStyle = .none
+            return formatter.string(from: date)
+        }
+    }
+    
+    private var expandCollapseControls: some View {
+        HStack(spacing: 16) {
+            Button("Expand All") {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    expandedLeagues = Set(leagueGroups.map { $0.league })
+                }
+            }
+            .font(AppDesignSystem.Typography.captionFont)
+            .foregroundColor(AppDesignSystem.Colors.primary)
+            
+            Button("Collapse All") {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    expandedLeagues.removeAll()
+                }
+            }
+            .font(AppDesignSystem.Typography.captionFont)
+            .foregroundColor(AppDesignSystem.Colors.secondary)
+            
+            Spacer()
+        }
+        .padding(.horizontal, 4)
+        .padding(.bottom, 8)
     }
     
     private var multipleMatchWarningView: some View {

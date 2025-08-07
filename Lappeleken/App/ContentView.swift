@@ -26,7 +26,7 @@ struct ContentView: View {
     var body: some View {
         NavigationView {
             if activeGame {
-                GameView(gameSession: gameSession)
+                GameView(gameSession: gameSession, shouldShowSummary: $showSummaryView)
                     .onAppear {
                         // Show save prompt when game view appears (game has started)
                         // BUT skip it if we're continuing a saved game

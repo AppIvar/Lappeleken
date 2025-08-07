@@ -204,6 +204,20 @@ struct MatchSelectionView: View {
     
     // MARK: - Matches List View
     
+    // Helper structs for grouping
+    struct LeagueGroup {
+        let league: String
+        let name: String
+        let matches: [Match]
+    }
+
+    struct DateGroup {
+        let date: Date
+        let matches: [Match]
+    }
+
+    // MARK: - Matches List View (Simplified)
+
     private var matchesListView: some View {
         VStack(spacing: 0) {
             // Header with feature flag info
@@ -211,20 +225,8 @@ struct MatchSelectionView: View {
             
             ScrollView(showsIndicators: false) {
                 LazyVStack(spacing: 16) {
-                    // Matches
-                    ForEach(Array(gameSession.availableMatches.enumerated()), id: \.element.id) { index, match in
-                        EnhancedMatchCard(
-                            match: match,
-                            index: index,
-                            isSelected: selectedMatches.contains(where: { $0.id == match.id }),
-                            canSelectMultiple: AppConfig.canSelectMultipleMatches
-                        ) {
-                            selectMatch(match)
-                        }
-                        .animation(
-                            AppDesignSystem.Animations.bouncy.delay(Double(index) * 0.1),
-                            value: gameSession.availableMatches.count
-                        )
+                    ForEach(leagueGroups, id: \.league) { leagueGroup in
+                        leagueSection(leagueGroup)
                     }
                 }
                 .padding(.horizontal, 20)
@@ -235,6 +237,131 @@ struct MatchSelectionView: View {
             if !selectedMatches.isEmpty {
                 bottomActionButton
             }
+        }
+    }
+
+    // Break down the complex logic into simple computed properties
+    private var matchesByLeague: [String: [Match]] {
+        Dictionary(grouping: gameSession.availableMatches) { match in
+            match.competition.code
+        }
+    }
+
+    private var leagueOrder: [String] {
+        ["TIP", "WC", "CL", "BL1", "DED", "BSA", "PD", "FL1", "ELC", "PPL", "EC", "SA", "PL"]
+    }
+
+    private var sortedLeagueCodes: [String] {
+        matchesByLeague.keys.sorted { league1, league2 in
+            let index1 = leagueOrder.firstIndex(of: league1) ?? leagueOrder.count
+            let index2 = leagueOrder.firstIndex(of: league2) ?? leagueOrder.count
+            return index1 < index2
+        }
+    }
+
+    private var leagueGroups: [LeagueGroup] {
+        sortedLeagueCodes.compactMap { leagueCode in
+            guard let leagueMatches = matchesByLeague[leagueCode] else { return nil }
+            return LeagueGroup(
+                league: leagueCode,
+                name: leagueMatches.first?.competition.name ?? leagueCode,
+                matches: leagueMatches
+            )
+        }
+    }
+
+    // Simple league section view
+    private func leagueSection(_ leagueGroup: LeagueGroup) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            leagueHeader(leagueGroup)
+            
+            ForEach(dateGroups(for: leagueGroup.matches), id: \.date) { dateGroup in
+                dateSection(dateGroup, showDateHeader: dateGroups(for: leagueGroup.matches).count > 1)
+            }
+        }
+        .padding(.bottom, 8)
+    }
+
+    private func leagueHeader(_ leagueGroup: LeagueGroup) -> some View {
+        HStack {
+            Text(leagueGroup.name)
+                .font(AppDesignSystem.Typography.subheadingFont.bold())
+                .foregroundColor(AppDesignSystem.Colors.primary)
+            
+            Spacer()
+            
+            Text("\(leagueGroup.matches.count) match\(leagueGroup.matches.count == 1 ? "" : "es")")
+                .font(AppDesignSystem.Typography.captionFont)
+                .foregroundColor(AppDesignSystem.Colors.secondaryText)
+        }
+        .padding(.horizontal, 4)
+    }
+
+    private func dateSection(_ dateGroup: DateGroup, showDateHeader: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if showDateHeader {
+                Text(formatDate(dateGroup.date))
+                    .font(AppDesignSystem.Typography.captionFont)
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    .padding(.leading, 8)
+            }
+            
+            ForEach(Array(dateGroup.matches.enumerated()), id: \.element.id) { index, match in
+                matchCard(match, index: index)
+            }
+        }
+    }
+
+    private func matchCard(_ match: Match, index: Int) -> some View {
+        EnhancedMatchCard(
+            match: match,
+            index: globalIndex(for: match),
+            isSelected: isMatchSelected(match),
+            canSelectMultiple: AppConfig.canSelectMultipleMatches
+        ) {
+            selectMatch(match)
+        }
+        .animation(
+            AppDesignSystem.Animations.bouncy.delay(Double(index) * 0.1),
+            value: gameSession.availableMatches.count
+        )
+    }
+
+    // Helper functions
+    private func dateGroups(for matches: [Match]) -> [DateGroup] {
+        let matchesByDate = Dictionary(grouping: matches) { match in
+            Calendar.current.startOfDay(for: match.startTime)
+        }
+        
+        return matchesByDate.keys.sorted().map { date in
+            let sortedMatches = matchesByDate[date]?.sorted { $0.startTime < $1.startTime } ?? []
+            return DateGroup(date: date, matches: sortedMatches)
+        }
+    }
+
+    private func globalIndex(for match: Match) -> Int {
+        gameSession.availableMatches.firstIndex { $0.id == match.id } ?? 0
+    }
+
+    private func isMatchSelected(_ match: Match) -> Bool {
+        selectedMatches.contains(where: { $0.id == match.id })
+    }
+
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        let calendar = Calendar.current
+        
+        if calendar.isDateInToday(date) {
+            return "Today"
+        } else if calendar.isDateInTomorrow(date) {
+            return "Tomorrow"
+        } else if calendar.isDate(date, equalTo: Date(), toGranularity: .weekOfYear) {
+            formatter.dateFormat = "EEEE" // Day of week
+            return formatter.string(from: date)
+        } else {
+            formatter.dateStyle = .medium
+            formatter.timeStyle = .none
+            return formatter.string(from: date)
         }
     }
     

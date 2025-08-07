@@ -11,6 +11,7 @@ import SwiftUI
 struct UnifiedSaveGameSheet: View {
     @ObservedObject var gameSession: GameSession
     @Binding var isPresented: Bool
+    let onSaveComplete: (() -> Void)?
     
     @State private var gameName: String
     @State private var saveMode: SaveMode = .newSave
@@ -24,9 +25,10 @@ struct UnifiedSaveGameSheet: View {
         case overwriteExisting
     }
     
-    init(gameSession: GameSession, isPresented: Binding<Bool>) {
+    init(gameSession: GameSession, isPresented: Binding<Bool>, onSaveComplete: (() -> Void)? = nil) {
         self.gameSession = gameSession
         self._isPresented = isPresented
+        self.onSaveComplete = onSaveComplete
         self._gameName = State(initialValue: gameSession.currentSaveName ?? "")
     }
     
@@ -291,6 +293,9 @@ struct UnifiedSaveGameSheet: View {
         }
         
         isPresented = false
+        
+        // Call completion callback if provided
+        onSaveComplete?()
     }
 }
 
