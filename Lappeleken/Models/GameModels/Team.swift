@@ -32,3 +32,4 @@ struct Team: Identifiable, Hashable, Codable {
         return lhs.id == rhs.id
     }
 }
+

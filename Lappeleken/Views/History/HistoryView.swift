@@ -933,7 +933,7 @@ struct GameDetailSheet: View {
         restoredGameSession.events = freshGame.events
         
         if !freshGame.events.isEmpty {
-            restoredGameSession.recalculateBalancesFromEvents()
+            GameLogicManager.shared.recalculateBalances(in: restoredGameSession)
         }
         
         restoredGameSession.canUndoLastEvent = false
@@ -944,7 +944,7 @@ struct GameDetailSheet: View {
         }
         
         if totalPlayerAssignments == 0 && !restoredGameSession.selectedPlayers.isEmpty {
-            restoredGameSession.assignPlayersRandomly()
+            GameLogicManager.shared.assignPlayersRandomly(in: restoredGameSession)
         }
         
         guard !restoredGameSession.participants.isEmpty else {

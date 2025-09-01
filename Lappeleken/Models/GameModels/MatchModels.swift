@@ -7,6 +7,8 @@
 
 import Foundation
 
+// MARK: - MatchStatus
+
 enum MatchStatus: String, Codable, CaseIterable {
     case upcoming = "SCHEDULED"
     case inProgress = "IN_PLAY"
@@ -42,18 +44,29 @@ enum MatchStatus: String, Codable, CaseIterable {
     }
 }
 
-// Basic match structure
-struct Match: Identifiable {
+// MARK: - Match
+
+struct Match: Identifiable, Codable, Hashable {
     let id: String
     let homeTeam: Team
     let awayTeam: Team
     let startTime: Date
     let status: MatchStatus
     let competition: Competition
+    
+    // MARK: - Hashable Conformance
+    public func hash(into hasher: inout Hasher) {
+        hasher.combine(id)
+    }
+    
+    public static func == (lhs: Match, rhs: Match) -> Bool {
+        return lhs.id == rhs.id
+    }
 }
 
-// Competition model
-struct Competition: Identifiable {
+// MARK: - Competition
+
+struct Competition: Identifiable, Codable {
     let id: String
     let name: String
     let code: String
@@ -65,8 +78,9 @@ struct Competition: Identifiable {
     }
 }
 
-// Match detail with additional information
-struct MatchDetail {
+// MARK: - MatchDetail
+
+struct MatchDetail: Codable {
     let match: Match
     let venue: String?
     let attendance: Int?
@@ -75,8 +89,9 @@ struct MatchDetail {
     let awayScore: Int
 }
 
-// Match event for tracking goals, cards, etc.
-struct MatchEvent: Identifiable {
+// MARK: - MatchEvent
+
+struct MatchEvent: Identifiable, Codable {
     let id: String
     let type: String // goal, assist, yellow_card, etc.
     let playerId: String
@@ -99,5 +114,3 @@ struct MatchEvent: Identifiable {
         self.playerOnId = playerOnId
     }
 }
-
-

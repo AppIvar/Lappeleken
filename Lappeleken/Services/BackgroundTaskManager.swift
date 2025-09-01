@@ -196,31 +196,38 @@ class BackgroundTaskManager: ObservableObject {
     }
     
     private func sendEventNotification(_ eventType: MatchEventType, gameInfo: ActiveGameInfo) async {
+        // Check notification permission first
+        let center = UNUserNotificationCenter.current()
+        let settings = await center.notificationSettings()
+        
+        guard settings.authorizationStatus == .authorized else {
+            print("🔕 Notifications not authorized, status: \(settings.authorizationStatus.rawValue)")
+            return
+        }
+        
         let content = UNMutableNotificationContent()
         content.title = eventType.notificationTitle
         content.body = generateNotificationBody(for: eventType, matchName: gameInfo.matchName)
         content.sound = .default
         content.badge = NSNumber(value: UIApplication.shared.applicationIconBadgeNumber + 1)
         
-        // Add custom data for handling notification taps
         content.userInfo = [
             "gameId": gameInfo.gameId.uuidString,
-            "matchId": String(gameInfo.matchId), // Fix: Convert to string
+            "matchId": String(gameInfo.matchId),
             "eventType": eventType.rawValue,
             "type": "match_event"
         ]
         
-        // Set category for potential actions (future enhancement)
         content.categoryIdentifier = "MATCH_EVENT"
         
         let request = UNNotificationRequest(
             identifier: "match_event_\(gameInfo.gameId.uuidString)_\(eventType.rawValue)_\(Date().timeIntervalSince1970)",
             content: content,
-            trigger: nil // Send immediately
+            trigger: nil
         )
         
         do {
-            try await UNUserNotificationCenter.current().add(request)
+            try await center.add(request)
             print("📱 \(eventType.notificationTitle) notification sent for: \(gameInfo.matchName)")
         } catch {
             print("❌ Failed to send \(eventType.rawValue) notification: \(error)")

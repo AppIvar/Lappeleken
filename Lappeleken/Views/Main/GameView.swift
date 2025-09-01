@@ -242,20 +242,6 @@ struct GameView: View {
                 
                 Spacer()
                 
-                // Current minute display for live games
-                if gameSession.isLiveMode && gameSession.isMatchActive, gameSession.matchStartTime != nil {
-                    let currentMinute = gameSession.getCurrentMatchMinute()
-                    Text("\(currentMinute)'")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(
-                            RoundedRectangle(cornerRadius: 8)
-                                .fill(AppDesignSystem.Colors.success)
-                        )
-                }
-                
                 // Live indicator if it's a live game
                 if gameSession.isLiveMode {
                     HStack(spacing: 6) {
@@ -360,7 +346,6 @@ struct GameView: View {
 
     private func endGameWithoutSaving() {
         showingEndGameConfirmation = false
-        gameSession.stopMatch()
         cleanupGame()
         
         // Directly set the binding
@@ -526,68 +511,74 @@ struct GameView: View {
     
     private var enhancedPlayersView: some View {
         ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 24) {
-                // Header with quick event button
+            VStack(spacing: 20) {
+                // Header section
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Player Assignments")
                             .font(.system(size: 24, weight: .bold, design: .rounded))
                             .foregroundColor(AppDesignSystem.Colors.primaryText)
                         
-                        Text("Tap a player to record an event")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                        if gameSession.isLiveMode {
+                            Text(SubstitutionManager.shared.getLiveSubstitutionStatusForUI(in: gameSession))
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(AppDesignSystem.Colors.info)
+                        } else {
+                            Text("Tap a player to record an event")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                        }
                     }
                     
                     Spacer()
                     
-                    Button(action: {
-                        showingEventSheet = true
-                    }) {
-                        HStack(spacing: 6) {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.system(size: 16))
-                            Text("Event")
-                                .font(.system(size: 14, weight: .semibold))
+                    VStack(spacing: 8) {
+                        Button(action: {
+                            showingEventSheet = true
+                        }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: "plus.circle.fill")
+                                    .font(.system(size: 16))
+                                Text("Event")
+                                    .font(.system(size: 14, weight: .semibold))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(AppDesignSystem.Colors.primary)
+                            .cornerRadius(8)
                         }
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(AppDesignSystem.Colors.primary)
-                        .cornerRadius(8)
+                        
+                        if !gameSession.isLiveMode {
+                            Button(action: {
+                                showingSubstitutionSheet = true
+                            }) {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "arrow.left.arrow.right")
+                                        .font(.system(size: 16))
+                                    Text("Sub")
+                                        .font(.system(size: 14, weight: .semibold))
+                                }
+                                .foregroundColor(AppDesignSystem.Colors.warning)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 8)
+                                .background(AppDesignSystem.Colors.warning.opacity(0.1))
+                                .cornerRadius(8)
+                            }
+                        }
                     }
                 }
                 .padding(.horizontal, 20)
                 
-                if gameSession.participants.flatMap({ $0.selectedPlayers + $0.substitutedPlayers }).isEmpty {
-                    // Empty state
-                    VStack(spacing: 16) {
-                        Image(systemName: "person.3.sequence.fill")
-                            .font(.system(size: 60))
-                            .foregroundColor(AppDesignSystem.Colors.secondary.opacity(0.6))
-                        
-                        Text("No Players Assigned")
-                            .font(.system(size: 20, weight: .semibold, design: .rounded))
-                            .foregroundColor(AppDesignSystem.Colors.primaryText)
-                        
-                        Text("Players will appear here once the game starts")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                            .multilineTextAlignment(.center)
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 200)
-                    .padding(.horizontal, 20)
-                } else {
-                    // Player assignments by participant
-                    ForEach(gameSession.participants) { participant in
-                        if !participant.selectedPlayers.isEmpty || !participant.substitutedPlayers.isEmpty {
-                            ParticipantPlayersSection(
-                                participant: participant,
-                                onPlayerTap: { player in
-                                    selectedPlayer = player
-                                    showingEventSheet = true
-                                }
-                            )
+                // Enhanced participant sections with substitution support
+                ForEach(gameSession.participants) { participant in
+                    EnhancedParticipantPlayersSection(
+                        participant: participant,
+                        gameSession: gameSession
+                    ) { player in
+                        if SubstitutionManager.shared.isPlayerActive(player) {
+                            selectedPlayer = player
+                            showingEventSheet = true
                         }
                     }
                 }
@@ -597,7 +588,6 @@ struct GameView: View {
             .padding(.top, 20)
         }
         .background(AppDesignSystem.Colors.background.ignoresSafeArea())
-        
         .withMinimalBanner()
     }
     
@@ -1164,59 +1154,73 @@ struct CompactEventRow: View {
     }
 }
 
-struct ParticipantPlayersSection: View {
+struct EnhancedParticipantPlayersSection: View {
     let participant: Participant
+    @ObservedObject var gameSession: GameSession
     let onPlayerTap: (Player) -> Void
     
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            // Participant header
+            // Participant header with substitution status
             HStack(spacing: 12) {
                 ZStack {
                     Circle()
                         .fill(AppDesignSystem.Colors.primary.opacity(0.8))
-                        .frame(width: 32, height: 32)
+                        .frame(width: 36, height: 36)
                     
                     if let firstLetter = participant.name.first {
                         Text(String(firstLetter).uppercased())
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.system(size: 16, weight: .bold))
                             .foregroundColor(.white)
                     }
                 }
                 
-                Text(participant.name)
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(participant.name)
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
+                    
+                    Text(participant.getSubstitutionSummaryForUI())
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                }
                 
                 Spacer()
                 
                 Text(formatCurrency(participant.balance))
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.system(size: 16, weight: .bold))
                     .foregroundColor(participant.balance >= 0 ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.error)
             }
             
-            // Active players
-            if !participant.selectedPlayers.isEmpty {
-                LazyVGrid(columns: [GridItem(.flexible())], spacing: 8) {
-                    ForEach(participant.selectedPlayers) { player in
-                        CompactPlayerRow(player: player, isActive: true) {
-                            onPlayerTap(player)
+            // Active players section
+            if !participant.activePlayersForUI.isEmpty {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Active Players (\(participant.activePlayerCount))")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(AppDesignSystem.Colors.success)
+                    
+                    LazyVGrid(columns: [GridItem(.flexible())], spacing: 8) {
+                        ForEach(participant.activePlayersForUI) { player in
+                            EnhancedPlayerRow(player: player, isActive: true) {
+                                onPlayerTap(player)
+                            }
                         }
                     }
                 }
             }
             
-            // Substituted players
+            // Substituted players section
             if !participant.substitutedPlayers.isEmpty {
-                Text("Substituted")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                    .padding(.top, 8)
-                
-                LazyVGrid(columns: [GridItem(.flexible())], spacing: 8) {
-                    ForEach(participant.substitutedPlayers) { player in
-                        CompactPlayerRow(player: player, isActive: false) {
-                            onPlayerTap(player)
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Substituted Players (\(participant.substitutedPlayers.count))")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(AppDesignSystem.Colors.warning)
+                    
+                    LazyVGrid(columns: [GridItem(.flexible())], spacing: 8) {
+                        ForEach(participant.substitutedPlayers) { player in
+                            EnhancedPlayerRow(player: player, isActive: false) {
+                                // Could show player details or prevent event recording
+                            }
                         }
                     }
                 }
@@ -1226,12 +1230,8 @@ struct ParticipantPlayersSection: View {
         .background(
             RoundedRectangle(cornerRadius: 12)
                 .fill(AppDesignSystem.Colors.cardBackground)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(AppDesignSystem.Colors.primary.opacity(0.2), lineWidth: 1)
-                )
+                .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
         )
-        .padding(.horizontal, 20)
     }
     
     private func formatCurrency(_ value: Double) -> String {
@@ -1381,5 +1381,165 @@ struct EventTypeSelectionCard: View {
             )
         }
         .buttonStyle(PlainButtonStyle())
+    }
+}
+
+extension View {
+    /// Show substitution status badge
+    func withSubstitutionBadge(player: Player) -> some View {
+        self.overlay(
+            Group {
+                if case .substitutedOff = player.substitutionStatus {
+                    VStack {
+                        HStack {
+                            Spacer()
+                            Image(systemName: "arrow.down.circle.fill")
+                                .foregroundColor(.red)
+                                .font(.caption)
+                                .padding(.trailing, 4)
+                                .padding(.top, 4)
+                        }
+                        Spacer()
+                    }
+                } else if case .substitutedOn = player.substitutionStatus {
+                    VStack {
+                        HStack {
+                            Spacer()
+                            Image(systemName: "arrow.up.circle.fill")
+                                .foregroundColor(.green)
+                                .font(.caption)
+                                .padding(.trailing, 4)
+                                .padding(.top, 4)
+                        }
+                        Spacer()
+                    }
+                }
+            }
+        )
+    }
+}
+
+extension Participant {
+    /// Get only active players (not substituted off) for UI display
+    var activePlayersForUI: [Player] {
+        return selectedPlayers.filter { SubstitutionManager.shared.isPlayerActive($0) }
+    }
+    
+    /// Get count of active players for UI display
+    var activePlayerCount: Int {
+        return activePlayersForUI.count
+    }
+    
+    /// Get formatted substitution summary for this participant
+    func getSubstitutionSummaryForUI() -> String {
+        if substitutedPlayers.isEmpty {
+            return "No substitutions"
+        } else {
+            return "\(substitutedPlayers.count) substitution\(substitutedPlayers.count == 1 ? "" : "s")"
+        }
+    }
+}
+
+struct EnhancedPlayerRow: View {
+    let player: Player
+    let isActive: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                // Team color indicator
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(AppDesignSystem.TeamColors.getColor(for: player.team))
+                    .frame(width: 4, height: 32)
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack {
+                        Text(player.name)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(isActive ? AppDesignSystem.Colors.primaryText : AppDesignSystem.Colors.secondaryText)
+                        
+                        Spacer()
+                        
+                        // Show substitution status
+                        if case .substitutedOff(let timestamp) = player.substitutionStatus {
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Image(systemName: "arrow.down.circle.fill")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.red)
+                                
+                                Text(formatTime(timestamp))
+                                    .font(.system(size: 10))
+                                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                            }
+                        } else if case .substitutedOn(let timestamp) = player.substitutionStatus {
+                            VStack(alignment: .trailing, spacing: 2) {
+                                Image(systemName: "arrow.up.circle.fill")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.green)
+                                
+                                Text(formatTime(timestamp))
+                                    .font(.system(size: 10))
+                                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                            }
+                        }
+                    }
+                    
+                    HStack {
+                        Text("\(player.team.shortName) • \(player.position.rawValue)")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                        
+                        Spacer()
+                        
+                        // Show player stats
+                        if player.goals > 0 || player.assists > 0 {
+                            HStack(spacing: 4) {
+                                if player.goals > 0 {
+                                    HStack(spacing: 2) {
+                                        Image(systemName: "soccerball")
+                                            .font(.system(size: 10))
+                                        Text("\(player.goals)")
+                                            .font(.system(size: 10, weight: .semibold))
+                                    }
+                                    .foregroundColor(AppDesignSystem.Colors.success)
+                                }
+                                
+                                if player.assists > 0 {
+                                    HStack(spacing: 2) {
+                                        Image(systemName: "arrow.up.forward")
+                                            .font(.system(size: 10))
+                                        Text("\(player.assists)")
+                                            .font(.system(size: 10, weight: .semibold))
+                                    }
+                                    .foregroundColor(AppDesignSystem.Colors.info)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isActive ? AppDesignSystem.Colors.cardBackground : AppDesignSystem.Colors.secondaryText.opacity(0.05))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(
+                                isActive ? AppDesignSystem.Colors.primary.opacity(0.1) : AppDesignSystem.Colors.secondaryText.opacity(0.1),
+                                lineWidth: 1
+                            )
+                    )
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+        .opacity(isActive ? 1.0 : 0.7)
+    }
+    
+    private func formatTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
     }
 }

@@ -54,7 +54,7 @@ struct LiveMatchUpdate {
 class EventDrivenManager: ObservableObject {
     static let shared = EventDrivenManager()
     
-    private var activeGames: [UUID: GameEventMonitor] = [:]
+    private var activeGames: [String: GameEventMonitor] = [:]
     private let footballService: FootballDataMatchService
     
     private init() {
@@ -63,39 +63,49 @@ class EventDrivenManager: ObservableObject {
     }
     
     func startMonitoring(for gameSession: GameSession) {
-        guard gameSession.isLiveMode,
-              let selectedMatch = gameSession.selectedMatch else {
-            print("⚠️ Cannot start monitoring: not in live mode or no match selected")
+        guard gameSession.isLiveMode else {
+            print("⚠️ Cannot start monitoring: not in live mode")
             return
         }
         
         print("🎯 Starting event monitoring for game \(gameSession.id)")
         
+        // Stop any existing monitoring for this game session first
         stopMonitoring(for: gameSession)
         
-        let monitor = GameEventMonitor(
-            gameSession: gameSession,
-            match: selectedMatch,
-            footballService: footballService,
-            onUpdate: { [weak self] update in
-                Task { @MainActor in
-                    self?.processEventUpdate(update, for: gameSession)
+        // Start monitoring for ALL selected matches
+        for match in gameSession.selectedMatches {
+            let monitorKey = "\(gameSession.id.uuidString)_\(match.id)"
+            
+            let monitor = GameEventMonitor(
+                gameSession: gameSession,
+                match: match,
+                footballService: footballService,
+                onUpdate: { [weak self] update in
+                    Task { @MainActor in
+                        self?.processEventUpdate(update, for: gameSession)
+                    }
                 }
-            }
-        )
-        
-        activeGames[gameSession.id] = monitor
-        monitor.start()
-        
-        print("✅ Event monitoring started for game \(gameSession.id)")
+            )
+            
+            activeGames[monitorKey] = monitor
+            monitor.start()
+            
+            print("✅ Event monitoring started for match \(match.homeTeam.shortName) vs \(match.awayTeam.shortName)")
+        }
     }
     
     func stopMonitoring(for gameSession: GameSession) {
-        guard let monitor = activeGames[gameSession.id] else { return }
+        // Stop all monitors for this game session
+        let keysToRemove = activeGames.keys.filter { $0.starts(with: gameSession.id.uuidString) }
         
-        print("🛑 Stopping event monitoring for game \(gameSession.id)")
-        monitor.stop()
-        activeGames.removeValue(forKey: gameSession.id)
+        for key in keysToRemove {
+            if let monitor = activeGames[key] {
+                print("🛑 Stopping event monitoring for key: \(key)")
+                monitor.stop()
+                activeGames.removeValue(forKey: key)
+            }
+        }
     }
     
     private func processEventUpdate(_ update: LiveMatchUpdate, for gameSession: GameSession) {
@@ -183,7 +193,8 @@ class EventDrivenManager: ObservableObject {
         return """
         Event-Driven Manager Stats:
         - Active Games: \(activeGames.count)
-        - Game IDs: \(activeGames.keys.map { $0.uuidString.prefix(8) }.joined(separator: ", "))
+        - Game IDs: \(activeGames.keys.map { String($0.prefix(8)) }.joined(separator: ", "))
+        - Monitoring: \(activeGames.values.map { "Match \(String($0.match.id.prefix(8)))" }.joined(separator: ", "))
         """
     }
 }
@@ -192,7 +203,7 @@ class EventDrivenManager: ObservableObject {
 
 class GameEventMonitor {
     private let gameSession: GameSession
-    private let match: Match
+    internal let match: Match
     private let footballService: FootballDataMatchService
     private let onUpdate: (LiveMatchUpdate) -> Void
     

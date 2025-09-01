@@ -7,8 +7,12 @@
 
 import Foundation
 import UserNotifications
+import SwiftUI
 
-class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
+class NotificationDelegate: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
+    @Published var lastNotificationGameId: String?
+    @Published var lastNotificationType: String?
+    
     func userNotificationCenter(_ center: UNUserNotificationCenter,
                               willPresent notification: UNNotification,
                               withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
@@ -24,8 +28,12 @@ class NotificationDelegate: NSObject, UNUserNotificationCenterDelegate {
         if let gameId = userInfo["gameId"] as? String,
            let type = userInfo["type"] as? String {
             
-            // Navigate to the game
+            // Update published properties for SwiftUI navigation
             DispatchQueue.main.async {
+                self.lastNotificationGameId = gameId
+                self.lastNotificationType = type
+                
+                // Also post notification for backward compatibility
                 NotificationCenter.default.post(
                     name: Notification.Name("OpenGameFromNotification"),
                     object: nil,

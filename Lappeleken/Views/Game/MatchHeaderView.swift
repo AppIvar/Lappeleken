@@ -144,9 +144,9 @@ struct MatchHeaderView: View {
             return formatter.string(from: match.startTime)
             
         case .inProgress:
-            // Calculate elapsed time (this would be more accurate with API data)
-            let elapsed = Int(currentTime.timeIntervalSince(match.startTime) / 60)
-            return "\(min(elapsed, 90))'"
+            // For live matches, we can't accurately calculate the minute without API data
+            // Just show that it's in progress
+            return "Live"
             
         case .halftime:
             return "Half-time"

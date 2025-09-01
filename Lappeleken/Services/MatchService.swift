@@ -14,23 +14,17 @@ protocol MatchService {
     func fetchMatchDetails(matchId: String) async throws -> MatchDetail
     func fetchMatchPlayers(matchId: String) async throws -> [Player]
     func fetchMatchEvents(matchId: String) async throws -> [MatchEvent]
-    func startMonitoringMatch(
+    
+    // Keep only one monitoring method
+    func monitorMatch(
         matchId: String,
-        updateInterval: TimeInterval,
         onUpdate: @escaping (MatchUpdate) -> Void
     ) -> Task<Void, Error>
     
-    // Premium features (commented out until API models are ready)
-    
+    // Premium features
     func fetchMatchLineup(matchId: String) async throws -> Lineup
     func fetchLiveMatchDetails(matchId: String) async throws -> MatchWithEvents
     func fetchTeamSquad(teamId: String) async throws -> TeamSquad
-    func enhancedMatchMonitoring(
-        matchId: String,
-        updateInterval: TimeInterval,
-        onUpdate: @escaping (MatchUpdate) -> Void
-    ) -> Task<Void, Error>
-    
 }
 
 // Define this in one place to avoid redeclaration

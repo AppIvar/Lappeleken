@@ -366,6 +366,11 @@ struct EditableTimelineEventRow: View {
     
     var body: some View {
         Button(action: {
+            // Don't allow editing substitution events
+            if event.eventType == .custom && event.customEventName?.contains("Substitution") == true {
+                // Could show an info alert about substitutions being automatic
+                return
+            }
             onEventTap(event)
         }) {
             HStack(spacing: 16) {
@@ -378,7 +383,7 @@ struct EditableTimelineEventRow: View {
                     }
                     
                     Circle()
-                        .fill(eventColor)
+                        .fill(eventColor(for: event.eventType))
                         .frame(width: 12, height: 12)
                         .overlay(
                             Circle()
@@ -395,12 +400,12 @@ struct EditableTimelineEventRow: View {
                     HStack {
                         // Event icon and type
                         HStack(spacing: 8) {
-                            Image(systemName: eventIcon)
+                            Image(systemName: getEventDisplayIcon(for: event))
                                 .font(.system(size: 16, weight: .medium))
-                                .foregroundColor(eventColor)
+                                .foregroundColor(getEventDisplayColor(for: event))
                             
-                            // FIXED: Use proper display name instead of rawValue
-                            Text(gameSession.getEventDisplayName(for: event))
+                            // ENHANCED: Better display for substitution events
+                            Text(getEnhancedEventDisplayName(for: event))
                                 .font(.system(size: 16, weight: .bold))
                                 .foregroundColor(AppDesignSystem.Colors.primaryText)
                         }
@@ -409,49 +414,33 @@ struct EditableTimelineEventRow: View {
                         
                         // Time and edit indicator
                         HStack(spacing: 8) {
-                            Text(timeFormatter.string(from: event.timestamp))
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                            // Show minute if available (from API), otherwise show timestamp
+                            if let minute = event.minute {
+                                Text("\(minute)'")
+                                    .font(.system(size: 14, weight: .bold))
+                                    .foregroundColor(AppDesignSystem.Colors.primary)
+                            } else {
+                                Text(timeFormatter.string(from: event.timestamp))
+                                    .font(.system(size: 12, weight: .medium))
+                                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                            }
                             
-                            Image(systemName: "pencil.circle")
+                            Image(systemName: "pencil.circle.fill")
                                 .font(.system(size: 16))
-                                .foregroundColor(AppDesignSystem.Colors.primary)
+                                .foregroundColor(AppDesignSystem.Colors.secondary.opacity(0.6))
                         }
                     }
                     
-                    // Player info
-                    HStack(spacing: 12) {
-                        // Team color indicator
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(AppDesignSystem.TeamColors.getColor(for: event.player.team))
-                            .frame(width: 4, height: 20)
-                        
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(event.player.name)
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundColor(AppDesignSystem.Colors.primaryText)
-                            
-                            Text("\(event.player.team.shortName) • \(event.player.position.rawValue)")
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                        }
-                        
-                        Spacer()
-                        
-                        // Participant who owns this player
-                        if let participant = participantForPlayer(event.player) {
-                            Text(participant.name)
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(AppDesignSystem.Colors.primary)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(AppDesignSystem.Colors.primary.opacity(0.1))
-                                .cornerRadius(6)
-                        }
+                    // Enhanced player info for substitutions
+                    if event.eventType == .custom && event.customEventName?.contains("Substitution") == true {
+                        substitutionPlayerInfo(for: event)
+                    } else {
+                        standardPlayerInfo(for: event)
                     }
                     
-                    // Impact indicator
-                    if let bet = gameSession.bets.first(where: { $0.eventType == event.eventType }) {
+                    // Impact indicator (only for non-substitution events)
+                    if !(event.eventType == .custom && event.customEventName?.contains("Substitution") == true),
+                       let bet = gameSession.bets.first(where: { $0.eventType == event.eventType }) {
                         HStack(spacing: 4) {
                             Image(systemName: bet.amount > 0 ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
                                 .font(.system(size: 12))
@@ -463,6 +452,7 @@ struct EditableTimelineEventRow: View {
                         }
                     }
                 }
+
                 .padding(.vertical, 12)
             }
         }
@@ -474,14 +464,18 @@ struct EditableTimelineEventRow: View {
                 .fill(AppDesignSystem.Colors.cardBackground)
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
-                        .stroke(eventColor.opacity(0.2), lineWidth: 1)
+                        .stroke(eventColor(for: event.eventType).opacity(0.2), lineWidth: 1)
                 )
         )
         .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
         .padding(.bottom, 8)
     }
     
-    private var eventColor: Color {
+    private func eventColor(for eventType: Bet.EventType) -> Color {
+        if event.eventType == .custom && event.customEventName?.contains("Substitution") == true {
+            return AppDesignSystem.Colors.warning
+        }
+        
         switch event.eventType {
         case .goal, .assist: return AppDesignSystem.Colors.success
         case .yellowCard: return AppDesignSystem.Colors.warning
@@ -493,8 +487,8 @@ struct EditableTimelineEventRow: View {
         }
     }
     
-    private var eventIcon: String {
-        switch event.eventType {
+    private func eventIcon(for eventType: Bet.EventType) -> String {
+        switch eventType {
         case .goal: return "soccerball"
         case .assist: return "arrow.up.forward"
         case .yellowCard: return "square.fill"
@@ -519,6 +513,157 @@ struct EditableTimelineEventRow: View {
         formatter.numberStyle = .currency
         formatter.currencySymbol = UserDefaults.standard.string(forKey: "currencySymbol") ?? "€"
         return formatter.string(from: NSNumber(value: value)) ?? "€0.00"
+    }
+    
+    private func getEnhancedEventDisplayName(for event: GameEvent) -> String {
+        if event.eventType == .custom && event.customEventName?.contains("Substitution") == true {
+            // Extract player names from substitution event
+            if let customName = event.customEventName {
+                return customName
+            }
+        }
+        return gameSession.getEventDisplayName(for: event)
+    }
+
+    private func substitutionPlayerInfo(for event: GameEvent) -> some View {
+        HStack(spacing: 12) {
+            // Team color indicator
+            RoundedRectangle(cornerRadius: 2)
+                .fill(AppDesignSystem.TeamColors.getColor(for: event.player.team))
+                .frame(width: 4, height: 20)
+            
+            VStack(alignment: .leading, spacing: 2) {
+                // Parse substitution info
+                if let customName = event.customEventName {
+                    let components = customName.components(separatedBy: " → ")
+                    if components.count == 2 {
+                        HStack {
+                            // Player off
+                            HStack(spacing: 4) {
+                                Text(components[0].replacingOccurrences(of: "Substitution: ", with: ""))
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(AppDesignSystem.Colors.error)
+                                
+                                Image(systemName: "arrow.down")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(AppDesignSystem.Colors.error)
+                            }
+                            
+                            Image(systemName: "arrow.right")
+                                .font(.system(size: 12))
+                                .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                            
+                            // Player on
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.up")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(AppDesignSystem.Colors.success)
+                                
+                                Text(components[1])
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(AppDesignSystem.Colors.success)
+                            }
+                        }
+                    } else {
+                        Text(customName)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(AppDesignSystem.Colors.primaryText)
+                    }
+                }
+                
+                Text("\(event.player.team.shortName) • Substitution")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+            }
+            
+            Spacer()
+            
+            // Show substitution source (Live vs Manual)
+            if gameSession.isLiveMode {
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(AppDesignSystem.Colors.success)
+                        .frame(width: 6, height: 6)
+                    
+                    Text("LIVE")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(AppDesignSystem.Colors.success)
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(AppDesignSystem.Colors.success.opacity(0.1))
+                .cornerRadius(4)
+            } else {
+                Text("Manual")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(AppDesignSystem.Colors.primary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(AppDesignSystem.Colors.primary.opacity(0.1))
+                    .cornerRadius(4)
+            }
+        }
+    }
+
+    private func standardPlayerInfo(for event: GameEvent) -> some View {
+        HStack(spacing: 12) {
+            // Team color indicator
+            RoundedRectangle(cornerRadius: 2)
+                .fill(AppDesignSystem.TeamColors.getColor(for: event.player.team))
+                .frame(width: 4, height: 20)
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Text(event.player.name)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                // Enhanced description with minute info
+                if let minute = event.minute {
+                    Text("Minute \(minute)")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                } else {
+                    Text("Manual entry")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                        .italic()
+                }
+            }
+            
+            Spacer()
+            
+            // Participant who owns this player
+            if let participant = participantForPlayer(event.player) {
+                Text(participant.name)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(AppDesignSystem.Colors.primary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(AppDesignSystem.Colors.primary.opacity(0.1))
+                    .cornerRadius(6)
+            }
+        }
+    }
+
+    
+    private func getEventDisplayIcon(for event: GameEvent) -> String {
+        // Check if it's a substitution event
+        if event.eventType == .custom && event.customEventName?.contains("Substitution") == true {
+            return "arrow.left.arrow.right"
+        }
+        
+        // Return standard event icon using the function
+        return eventIcon(for: event.eventType)
+    }
+    
+    private func getEventDisplayColor(for event: GameEvent) -> Color {
+        // Check if it's a substitution event
+        if event.eventType == .custom && event.customEventName?.contains("Substitution") == true {
+            return AppDesignSystem.Colors.warning
+        }
+        
+        // Return standard event color using the function
+        return eventColor(for: event.eventType)
     }
 }
 

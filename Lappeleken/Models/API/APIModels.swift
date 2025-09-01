@@ -386,3 +386,67 @@ struct TeamSquad {
     let players: [Player]
     let coach: Coach?
 }
+
+// MARK: - Codable Extensions for App Models
+
+extension Lineup: Codable {
+    enum CodingKeys: String, CodingKey {
+        case homeTeam, awayTeam
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.homeTeam = try container.decode(TeamLineup.self, forKey: .homeTeam)
+        self.awayTeam = try container.decode(TeamLineup.self, forKey: .awayTeam)
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(homeTeam, forKey: .homeTeam)
+        try container.encode(awayTeam, forKey: .awayTeam)
+    }
+}
+
+extension TeamLineup: Codable {
+    enum CodingKeys: String, CodingKey {
+        case team, formation, startingXI, substitutes, coach
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.team = try container.decode(Team.self, forKey: .team)
+        self.formation = try container.decodeIfPresent(String.self, forKey: .formation)
+        self.startingXI = try container.decode([Player].self, forKey: .startingXI)
+        self.substitutes = try container.decode([Player].self, forKey: .substitutes)
+        self.coach = try container.decodeIfPresent(Coach.self, forKey: .coach)
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(team, forKey: .team)
+        try container.encodeIfPresent(formation, forKey: .formation)
+        try container.encode(startingXI, forKey: .startingXI)
+        try container.encode(substitutes, forKey: .substitutes)
+        try container.encodeIfPresent(coach, forKey: .coach)
+    }
+}
+
+extension Coach: Codable {
+    enum CodingKeys: String, CodingKey {
+        case id, name, nationality
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.name = try container.decode(String.self, forKey: .name)
+        self.nationality = try container.decodeIfPresent(String.self, forKey: .nationality)
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(name, forKey: .name)
+        try container.encodeIfPresent(nationality, forKey: .nationality)
+    }
+}

@@ -125,3 +125,51 @@ struct SampleData {
         return corePlayers.filter { $0.team.id == team.id }
     }
 }
+
+extension SampleData {
+    static var availableCompetitions: [Competition] {
+        return [
+            Competition(id: "PL", name: "Premier League", code: "PL"),
+            Competition(id: "CL", name: "UEFA Champions League", code: "CL"),
+            Competition(id: "BL1", name: "Bundesliga", code: "BL1"),
+            Competition(id: "PD", name: "La Liga", code: "PD"),
+            Competition(id: "SA", name: "Serie A", code: "SA"),
+            Competition(id: "FL1", name: "Ligue 1", code: "FL1")
+        ]
+    }
+    
+    static var sampleMatches: [Match] {
+        let competitions = availableCompetitions
+        var matches: [Match] = []
+        
+        let homeTeams = ["Arsenal", "Liverpool", "Manchester City", "Chelsea", "Tottenham"]
+        let awayTeams = ["Manchester United", "Newcastle", "Brighton", "Aston Villa", "West Ham"]
+        
+        for i in 0..<5 {
+            let homeTeam = Team(
+                name: homeTeams[i],
+                shortName: String(homeTeams[i].prefix(3)).uppercased(),
+                logoName: "\(homeTeams[i].lowercased())_logo",
+                primaryColor: ["#DC052D", "#C8102E", "#6CABDD", "#034694", "#132257"][i]
+            )
+            
+            let awayTeam = Team(
+                name: awayTeams[i],
+                shortName: String(awayTeams[i].prefix(3)).uppercased(),
+                logoName: "\(awayTeams[i].lowercased())_logo",
+                primaryColor: ["#DA020E", "#241F20", "#0057B8", "#95BFE5", "#7A263A"][i]
+            )
+            
+            matches.append(Match(
+                id: "sample_\(i)",
+                homeTeam: homeTeam,
+                awayTeam: awayTeam,
+                startTime: Date().addingTimeInterval(TimeInterval(i * 3600)),
+                status: [.upcoming, .inProgress, .upcoming, .halftime, .upcoming][i],
+                competition: competitions[i % competitions.count]
+            ))
+        }
+        
+        return matches
+    }
+}

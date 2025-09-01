@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import UserNotifications
 
 // Game session model
 class GameSession: ObservableObject, Codable {
@@ -25,10 +26,10 @@ class GameSession: ObservableObject, Codable {
     @Published var canUndoLastEvent: Bool = false
     @Published var customEventMappings: [UUID: String] = [:]
     @Published var processedEventIds: Set<String> = []
-    @Published var matchStartTime: Date?
-    @Published var isMatchActive: Bool = false
     @Published var currentSaveName: String? = nil
     @Published var hasBeenSaved: Bool = false
+    @Published var selectedMatches: [Match] = []
+
     
     internal var saveId: UUID? = nil
 
@@ -36,6 +37,8 @@ class GameSession: ObservableObject, Codable {
     private var matchMonitoringTask: Task<Void, Error>?
     internal var matchService: MatchService?
     private var lastEventBackup: (event: GameEvent, participantBalances: [UUID: Double])? = nil
+    private var matchMonitoringTasks: [String: Task<Void, Error>] = [:]
+
     
     // Default initializer
     init() {
@@ -161,6 +164,8 @@ class GameSession: ObservableObject, Codable {
         }
     }
     
+    // MARK: - Game setup methods
+    
     func fetchAvailableMatches() async throws {
         try await fetchAvailableMatchesRobust()
     }
@@ -184,28 +189,35 @@ class GameSession: ObservableObject, Codable {
             await MainActor.run {
                 self.matchLineups[matchId] = lineup
                 
-                // Extract players from lineup and add to availablePlayers
-                let lineupPlayers = extractPlayersFromLineup(lineup)
+                // Extract ALL players from lineup
+                let allLineupPlayers = extractPlayersFromLineup(lineup)
                 
-                // Replace or add players
+                // Separate starters from substitutes
+                let startingPlayers = lineup.homeTeam.startingXI + lineup.awayTeam.startingXI
+                let substitutePlayers = lineup.homeTeam.substitutes + lineup.awayTeam.substitutes
+                
+                // Add ALL players to availablePlayers (for substitutions to work)
                 let existingPlayerIds = Set(availablePlayers.map { $0.id })
-                let newPlayers = lineupPlayers.filter { !existingPlayerIds.contains($0.id) }
-                
+                let newPlayers = allLineupPlayers.filter { !existingPlayerIds.contains($0.id) }
                 availablePlayers.append(contentsOf: newPlayers)
                 
-                print("✅ Lineup fetched: \(lineupPlayers.count) players added to session")
+                // But only set STARTING XI as selectedPlayers
+                self.selectedPlayers = startingPlayers
+                
+                print("✅ Lineup fetched:")
+                print("   Starting XI: \(startingPlayers.count) players")
+                print("   Substitutes: \(substitutePlayers.count) players")
+                print("   Total available: \(availablePlayers.count) players")
+                
                 objectWillChange.send()
             }
         } catch {
             print("❌ Failed to fetch lineup for match \(matchId): \(error)")
             
-            // Check if it's the specific LineupError.notAvailableYet by checking the error description
             if error.localizedDescription.contains("Lineup data not available yet") {
-                // Re-throw the specific error
                 throw LineupError.notAvailableYet
             }
             
-            // For other errors, throw as-is
             throw error
         }
     }
@@ -224,55 +236,115 @@ class GameSession: ObservableObject, Codable {
         return players
     }
     
-    @MainActor func startMonitoringMatch(_ match: Match) {
+    @MainActor func startMonitoringMatches(_ matches: [Match]) {
         guard isLiveMode, let matchService = matchService else { return }
         
-        // Cancel any existing monitoring first
-        stopAllMonitoring()
-        
-        print("🎯 Starting match monitoring for: \(match.homeTeam.name) vs \(match.awayTeam.name)")
-        print("🔧 Using service type: \(type(of: matchService))")
+        print("🎯 Starting monitoring for \(matches.count) matches")
         
         // Clear processed events when starting new monitoring
         processedEventIds.removeAll()
         
-        // Start monitoring based on service type
-        if let footballService = matchService as? FootballDataMatchService {
-            print("🌐 Using FootballDataMatchService enhanced monitoring")
-            matchMonitoringTask = footballService.enhancedMatchMonitoring(
+        for match in matches {
+            print("📍 Starting monitor for: \(match.homeTeam.name) vs \(match.awayTeam.name)")
+            
+            let task = matchService.monitorMatch(
                 matchId: match.id,
-                updateInterval: 30,
-                onUpdate: { [weak self] update in
-                    guard let self = self else { return }
-                    
-                    Task { @MainActor in
-                        self.processEnhancedMatchUpdate(update)
-                    }
-                }
-            )
-        } else {
-            print("🔄 Using generic MatchService monitoring")
-            // Fallback to regular monitoring
-            matchMonitoringTask = matchService.startMonitoringMatch(
-                matchId: match.id,
-                updateInterval: 60,
                 onUpdate: { [weak self] update in
                     guard let self = self else { return }
                     
                     Task { @MainActor in
                         self.processMatchUpdate(update)
+                        
+                        // Send notification for important events
+                        if !update.newEvents.isEmpty {
+                            self.sendNotification(for: update)
+                        }
                     }
                 }
             )
+            
+            matchMonitoringTasks[match.id] = task
         }
     }
+    
+    @MainActor func stopMonitoring(for matchId: String) {
+        matchMonitoringTasks[matchId]?.cancel()
+        matchMonitoringTasks.removeValue(forKey: matchId)
+        print("🛑 Stopped monitoring for match \(matchId)")
+    }
+    
+    @MainActor func stopAllMonitoring() {
+        print("🛑 Stopping ALL monitoring systems...")
+        
+        // Cancel all match monitoring tasks
+        for task in matchMonitoringTasks.values {
+            task.cancel()
+        }
+        matchMonitoringTasks.removeAll()
+        
+        // Stop other monitoring systems
+        EventDrivenManager.shared.stopMonitoring(for: self)
+        BackgroundTaskManager.shared.stopBackgroundMonitoring(for: self)
+        
+        print("✅ All monitoring stopped")
+    }
+    
+    // Add notification support
+    private func sendNotification(for update: MatchUpdate) {
+        // You'll need to implement this based on your notification setup
+        // Example:
+        let content = UNMutableNotificationContent()
+        content.title = "Match Update"
+        content.body = "\(update.newEvents.count) new events in \(update.match.homeTeam.name) vs \(update.match.awayTeam.name)"
+        content.sound = .default
+        
+        let request = UNNotificationRequest(
+            identifier: UUID().uuidString,
+            content: content,
+            trigger: nil
+        )
+        
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("❌ Notification error: \(error)")
+            }
+        }
+    }
+    
     func selectMatch(_ match: Match) async {
         await selectMatchRobust(match)
     }
     
-    func fetchMatchPlayers(for matchId: String) async throws -> [Player]? {
-        return try await fetchMatchPlayersRobust(for: matchId)
+    // Add players to the available pool
+    func addPlayers(_ players: [Player]) {
+        availablePlayers.append(contentsOf: players)
+        
+        let isLiveMode = UserDefaults.standard.bool(forKey: "isLiveMode")
+        if isLiveMode {
+            // To be implemented
+        }
     }
+    
+    // Add a participant
+    func addParticipant(_ name: String) {
+        let participant = Participant(name: name)
+        participants.append(participant)
+    }
+    
+    // Add a bet
+    func addBet(eventType: Bet.EventType, amount: Double) {
+        // Don't add another custom bet if we already have custom events
+        if eventType == .custom && !getCustomEvents().isEmpty {
+            print("⚠️ Skipping duplicate custom bet - custom events already exist")
+            return
+        }
+        
+        let bet = Bet(eventType: eventType, amount: amount)
+        bets.append(bet)
+        print("✅ Added bet: \(eventType.rawValue) = \(amount)")
+    }
+    
+    // MARK: - Save logic
     
     func saveGame(name: String, isUpdate: Bool = false) {
         print("🎮 Starting to save game: \(name) (isUpdate: \(isUpdate))")
@@ -364,34 +436,7 @@ class GameSession: ObservableObject, Codable {
         }
     }
     
-    // Add players to the available pool
-    func addPlayers(_ players: [Player]) {
-        availablePlayers.append(contentsOf: players)
-        
-        let isLiveMode = UserDefaults.standard.bool(forKey: "isLiveMode")
-        if isLiveMode {
-            // To be implemented
-        }
-    }
-    
-    // Add a participant
-    func addParticipant(_ name: String) {
-        let participant = Participant(name: name)
-        participants.append(participant)
-    }
-    
-    // Add a bet
-    func addBet(eventType: Bet.EventType, amount: Double) {
-        // Don't add another custom bet if we already have custom events
-        if eventType == .custom && !getCustomEvents().isEmpty {
-            print("⚠️ Skipping duplicate custom bet - custom events already exist")
-            return
-        }
-        
-        let bet = Bet(eventType: eventType, amount: amount)
-        bets.append(bet)
-        print("✅ Added bet: \(eventType.rawValue) = \(amount)")
-    }
+    // MARK: Custom events
     
     func recreateBetsWithPreservation(newBetAmounts: [Bet.EventType: Double]) {
         print("🔄 Recreating bets while preserving custom events...")
@@ -431,6 +476,8 @@ class GameSession: ObservableObject, Codable {
         }
     }
     
+    // MARK: - EventDrivenManager
+    
     @MainActor func startRealEventDrivenMode() {
         guard isLiveMode else {
             print("⚠️ Not in live mode, skipping event-driven setup")
@@ -456,25 +503,104 @@ class GameSession: ObservableObject, Codable {
         """
     }
 
-    
-    // Record an event
     @MainActor func recordEvent(player: Player, eventType: Bet.EventType, minute: Int? = nil) {
-        let eventMinute: Int?
-        
-        if let minute = minute {
-            // Use provided minute (from API or manual input)
-            eventMinute = minute
-        } else if isLiveMode, isMatchActive {
-            // For live mode, calculate current match minute
-            eventMinute = getCurrentMatchMinute()
-        } else {
-            // For manual mode, don't set a minute (will be nil)
-            eventMinute = nil
+        // Check if player is active using SubstitutionManager (UPDATED)
+        if !SubstitutionManager.shared.isPlayerActive(player) {
+            print("⚠️ Cannot record event for substituted player: \(player.name)")
+            return
         }
         
-        let event = GameEvent(player: player, eventType: eventType, timestamp: Date(), minute: eventMinute)
-        events.append(event)
+        // Calculate event minute
+        let eventMinute = minute
         
+        // Create the event
+        let event = GameEvent(player: player, eventType: eventType, timestamp: Date(), minute: eventMinute)
+        
+        // Update player stats (this logic stays in GameSession)
+        updatePlayerStatsForEvent(player: player, eventType: eventType)
+        
+        // Record event via data service (independent of game logic)
+        Task {
+            do {
+                try await dataService.recordEvent(playerId: player.id, eventType: eventType)
+            } catch {
+                print("⚠️ Error recording event via service: \(error)")
+            }
+        }
+        
+        // Process game logic (betting, balances, etc.)
+        GameLogicManager.shared.processEvent(event, in: self)
+        
+        // Log the event
+        print("📝 Event recorded: \(eventType.rawValue) for \(player.name) at \(eventMinute != nil ? "\(eventMinute!)'" : "unknown time")")
+        
+        // Show ads after events (for free users)
+        checkAndShowInterstitialAfterEvent()
+    }
+    
+    @MainActor func startRealEventDrivenModeForAllMatches() {
+        guard isLiveMode else {
+            print("⚠️ Not in live mode, skipping event-driven setup")
+            return
+        }
+        
+        print("🎯 Setting up REAL event-driven mode for \(selectedMatches.count) matches")
+        
+        // Track usage for free users
+        AppConfig.recordLiveMatchUsage()
+        
+        // Start monitoring (this will handle all selected matches)
+        EventDrivenManager.shared.startMonitoring(for: self)
+        
+        print("✅ Started monitoring for \(selectedMatches.count) matches")
+    }
+
+    @MainActor func getRealEventDrivenStatsForAllMatches() -> String {
+        let matchCount = selectedMatches.count
+        let activeMonitoring = EventDrivenManager.shared.getActiveGamesCount() > 0
+        
+        let matchNames = selectedMatches.map { "\($0.homeTeam.shortName) vs \($0.awayTeam.shortName)" }.joined(separator: ", ")
+        
+        return """
+        Live Mode Stats:
+        - Active Monitoring: \(activeMonitoring ? "YES" : "NO")
+        - Matches (\(matchCount)): \(matchNames.isEmpty ? "NONE" : matchNames)
+        - Players: \(selectedPlayers.count)
+        - Live Events: \(events.count)
+        """
+    }
+    
+    @MainActor func debugLiveModeStatus() -> String {
+        return """
+        🐛 LIVE MODE DEBUG:
+        - isLiveMode: \(isLiveMode)
+        - selectedMatch: \(selectedMatch?.homeTeam.shortName ?? "NONE") vs \(selectedMatch?.awayTeam.shortName ?? "NONE")
+        - EventDrivenManager active games: \(EventDrivenManager.shared.getActiveGamesCount())
+        - Game ID: \(id)
+        - Selected players count: \(selectedPlayers.count)
+        """
+        
+    }
+    
+    /// Get all active players for UI display (excludes substituted players)
+    func getActivePlayersForUI() -> [Player] {
+        return selectedPlayers.filter { SubstitutionManager.shared.isPlayerActive($0) }
+    }
+    
+    /// Get substitution history for UI display
+    func getSubstitutionHistoryForUI() -> [(substitution: Substitution, source: String)] {
+        // This could be enhanced to track substitution sources in the future
+        return substitutions.map { ($0, "Manual") }
+    }
+    
+    /// Get formatted substitution timeline for UI
+    func getSubstitutionTimelineForUI() -> [GameEvent] {
+        return events.filter { $0.customEventName?.contains("Substitution") == true }
+    }
+    
+
+    // MARK: - Extract player stats update into separate method
+    private func updatePlayerStatsForEvent(player: Player, eventType: Bet.EventType) {
         // Helper function to update player stats based on event type
         func updatePlayerStats(_ playerToUpdate: inout Player) {
             switch eventType {
@@ -525,116 +651,69 @@ class GameSession: ObservableObject, Codable {
                 }
             }
         }
-        
-        Task {
-            do {
-                try await dataService.recordEvent(playerId: player.id, eventType: eventType)
-            } catch {
-                print("Error recording event via service: \(error)")
-            }
-        }
-        
-        // Calculate payments
-        calculatePayments(for: event)
-        
-        // Debug: print event recorded
-        print("Event recorded: \(eventType.rawValue) for \(player.name) at \(eventMinute != nil ? "\(eventMinute!)'" : "unknown time")")
-        
-        canUndoLastEvent = true
-        
-        // Check if we should show interstitial ad after every 3rd event
-        checkAndShowInterstitialAfterEvent()
-        
-        // Notify observers of the changes
-        objectWillChange.send()
     }
     
-    func startMatch() {
-        matchStartTime = Date()
-        isMatchActive = true
-        print("⏱️ Match timer started")
-    }
-
-    func stopMatch() {
-        isMatchActive = false
-        print("⏱️ Match timer stopped")
-    }
-    
+    /// Undo the last game event and reverse all changes
     @MainActor func undoLastEvent() {
-        guard !events.isEmpty else { return }
-        
-        let lastEvent = events.removeLast()
-        
-        // Reverse the balance changes
-        reversePayments(for: lastEvent)
-        
-        // Reverse player stats
-        reversePlayerStats(for: lastEvent)
-        
-        // Update the UI
-        objectWillChange.send()
-        canUndoLastEvent = !events.isEmpty
-        
-        print("🔄 Undid event: \(lastEvent.eventType.rawValue) for \(lastEvent.player.name)")
-    }
-    
-    func getCurrentMatchMinute() -> Int {
-        guard let startTime = matchStartTime, isMatchActive else { return 0 }
-        let elapsed = Date().timeIntervalSince(startTime)
-        return min(Int(elapsed / 60), 120) // Cap at 120 minutes (90 + 30 extra time)
-    }
-
-    
-    private func reversePayments(for event: GameEvent) {
-        // Find the bet for this event type
-        guard let bet = bets.first(where: { $0.eventType == event.eventType }) else { return }
-        
-        // Find participants who have the player (include both active and substituted players)
-        let participantsWithPlayer = participants.filter { participant in
-            participant.selectedPlayers.contains { $0.id == event.player.id } ||
-            participant.substitutedPlayers.contains { $0.id == event.player.id }
-        }
-        
-        // Find participants who don't have the player
-        let participantsWithoutPlayer = participants.filter { participant in
-            !participant.selectedPlayers.contains { $0.id == event.player.id } &&
-            !participant.substitutedPlayers.contains { $0.id == event.player.id }
-        }
-        
-        if participantsWithPlayer.isEmpty || participantsWithoutPlayer.isEmpty {
+        guard !events.isEmpty else {
+            print("⚠️ No events to undo")
             return
         }
         
-        // Reverse the payment logic (opposite of calculatePayments)
-        if bet.amount >= 0 {
-            // Reverse: participants WITHOUT player paid those WITH player
-            let totalAmount = Double(participantsWithoutPlayer.count) * bet.amount
-            let amountPerWinner = totalAmount / Double(participantsWithPlayer.count)
+        // Get the event we're about to undo (for player stats reversal)
+        let lastEvent = events.last!
+        
+        // Process the undo logic via GameLogicManager
+        GameLogicManager.shared.undoLastEvent(in: self)
+        
+        // Reverse player stats (this logic stays in GameSession for now)
+        reversePlayerStatsForEvent(player: lastEvent.player, eventType: lastEvent.eventType)
+        
+        print("🔄 Undid event: \(lastEvent.eventType.rawValue) for \(lastEvent.player.name)")
+    }
+
+    // MARK: - Player Stats Reversal (keep this in GameSession)
+    // This logic is independent of game/betting logic so it stays here
+    private func reversePlayerStatsForEvent(player: Player, eventType: Bet.EventType) {
+        // Helper function to reverse player stats
+        func reversePlayerStats(_ playerToUpdate: inout Player) {
+            switch eventType {
+            case .goal:
+                playerToUpdate.goals = max(0, playerToUpdate.goals - 1)
+            case .assist:
+                playerToUpdate.assists = max(0, playerToUpdate.assists - 1)
+            case .yellowCard:
+                playerToUpdate.yellowCards = max(0, playerToUpdate.yellowCards - 1)
+            case .redCard:
+                playerToUpdate.redCards = max(0, playerToUpdate.redCards - 1)
+            case .ownGoal, .penalty, .penaltyMissed, .cleanSheet, .custom:
+                // These events don't update player stats
+                break
+            }
+        }
+        
+        // Find and update the player in all locations
+        if let index = availablePlayers.firstIndex(where: { $0.id == player.id }) {
+            var updatedPlayer = availablePlayers[index]
+            reversePlayerStats(&updatedPlayer)
+            availablePlayers[index] = updatedPlayer
             
+            // Update in selectedPlayers
+            if let selectedIndex = selectedPlayers.firstIndex(where: { $0.id == player.id }) {
+                selectedPlayers[selectedIndex] = updatedPlayer
+            }
+            
+            // Update in participants (both active and substituted)
             for i in 0..<participants.count {
-                let hasPlayer = participants[i].selectedPlayers.contains { $0.id == event.player.id } ||
-                participants[i].substitutedPlayers.contains { $0.id == event.player.id }
-                
-                if hasPlayer {
-                    participants[i].balance -= amountPerWinner // Reverse: subtract instead of add
-                } else {
-                    participants[i].balance += bet.amount // Reverse: add instead of subtract
+                if let activeIndex = participants[i].selectedPlayers.firstIndex(where: { $0.id == player.id }) {
+                    participants[i].selectedPlayers[activeIndex] = updatedPlayer
+                }
+                if let subIndex = participants[i].substitutedPlayers.firstIndex(where: { $0.id == player.id }) {
+                    participants[i].substitutedPlayers[subIndex] = updatedPlayer
                 }
             }
-        } else {
-            // Reverse: participants WITH player paid those WITHOUT player
-            let payAmount = abs(bet.amount)
             
-            for i in 0..<participants.count {
-                let hasPlayer = participants[i].selectedPlayers.contains { $0.id == event.player.id } ||
-                participants[i].substitutedPlayers.contains { $0.id == event.player.id }
-                
-                if hasPlayer {
-                    participants[i].balance += payAmount * Double(participantsWithoutPlayer.count) // Reverse
-                } else {
-                    participants[i].balance -= payAmount * Double(participantsWithPlayer.count) // Reverse
-                }
-            }
+            print("📊 Reversed stats for \(player.name)")
         }
     }
 
@@ -714,7 +793,7 @@ class GameSession: ObservableObject, Codable {
         }
     }
     
-    private func processEnhancedMatchUpdate(_ update: MatchUpdate) {
+    @MainActor private func processEnhancedMatchUpdate(_ update: MatchUpdate) {
         self.selectedMatch = update.match
         
         for event in update.newEvents {
@@ -726,24 +805,69 @@ class GameSession: ObservableObject, Codable {
         self.objectWillChange.send()
     }
     
-    private func processMatchUpdate(_ update: MatchUpdate) {
-        DispatchQueue.main.async {
-            // Update match info
-            self.selectedMatch = update.match
-            
-            // Process new events
-            for event in update.newEvents {
-                self.processLiveEvent(event)
+    @MainActor private func processMatchUpdate(_ update: MatchUpdate) {
+        self.selectedMatch = update.match
+        
+        for event in update.newEvents {
+            processLiveEvent(event)
+        }
+        
+        self.matchEvents = update.newEvents
+        
+        // Send notification for new events
+        if !update.newEvents.isEmpty {
+            sendMatchEventNotification(for: update)
+        }
+        
+        self.objectWillChange.send()
+    }
+
+    private func sendMatchEventNotification(for update: MatchUpdate) {
+        guard !update.newEvents.isEmpty else { return }
+        
+        let content = UNMutableNotificationContent()
+        content.title = "⚽ Match Update"
+        
+        // Create body based on events
+        let eventDescriptions = update.newEvents.compactMap { event -> String? in
+            switch event.type.lowercased() {
+            case "goal", "regular": return "⚽ Goal by \(event.playerName ?? "Unknown")"
+            case "yellow": return "🟨 Yellow card: \(event.playerName ?? "Unknown")"
+            case "red": return "🟥 Red card: \(event.playerName ?? "Unknown")"
+            case "substitution": return "🔄 Substitution"
+            default: return nil
             }
-            
-            self.objectWillChange.send()
+        }.joined(separator: "\n")
+        
+        content.body = "\(update.match.homeTeam.name) vs \(update.match.awayTeam.name)\n\(eventDescriptions)"
+        content.sound = .default
+        
+        // Add user info for deep linking
+        content.userInfo = [
+            "gameId": self.id.uuidString,
+            "matchId": update.match.id,
+            "type": "match_event"
+        ]
+        
+        let request = UNNotificationRequest(
+            identifier: "match_\(update.match.id)_\(Date().timeIntervalSince1970)",
+            content: content,
+            trigger: nil
+        )
+        
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("❌ Failed to send notification: \(error)")
+            } else {
+                print("📱 Notification sent for match update")
+            }
         }
     }
     
-    private func processLiveEvent(_ event: MatchEvent) {
+    @MainActor private func processLiveEvent(_ event: MatchEvent) {
         // CRITICAL: Prevent duplicate events
         let eventKey = "\(event.id)_\(event.minute)_\(event.type)_\(event.playerId)"
-        
+
         if processedEventIds.contains(eventKey) {
             print("🚫 Duplicate event detected and skipped: \(eventKey)")
             return
@@ -754,16 +878,36 @@ class GameSession: ObservableObject, Codable {
         
         print("🔥 Processing new live event: \(event.type) at \(event.minute)' by \(event.playerName ?? "Unknown")")
         
-        // Look up player by API ID first, then fallback to name
-        guard let player = findPlayerForEvent(event) else {
-            print("❌ Could not find player for event: \(event.playerName ?? "Unknown") (ID: \(event.playerId))")
+        // Handle substitutions via SubstitutionManager (UPDATED)
+        if event.type.lowercased() == "substitution" {
+            print("🔄 Processing substitution via SubstitutionManager...")
+            
+            let playerOffId = event.playerOffId ?? event.playerId
+            guard let playerOnId = event.playerOnId else {
+                print("❌ Substitution missing playerOnId")
+                return
+            }
+            
+            // Process the substitution
+            SubstitutionManager.shared.processLiveSubstitution(
+                playerOutId: playerOffId,
+                playerInId: playerOnId,
+                minute: event.minute,
+                teamId: event.teamId ?? "",
+                in: self
+            )
+            
+            // Force UI update after substitution
+            Task { @MainActor in
+                self.objectWillChange.send()
+                print("🔄 Forced UI update after substitution")
+            }
             return
         }
         
-        // Handle substitutions separately
-        if event.type.lowercased() == "substitution" {
-            print("🔄 Processing substitution...")
-            handleSubstitution(event)
+        // Look up player by API ID first, then fallback to name
+        guard let player = findPlayerForEvent(event) else {
+            print("❌ Could not find player for event: \(event.playerName ?? "Unknown") (ID: \(event.playerId))")
             return
         }
         
@@ -779,7 +923,7 @@ class GameSession: ObservableObject, Codable {
             recordEvent(player: player, eventType: eventType, minute: event.minute)
         }
     }
-    
+
     private func findPlayerForEvent(_ event: MatchEvent) -> Player? {
         // Method 1: Match by API ID (most reliable)
         if let player = availablePlayers.first(where: { $0.apiId == event.playerId }) {
@@ -797,84 +941,7 @@ class GameSession: ObservableObject, Codable {
         
         return nil
     }
-    
-    func fetchMatchSquad(matchId: String) async throws -> [Player] {
-        guard let matchService = matchService else {
-            throw NSError(domain: "SquadError", code: 1, userInfo: [
-                NSLocalizedDescriptionKey: "Match service not available"
-            ])
-        }
-        
-        if let footballService = matchService as? FootballDataMatchService {
-            return try await footballService.fetchMatchSquad(matchId: matchId)
-        } else {
-            throw NSError(domain: "SquadError", code: 2, userInfo: [
-                NSLocalizedDescriptionKey: "Football service not available"
-            ])
-        }
-    }
 
-    
-    private func handleSubstitution(_ event: MatchEvent) {
-        print("🔄 Handling substitution event...")
-        
-        guard let playerOffId = event.playerOffId,
-              let playerOnId = event.playerOnId else {
-            print("❌ Substitution missing player IDs: off=\(event.playerOffId ?? "nil"), on=\(event.playerOnId ?? "nil")")
-            return
-        }
-        
-        // Find player going off (must be in selected players)
-        guard let playerOff = selectedPlayers.first(where: { $0.apiId == playerOffId }) else {
-            print("❌ Player going off not found in selected players: \(playerOffId)")
-            return
-        }
-        
-        // Find substitute coming in (check available players first, then try to fetch if needed)
-        var playerOn: Player?
-        
-        // First try to find in available players
-        playerOn = availablePlayers.first(where: { $0.apiId == playerOnId })
-        
-        if playerOn == nil {
-            print("⚠️ Substitute player not found in available players, trying to find by name...")
-            
-            // Fallback: try to find by name if available in event
-            if let substituteName = event.playerName {
-                playerOn = availablePlayers.first(where: {
-                    $0.name.lowercased() == substituteName.lowercased()
-                })
-            }
-        }
-        
-        if playerOn == nil {
-            print("❌ Could not find substitute player: \(playerOnId)")
-            return
-        }
-        
-        guard let playerOnFound = playerOn else { return }
-        
-        print("✅ Substitution: \(playerOff.name) OFF → \(playerOnFound.name) ON")
-        
-        // Perform the substitution
-        substitutePlayer(playerOff: playerOff, playerOn: playerOnFound, minute: event.minute)
-    }
-    
-    @MainActor func stopAllMonitoring() {
-        print("🛑 Stopping ALL monitoring systems...")
-        
-        // Stop match monitoring task
-        matchMonitoringTask?.cancel()
-        matchMonitoringTask = nil
-        
-        // Stop event-driven monitoring
-        EventDrivenManager.shared.stopMonitoring(for: self)
-        
-        // Stop background monitoring
-        BackgroundTaskManager.shared.stopBackgroundMonitoring(for: self)
-        
-        print("✅ All monitoring stopped")
-    }
     
     @MainActor func setupEventDrivenMode() {
         guard isLiveMode else { return }
@@ -939,117 +1006,6 @@ class GameSession: ObservableObject, Codable {
         }
     }
     
-    // Calculate payments when an event occurs
-    private func calculatePayments(for event: GameEvent) {
-        // Find the bet for this event type
-        guard let bet = bets.first(where: { $0.eventType == event.eventType }) else { return }
-        
-        // Find participants who have the player (include both active and substituted players)
-        let participantsWithPlayer = participants.filter { participant in
-            participant.selectedPlayers.contains { $0.id == event.player.id } ||
-            participant.substitutedPlayers.contains { $0.id == event.player.id }
-        }
-        
-        // Find participants who don't have the player
-        let participantsWithoutPlayer = participants.filter { participant in
-            !participant.selectedPlayers.contains { $0.id == event.player.id } &&
-            !participant.substitutedPlayers.contains { $0.id == event.player.id }
-        }
-        
-        if participantsWithPlayer.isEmpty || participantsWithoutPlayer.isEmpty {
-            return
-        }
-        
-        // Determine payment direction based on bet amount sign
-        if bet.amount >= 0 {
-            // Positive bet: participants WITHOUT player pay those WITH player
-            let totalAmount = Double(participantsWithoutPlayer.count) * bet.amount
-            let amountPerWinner = totalAmount / Double(participantsWithPlayer.count)
-            
-            for i in 0..<participants.count {
-                let hasPlayer = participants[i].selectedPlayers.contains { $0.id == event.player.id } ||
-                participants[i].substitutedPlayers.contains { $0.id == event.player.id }
-                
-                if hasPlayer {
-                    participants[i].balance += amountPerWinner
-                } else {
-                    participants[i].balance -= bet.amount
-                }
-            }
-        } else {
-            // Negative bet: participants WITH player pay those WITHOUT player
-            let payAmount = abs(bet.amount)
-            
-            for i in 0..<participants.count {
-                let hasPlayer = participants[i].selectedPlayers.contains { $0.id == event.player.id } ||
-                participants[i].substitutedPlayers.contains { $0.id == event.player.id }
-                
-                if hasPlayer {
-                    participants[i].balance -= payAmount * Double(participantsWithoutPlayer.count)
-                } else {
-                    participants[i].balance += payAmount * Double(participantsWithPlayer.count)
-                }
-            }
-        }
-    }
-    
-    func recalculateBalancesFromEvents() {
-        // Reset all participant balances to zero
-        for i in 0..<participants.count {
-            participants[i].balance = 0.0
-        }
-        
-        // Replay all events to recalculate balances
-        for event in events {
-            guard let bet = bets.first(where: { $0.eventType == event.eventType }) else { continue }
-            
-            // Find participants who have the player
-            let participantsWithPlayer = participants.filter { participant in
-                participant.selectedPlayers.contains { $0.id == event.player.id } ||
-                participant.substitutedPlayers.contains { $0.id == event.player.id }
-            }
-            
-            // Find participants who don't have the player
-            let participantsWithoutPlayer = participants.filter { participant in
-                !participant.selectedPlayers.contains { $0.id == event.player.id } &&
-                !participant.substitutedPlayers.contains { $0.id == event.player.id }
-            }
-            
-            guard !participantsWithPlayer.isEmpty && !participantsWithoutPlayer.isEmpty else {
-                continue
-            }
-            
-            // Apply the same payment logic as the existing calculatePayments method
-            if bet.amount >= 0 {
-                let totalAmount = Double(participantsWithoutPlayer.count) * bet.amount
-                let amountPerWinner = totalAmount / Double(participantsWithPlayer.count)
-                
-                for i in 0..<participants.count {
-                    let hasPlayer = participants[i].selectedPlayers.contains { $0.id == event.player.id } ||
-                    participants[i].substitutedPlayers.contains { $0.id == event.player.id }
-                    
-                    if hasPlayer {
-                        participants[i].balance += amountPerWinner
-                    } else {
-                        participants[i].balance -= bet.amount
-                    }
-                }
-            } else {
-                let payAmount = abs(bet.amount)
-                
-                for i in 0..<participants.count {
-                    let hasPlayer = participants[i].selectedPlayers.contains { $0.id == event.player.id } ||
-                    participants[i].substitutedPlayers.contains { $0.id == event.player.id }
-                    
-                    if hasPlayer {
-                        participants[i].balance -= payAmount * Double(participantsWithoutPlayer.count)
-                    } else {
-                        participants[i].balance += payAmount * Double(participantsWithPlayer.count)
-                    }
-                }
-            }
-        }
-    }
     
     func addCustomEvent(name: String, amount: Double) {
         let bet = Bet(eventType: .custom, amount: amount)
@@ -1243,137 +1199,43 @@ class GameSession: ObservableObject, Codable {
         selectedPlayers = []
     }
     
-    // Randomly assign players to participants
-    func assignPlayersRandomly() {
-        print("assignPlayersRandomly called")
-        print("Participants: \(participants.count)")
-        print("Selected players: \(selectedPlayers.count)")
+    @MainActor func assignPlayersRandomly() {
+        print("🎲 Starting player assignment...")
+        print("  Participants: \(participants.count)")
+        print("  Selected players: \(selectedPlayers.count)")
         
         guard !participants.isEmpty, !selectedPlayers.isEmpty else {
-            print("ERROR: Cannot assign players - no participants or no selected players")
+            print("❌ Cannot assign players - no participants or no selected players")
             return
         }
         
-        print("Starting player assignment...")
-        print("Participants count: \(participants.count)")
-        print("Selected players count: \(selectedPlayers.count)")
-        
-        // First clear any existing arguments
-        for i in 0..<participants.count {
-            participants[i].selectedPlayers = []
-        }
-        
-        // Make a copy of the selected players
-        var playersToAssign = selectedPlayers
-        // Shuffle the players
-        playersToAssign.shuffle()
-        
-        // Calculate how many players each participant should get
-        let playersPerParticipant = playersToAssign.count / participants.count
-        let remainingPlayers = playersToAssign.count % participants.count
-        
-        print("Players per participant: \(playersPerParticipant)")
-        print("Remaining players: \(remainingPlayers)")
-        
-        // Debugging before assignment
-        print("Before assignment:")
-        for (i, participant) in participants.enumerated() {
-            print("Participant \(i): \(participant.name) - Players: \(participant.selectedPlayers.count)")
-        }
-        
-        var playerIndex = 0
-        
-        // Assign players to participants
-        for i in 0..<participants.count {
-            let numberOfPlayers = i < remainingPlayers ? playersPerParticipant + 1 : playersPerParticipant
-            
-            for _ in 0..<numberOfPlayers {
-                if playerIndex < playersToAssign.count {
-                    participants[i].selectedPlayers.append(playersToAssign[playerIndex])
-                    playerIndex += 1
-                }
-            }
-        }
-        
-        // Update participants
-        self.objectWillChange.send()
-        
-        // Debug: print the assignments
-        print("Player assignments:")
-        for participant in participants {
-            print("\(participant.name): \(participant.selectedPlayers.count) players - \(participant.selectedPlayers.map { $0.name }.joined(separator: ", "))")
-        }
+        // Use GameLogicManager for all assignment logic
+        GameLogicManager.shared.assignPlayersRandomly(in: self)
+        print("✨ Player assignment complete")
     }
     
-    func substitutePlayer(playerOff: Player, playerOn: Player, minute: Int? = nil) {
-        let timestamp = Date()
-        
-        // Create a substitution record
-        let substitution = Substitution(
-            from: playerOff,
-            to: playerOn,
-            timestamp: timestamp,
-            team: playerOff.team,
-            minute: minute
+    @MainActor func substitutePlayer(playerOff: Player, playerOn: Player, minute: Int? = nil) {
+        // Use the unified SubstitutionManager for all substitutions
+        SubstitutionManager.shared.processManualSubstitution(
+            playerOff: playerOff,
+            playerOn: playerOn,
+            minute: minute,
+            in: self
         )
-        
-        substitutions.append(substitution)
-        
-        // Find which participant has the player being substituted out
-        for i in 0..<participants.count {
-            if let index = participants[i].selectedPlayers.firstIndex(where: { $0.id == playerOff.id }) {
-                // Update status of player going off
-                var updatedPlayerOff = playerOff
-                updatedPlayerOff.substitutionStatus = .substitutedOff(timestamp: timestamp)
-                
-                // Update the playerOff in all collections
-                if let availableIndex = availablePlayers.firstIndex(where: { $0.id == playerOff.id }) {
-                    availablePlayers[availableIndex] = updatedPlayerOff
-                }
-                
-                // Update status of player coming on
-                var updatedPlayerOn = playerOn
-                updatedPlayerOn.substitutionStatus = .substitutedOn(timestamp: timestamp)
-                
-                // Remove the player going off from active players
-                participants[i].selectedPlayers.remove(at: index)
-                
-                // Keep the player who was substituted out in the history array
-                participants[i].substitutedPlayers.append(updatedPlayerOff)
-                
-                // Add the new player to active players
-                participants[i].selectedPlayers.append(updatedPlayerOn)
-                
-                // ALSO update selectedPlayers at session level
-                selectedPlayers.removeAll { $0.id == playerOff.id }
-                selectedPlayers.append(updatedPlayerOn)
-                
-                print("✅ Substitution completed: \(playerOff.name) → \(updatedPlayerOn.name) for participant \(participants[i].name)")
-                break
-            }
-        }
-        
-        // Notify UI to update
-        objectWillChange.send()
+        print("✨ Substitution processed via SubstitutionManager")
     }
     
-    func handleLiveSubstitution(playerOutId: String, playerInId: String, minute: Int, teamId: String) {
-        // Find the player going out
-        guard let playerOut = selectedPlayers.first(where: { $0.apiId == playerOutId }) else {
-            print("⚠️ Player going out not found in selected players")
-            return
-        }
-        
-        // Find the substitute coming in
-        guard let playerIn = availablePlayers.first(where: { $0.apiId == playerInId }) else {
-            print("⚠️ Substitute player not found in available players")
-            return
-        }
-        
-        // Use the existing substitutePlayer method
-        substitutePlayer(playerOff: playerOut, playerOn: playerIn, minute: minute)
+    @MainActor func handleLiveSubstitution(playerOutId: String, playerInId: String, minute: Int, teamId: String) {
+        // Use the unified SubstitutionManager for live substitutions
+        SubstitutionManager.shared.processLiveSubstitution(
+            playerOutId: playerOutId,
+            playerInId: playerInId,
+            minute: minute,
+            teamId: teamId,
+            in: self
+        )
+        print("✨ Live substitution processed via SubstitutionManager")
     }
-
     
     // Debug method to check current state
     func debugCurrentState() {
@@ -1514,25 +1376,17 @@ class GameSession: ObservableObject, Codable {
         await footballService.debugAPIAccess()
     }
     
-    func fetchMatchPlayersRobust(for matchId: String) async throws -> [Player]? {
+    func fetchMatchPlayers(for matchId: String) async throws -> [Player] {
         guard let matchService = matchService else {
             throw NSError(domain: "GameSession", code: 1, userInfo: [
                 NSLocalizedDescriptionKey: "Match service not available"
             ])
         }
         
-        do {
-            print("🔧 Fetching players using service type: \(type(of: matchService))")
-            
-            if let footballService = matchService as? FootballDataMatchService {
-                return try await footballService.fetchMatchPlayers(matchId: matchId)
-            } else {
-                // Fallback to generic interface
-                return try await matchService.fetchMatchPlayers(matchId: matchId)
-            }
-        } catch {
-            print("❌ Error fetching players for match \(matchId): \(error)")
-            throw error
+        if let footballService = matchService as? FootballDataMatchService {
+            return try await footballService.fetchMatchPlayers(matchId: matchId)
+        } else {
+            return try await matchService.fetchMatchPlayers(matchId: matchId)
         }
     }
 
@@ -1570,12 +1424,14 @@ class GameSession: ObservableObject, Codable {
             } catch {
                 print("⚠️ Lineup fetch failed, falling back to basic players: \(error)")
                 // If lineup fails, try to get basic players with caching
-                let players = try await fetchMatchPlayersRobust(for: match.id) ?? []
+                let players = try await fetchMatchPlayers(for: match.id) ?? []
                 print("👥 Retrieved \(players.count) players for this match")
-                
+
                 await MainActor.run {
                     self.availablePlayers = players
-                    self.selectedPlayers = players
+                    // Only add players that are likely starters (first 11 from each team if possible)
+                    // This is a rough approximation since we don't have lineup data
+                    self.selectedPlayers = Array(players.prefix(22)) // Approximate 11 per team
                     print("🔄 Updated game session state with players")
                     self.objectWillChange.send()
                 }
@@ -1608,31 +1464,17 @@ class GameSession: ObservableObject, Codable {
         print("🎯 Starting smart match monitoring for match ID: \(match.id)")
         print("🔧 Using service type: \(type(of: matchService))")
         
-        if let footballService = matchService as? FootballDataMatchService {
-            matchMonitoringTask = footballService.smartMatchMonitoring(
-                matchId: match.id,
-                onUpdate: { [weak self] update in
-                    guard let self = self else { return }
-                    
-                    Task { @MainActor in
-                        self.processEnhancedMatchUpdate(update)
-                    }
+        // Use the unified monitorMatch method
+        matchMonitoringTask = matchService.monitorMatch(
+            matchId: match.id,
+            onUpdate: { [weak self] update in
+                guard let self = self else { return }
+                
+                Task { @MainActor in
+                    self.processMatchUpdate(update)
                 }
-            )
-        } else {
-            // Fallback to basic monitoring
-            matchMonitoringTask = matchService.startMonitoringMatch(
-                matchId: match.id,
-                updateInterval: 30,
-                onUpdate: { [weak self] (update: MatchUpdate) in
-                    guard let self = self else { return }
-                    
-                    Task { @MainActor in
-                        self.processMatchUpdate(update)
-                    }
-                }
-            )
-        }
+            }
+        )
     }
     
     private func getUserFriendlyErrorMessage(for error: APIError) -> String {

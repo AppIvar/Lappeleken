@@ -24,3 +24,5 @@ struct Participant: Identifiable, Codable {
         self.balance = balance
     }
 }
+
+

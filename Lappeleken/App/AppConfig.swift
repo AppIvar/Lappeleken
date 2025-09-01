@@ -20,6 +20,10 @@ struct AppConfig {
         static let unlimitedDailyMatches = true     // ← Premium: No 1-per-day limit
         static let adFreeExperience = false          // ← Premium: Remove all ads
         static let lineupSearchAccess = true
+        
+        //MARK: - Phase 1 Cleanup features
+        static let useNewGameLogicManager = true
+        static let useNewDataManager = true
     }
     
     /// Ad configuration
@@ -83,6 +87,45 @@ struct AppConfig {
         // When subscription is enabled, check actual premium status
         return AppPurchaseManager.shared.currentTier == .premium || isFreeLiveTestingActive
     }
+    
+    // MARK: - Cleanup phase feature flags
+    
+    @MainActor
+    static var useNewGameLogicManager: Bool {
+        #if DEBUG
+        // In debug, allow toggling via UserDefaults for testing
+        return UserDefaults.standard.bool(forKey: "useNewGameLogicManager_debug") || PremiumFeatures.useNewGameLogicManager
+        #else
+        // In production, use the hardcoded flag
+        return PremiumFeatures.useNewGameLogicManager
+        #endif
+    }
+    
+    static var useNewDataManager: Bool {
+        #if DEBUG
+        // In debug, allow toggling via UserDefaults for testing
+        return UserDefaults.standard.bool(forKey: "useNewDataManager_debug") || PremiumFeatures.useNewDataManager
+        #else
+        // In production, use the hardcoded flag
+        return PremiumFeatures.useNewDataManager
+        #endif
+    }
+    
+#if DEBUG
+static func toggleGameLogicManagerForTesting() {
+    let currentValue = UserDefaults.standard.bool(forKey: "useNewGameLogicManager_debug")
+    UserDefaults.standard.set(!currentValue, forKey: "useNewGameLogicManager_debug")
+    print("🔄 GameLogicManager debug toggle: \(!currentValue ? "NEW" : "OLD") system")
+}
+#endif
+
+#if DEBUG
+static func toggleDataManagerForTesting() {
+    let currentValue = UserDefaults.standard.bool(forKey: "useNewDataManager_debug")
+    UserDefaults.standard.set(!currentValue, forKey: "useNewDataManager_debug")
+    print("🔄 DataManager debug toggle: \(!currentValue ? "NEW" : "OLD") system")
+}
+#endif
     
     // MARK: - Environment Configuration
     
@@ -295,6 +338,8 @@ struct AppConfig {
         print("🚀 Subscription enabled: \(subscriptionEnabled)")
         print("🎯 Feature flags: Multiple matches=\(canSelectMultipleMatches), Unlimited=\(hasUnlimitedDailyMatches), Ad-free=\(hasAdFreeExperience)")
         print("📱 Ads shown: \(shouldShowAdsForCurrentUser)")
+        print("🎯 GameLogicManager: \(useNewGameLogicManager ? "NEW" : "OLD") system")
+        print("🗂️ DataManager: \(useNewDataManager ? "NEW" : "OLD") system")
 #endif
     }
     

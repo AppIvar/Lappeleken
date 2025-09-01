@@ -9,6 +9,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject var gameSession: GameSession
+    
     @AppStorage("selectedCurrency") private var selectedCurrency = "EUR"
     @AppStorage("currencySymbol") private var currencySymbol = "€"
     @AppStorage("isLiveMode") private var isLiveMode = false
@@ -742,7 +743,7 @@ struct SettingsView: View {
     // MARK: - Debug Testing Section (FIXED)
 
     private var debugTestingSection: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 16) {
             // Section header
             HStack {
                 Image(systemName: "wrench.and.screwdriver.fill")
@@ -757,49 +758,101 @@ struct SettingsView: View {
             }
             .padding(.horizontal, 4)
             
-            // NEW LINEUP TESTING
-            EnhancedSettingsRow(
-                title: "Test API Access",
-                subtitle: "Check if football-data.org API is working",
-                icon: "globe.fill",
-                color: AppDesignSystem.Colors.info
-            ) {
-                Task {
-                    if let footballService = ServiceProvider.shared.getMatchService() as? FootballDataMatchService {
-                        await footballService.debugAPIAccess()
-                    }
-                }
-            }
-            
-            EnhancedSettingsRow(
-                title: "Test Recent Finished Matches",
-                subtitle: "Check lineup data for recent finished matches",
-                icon: "checkmark.circle.fill",
-                color: AppDesignSystem.Colors.success
-            ) {
-                Task {
-                    if let footballService = ServiceProvider.shared.getMatchService() as? FootballDataMatchService {
-                        await footballService.debugRecentFinishedMatches()
-                    }
-                }
-            }
-            
-            EnhancedSettingsRow(
-                title: "Test Upcoming Matches",
-                subtitle: "Check lineup data for upcoming matches",
-                icon: "calendar.badge.plus",
-                color: AppDesignSystem.Colors.warning
-            ) {
-                Task {
-                    if let footballService = ServiceProvider.shared.getMatchService() as? FootballDataMatchService {
-                        await footballService.debugUpcomingMatches()
-                    }
-                }
-            }
-            
-            // LIVE MODE TESTING SECTION (NEW)
+            // API Testing Section
             VStack(alignment: .leading, spacing: 12) {
-                // Header
+                HStack {
+                    Image(systemName: "globe.fill")
+                        .foregroundColor(AppDesignSystem.Colors.info)
+                    
+                    Text("API Testing")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
+                    
+                    Spacer()
+                }
+                
+                VStack(spacing: 8) {
+                    HStack(spacing: 8) {
+                        Button("API Access") {
+                            Task {
+                                if let footballService = ServiceProvider.shared.getMatchService() as? FootballDataMatchService {
+                                    await footballService.debugAPIAccess()
+                                }
+                            }
+                        }
+                        .debugButtonStyle(color: .blue)
+                        
+                        Button("Recent Matches") {
+                            Task {
+                                if let footballService = ServiceProvider.shared.getMatchService() as? FootballDataMatchService {
+                                    await footballService.debugRecentFinishedMatches()
+                                }
+                            }
+                        }
+                        .debugButtonStyle(color: .green)
+                        
+                        Button("Upcoming") {
+                            Task {
+                                if let footballService = ServiceProvider.shared.getMatchService() as? FootballDataMatchService {
+                                    await footballService.debugUpcomingMatches()
+                                }
+                            }
+                        }
+                        .debugButtonStyle(color: .orange)
+                    }
+                }
+            }
+            .debugCardStyle(color: AppDesignSystem.Colors.info)
+            
+            // System Toggles Section
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Image(systemName: "gear.2")
+                        .foregroundColor(AppDesignSystem.Colors.secondary)
+                    
+                    Text("System Toggles")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
+                    
+                    Spacer()
+                }
+                
+                VStack(alignment: .leading, spacing: 8) {
+                    // GameLogicManager toggle
+                    HStack {
+                        Text("GameLogicManager")
+                            .font(.system(size: 16, weight: .medium))
+                        
+                        Spacer()
+                        
+                        Button(AppConfig.useNewGameLogicManager ? "NEW ✨" : "OLD 🔧") {
+                            AppConfig.toggleGameLogicManagerForTesting()
+                        }
+                        .debugButtonStyle(color: AppConfig.useNewGameLogicManager ? .green : .orange)
+                    }
+                    
+                    // DataManager toggle
+                    HStack {
+                        Text("DataManager")
+                            .font(.system(size: 16, weight: .medium))
+                        
+                        Spacer()
+                        
+                        Button(AppConfig.useNewDataManager ? "NEW ✨" : "OLD 🔧") {
+                            AppConfig.toggleDataManagerForTesting()
+                        }
+                        .debugButtonStyle(color: AppConfig.useNewDataManager ? .blue : .orange)
+                    }
+                    
+                    Text("Toggle between old and new systems for testing")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                }
+            }
+            .debugCardStyle(color: AppDesignSystem.Colors.secondary)
+            
+            // Live Mode Testing Section
+            VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Image(systemName: "hammer.and.wrench.fill")
                         .foregroundColor(AppDesignSystem.Colors.primary)
@@ -840,62 +893,142 @@ struct SettingsView: View {
                 }
                 
                 // Quick test buttons
-                HStack(spacing: 8) {
-                    Button("Smoke Test") {
-                        Task {
-                            await LiveModeTestRunner.shared.smokeTest()
+                VStack(spacing: 8) {
+                    HStack(spacing: 8) {
+                        Button("Smoke Test") {
+                            Task {
+                                await LiveModeTestRunner.shared.smokeTest()
+                            }
                         }
+                        .debugButtonStyle(color: .orange)
+                        
+                        Button("Betting Flow") {
+                            Task {
+                                await LiveModeTestRunner.shared.quickBettingTest()
+                            }
+                        }
+                        .debugButtonStyle(color: .green)
+                        
+                        Button("API Test") {
+                            Task {
+                                await LiveModeTestRunner.shared.quickAPITest()
+                            }
+                        }
+                        .debugButtonStyle(color: .purple)
                     }
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color.orange)
-                    .cornerRadius(6)
                     
-                    Button("Betting Flow") {
-                        Task {
-                            await LiveModeTestRunner.shared.quickBettingTest()
+                    HStack(spacing: 8) {
+                        Button("Debug Live Status") {
+                            print("🔍 Live Mode Debug Status:")
+                            print(gameSession.debugLiveModeStatus())
                         }
-                    }
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color.green)
-                    .cornerRadius(6)
-                    
-                    Button("API Test") {
-                        Task {
-                            await LiveModeTestRunner.shared.quickAPITest()
+                        .debugButtonStyle(color: .cyan)
+                        
+                        Button("Event Manager") {
+                            print("🔍 EventDrivenManager stats:")
+                            print(EventDrivenManager.shared.getAllStats())
                         }
+                        .debugButtonStyle(color: .teal)
                     }
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color.purple)
-                    .cornerRadius(6)
                 }
             }
-            .padding(12)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color.blue.opacity(0.1))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.blue.opacity(0.3), lineWidth: 1)
-                    )
-            )
-
-            // Then add a divider if you want
-            Divider()
-                .padding(.vertical, 8)
+            .debugCardStyle(color: AppDesignSystem.Colors.primary)
             
-            // FEATURE FLAGS CONTROLS
+            // Notification Testing Section
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Image(systemName: "bell.fill")
+                        .foregroundColor(AppDesignSystem.Colors.warning)
+                    
+                    Text("Notification Testing")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
+                    
+                    Spacer()
+                }
+                
+                VStack(spacing: 8) {
+                    Button("Test Notification") {
+                        // Manually trigger a test notification
+                        NotificationCenter.default.post(
+                            name: Notification.Name("MissedEventsFound"),
+                            object: nil,
+                            userInfo: [
+                                "eventCount": 1,
+                                "matchName": "TEST vs MATCH",
+                                "eventType": "goal",
+                                "playerName": "Test Player"
+                            ]
+                        )
+                    }
+                    .debugButtonStyle(color: .blue, fullWidth: true)
+                    
+                    Text("This will trigger the missed events banner in GameView")
+                        .font(.system(size: 10))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                }
+            }
+            .debugCardStyle(color: AppDesignSystem.Colors.warning)
+            
+            // Substitution Testing Section
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    Image(systemName: "arrow.left.arrow.right")
+                        .foregroundColor(AppDesignSystem.Colors.success)
+                    
+                    Text("Substitution Testing")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
+                    
+                    Spacer()
+                }
+                
+                VStack(spacing: 8) {
+                    HStack(spacing: 8) {
+                        Button("Manual Sub") {
+                            testManualSubstitution()
+                        }
+                        .debugButtonStyle(color: .blue)
+                        
+                        Button("Live Sub") {
+                            testLiveSubstitution()
+                        }
+                        .debugButtonStyle(color: .green)
+                        
+                        Button("Debug State") {
+                            debugSubstitutionState()
+                        }
+                        .debugButtonStyle(color: .purple)
+                    }
+                    
+                    // Substitution status display
+                    if let currentGame = getCurrentActiveGame() {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Current Game Status:")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(AppDesignSystem.Colors.primaryText)
+                            
+                            Text(SubstitutionManager.shared.debugSubstitutionState(in: currentGame))
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                                .padding(8)
+                                .background(Color.gray.opacity(0.1))
+                                .cornerRadius(4)
+                        }
+                    } else {
+                        Text("No active game session")
+                            .font(.system(size: 12))
+                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                            .italic()
+                    }
+                }
+            }
+            .debugCardStyle(color: AppDesignSystem.Colors.success)
+            
+            // Feature Flags Section
             featureFlagsDebugSection
             
-            // FREE TESTING CONTROLS
+            // Free Testing Section
             freeTestingDebugSection
             
             // Legacy subscription testing (when enabled)
@@ -912,15 +1045,6 @@ struct SettingsView: View {
                 hasAction: false
             )
         }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(AppDesignSystem.Colors.warning.opacity(0.1))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(AppDesignSystem.Colors.warning.opacity(0.3), lineWidth: 1)
-                )
-        )
     }
     
     
@@ -1163,8 +1287,9 @@ struct SettingsView: View {
                 )
         )
     }
-
-    // Add these helper methods:
+    
+    // MARK: - Helper methods
+    
     @MainActor
     private func getTestingStatusText() -> String {
         if AppConfig.isFreeLiveTestingActive {
@@ -1178,6 +1303,82 @@ struct SettingsView: View {
         let formatter = DateFormatter()
         formatter.dateStyle = .short
         return formatter.string(from: date)
+    }
+    
+    private func getCurrentActiveGame() -> GameSession? {
+        return gameSession
+    }
+
+    private func testManualSubstitution() {
+        guard let currentGame = getCurrentActiveGame() else {
+            print("❌ No active game session for testing")
+            return
+        }
+        
+        print("🧪 Testing manual substitution...")
+        
+        // Find two players for testing
+        guard currentGame.selectedPlayers.count >= 2 else {
+            print("❌ Need at least 2 players for substitution test")
+            return
+        }
+        
+        let playerOff = currentGame.selectedPlayers[0]
+        let playerOn = currentGame.selectedPlayers[1]
+        
+        // Test the substitution
+        SubstitutionManager.shared.processManualSubstitution(
+            playerOff: playerOff,
+            playerOn: playerOn,
+            minute: 65,
+            in: currentGame
+        )
+        
+        print("✅ Manual substitution test completed")
+    }
+
+    private func testLiveSubstitution() {
+        guard let currentGame = getCurrentActiveGame() else {
+            print("❌ No active game session for testing")
+            return
+        }
+        
+        print("🧪 Testing live substitution...")
+        
+        // Find players with API IDs for testing
+        guard let playerOff = currentGame.selectedPlayers.first(where: { $0.apiId != nil }),
+              let playerOn = currentGame.availablePlayers.first(where: {
+                  $0.apiId != nil && !currentGame.selectedPlayers.contains { $0.id == $0.id }
+              }) else {
+            print("❌ Need players with API IDs for live substitution test")
+            return
+        }
+        
+        // Test the live substitution
+        SubstitutionManager.shared.processLiveSubstitution(
+            playerOutId: playerOff.apiId!,
+            playerInId: playerOn.apiId!,
+            minute: 73,
+            teamId: playerOff.team.id.uuidString,
+            in: currentGame
+        )
+        
+        print("✅ Live substitution test completed")
+    }
+
+    private func debugSubstitutionState() {
+        guard let currentGame = getCurrentActiveGame() else {
+            print("❌ No active game session for debugging")
+            return
+        }
+        
+        print("🔍 Substitution Debug State:")
+        print(SubstitutionManager.shared.debugSubstitutionState(in: currentGame))
+        
+        // Additional debug info
+        print("\n🧪 Testing substitution flow...")
+        let testResult = SubstitutionManager.shared.testSubstitutionFlow(in: currentGame)
+        print("Test result: \(testResult ? "✅ PASS" : "❌ FAIL")")
     }
     #endif
     
@@ -1611,6 +1812,30 @@ extension View {
                 RoundedRectangle(cornerRadius: 16)
                     .fill(AppDesignSystem.Colors.cardBackground)
                     .shadow(color: Color.black.opacity(0.08), radius: 8, x: 0, y: 4)
+            )
+    }
+    
+    func debugButtonStyle(color: Color, fullWidth: Bool = false) -> some View {
+        self
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundColor(.white)
+            .padding(.horizontal, fullWidth ? 16 : 12)
+            .padding(.vertical, 6)
+            .frame(maxWidth: fullWidth ? .infinity : nil)
+            .background(color)
+            .cornerRadius(6)
+    }
+    
+    func debugCardStyle(color: Color) -> some View {
+        self
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(color.opacity(0.1))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(color.opacity(0.3), lineWidth: 1)
+                    )
             )
     }
 }

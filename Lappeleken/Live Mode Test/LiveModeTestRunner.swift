@@ -170,7 +170,7 @@ class LiveModeTestRunner {
     private func testBettingFlow() async -> TestResult {
         do {
             // Create test game session
-            let gameSession = createTestGameSession()
+            let gameSession = await createTestGameSession()
             
             var allTestsPassed = true
             var details: [String] = []
@@ -326,7 +326,7 @@ class LiveModeTestRunner {
         let startTime = Date()
         
         // Create mock game session with more comprehensive setup
-        let gameSession = createTestGameSession()
+        let gameSession = await createTestGameSession()
         
         // Add more bet types for comprehensive testing
         gameSession.addBet(eventType: .assist, amount: 3.0)
@@ -385,7 +385,7 @@ class LiveModeTestRunner {
             let playerOn = gameSession.selectedPlayers[1]
             
             print("🔄 Testing substitution: \(playerOff.name) → \(playerOn.name)")
-            gameSession.substitutePlayer(playerOff: playerOff, playerOn: playerOn, minute: 45)
+            await gameSession.substitutePlayer(playerOff: playerOff, playerOn: playerOn, minute: 45)
             substitutionsPerformed += 1
             
             // Test event for substituted player (should still count)
@@ -421,7 +421,7 @@ class LiveModeTestRunner {
             let playerOn2 = gameSession.selectedPlayers[3]
             
             print("🔄 Testing second substitution: \(playerOff2.name) → \(playerOn2.name)")
-            gameSession.substitutePlayer(playerOff: playerOff2, playerOn: playerOn2, minute: 75)
+            await gameSession.substitutePlayer(playerOff: playerOff2, playerOn: playerOn2, minute: 75)
             substitutionsPerformed += 1
         }
         
@@ -537,7 +537,7 @@ class LiveModeTestRunner {
     }
     
     // Enhanced test game session with more players for better substitution testing
-    private func createEnhancedTestGameSession() -> GameSession {
+    @MainActor private func createEnhancedTestGameSession() -> GameSession {
         let gameSession = GameSession()
         gameSession.isLiveMode = true
         
@@ -598,12 +598,12 @@ class LiveModeTestRunner {
         let mockPlayers = generateMockPlayersForTest()
         
         // Test match caching
-        MatchCacheManager.shared.cacheMatch(mockMatch)
-        let matchCached = MatchCacheManager.shared.getCachedMatch(mockMatch.id) != nil
+        UnifiedCacheManager.shared.cacheMatch(mockMatch)
+        let matchCached = UnifiedCacheManager.shared.getCachedMatch(mockMatch.id) != nil
         
         // Test player caching
-        MatchCacheManager.shared.cachePlayers(mockPlayers, for: mockMatch.id)
-        let playersCached = MatchCacheManager.shared.getCachedPlayers(for: mockMatch.id) != nil
+        UnifiedCacheManager.shared.cachePlayers(mockPlayers, for: mockMatch.id)
+        let playersCached = UnifiedCacheManager.shared.getCachedPlayers(for: mockMatch.id) != nil
         
         return matchCached && playersCached
     }
@@ -675,7 +675,7 @@ class LiveModeTestRunner {
         ]
     }
     
-    private func createTestGameSession() -> GameSession {
+    @MainActor private func createTestGameSession() -> GameSession {
         let gameSession = GameSession()
         gameSession.isLiveMode = true
         
@@ -851,7 +851,7 @@ class LiveModeTestRunner {
     
     private func testSubstitutionFlow() async -> TestResult {
         do {
-            let gameSession = createTestGameSession()
+            let gameSession = await createTestGameSession()
             
             var allTestsPassed = true
             var details: [String] = []
@@ -862,7 +862,7 @@ class LiveModeTestRunner {
                 let playerOn = gameSession.selectedPlayers[1]
                 
                 let initialSubCount = gameSession.substitutions.count
-                gameSession.substitutePlayer(playerOff: playerOff, playerOn: playerOn, minute: 65)
+                await gameSession.substitutePlayer(playerOff: playerOff, playerOn: playerOn, minute: 65)
                 
                 let substitutionRecorded = gameSession.substitutions.count == initialSubCount + 1
                 allTestsPassed = allTestsPassed && substitutionRecorded
@@ -910,7 +910,7 @@ class LiveModeTestRunner {
     // SCENARIO 1: Real-Time Event Stress Test
     private func testRealTimeEventStress() async -> TestResult {
         do {
-            let gameSession = createTestGameSession()
+            let gameSession = await createTestGameSession()
             var allTestsPassed = true
             var details: [String] = []
             
@@ -962,7 +962,7 @@ class LiveModeTestRunner {
     // SCENARIO 2: Multiple Substitution Chain Test
     private func testMultipleSubstitutionChain() async -> TestResult {
         do {
-            let gameSession = createEnhancedTestGameSession()
+            let gameSession = await createEnhancedTestGameSession()
             var allTestsPassed = true
             var details: [String] = []
             
@@ -982,7 +982,7 @@ class LiveModeTestRunner {
             for (i, (playerOff, playerOn)) in substitutionChain.enumerated() {
                 let minute = 45 + (i * 15) // Spread substitutions across time
                 
-                gameSession.substitutePlayer(playerOff: playerOff, playerOn: playerOn, minute: minute)
+                await gameSession.substitutePlayer(playerOff: playerOff, playerOn: playerOn, minute: minute)
                 
                 // Verify substitution worked
                 let playerOffStillActive = gameSession.participants.contains { participant in
@@ -1028,7 +1028,7 @@ class LiveModeTestRunner {
     // SCENARIO 3: Custom Event Combination Test
     private func testCustomEventCombinations() async -> TestResult {
         do {
-            let gameSession = createTestGameSession()
+            let gameSession = await createTestGameSession()
             var allTestsPassed = true
             var details: [String] = []
             
@@ -1083,7 +1083,7 @@ class LiveModeTestRunner {
     // SCENARIO 4: Edge Case Player Management Test
     private func testEdgeCasePlayerManagement() async -> TestResult {
         do {
-            let gameSession = createTestGameSession()
+            let gameSession = await createTestGameSession()
             var allTestsPassed = true
             var details: [String] = []
             
@@ -1204,7 +1204,7 @@ class LiveModeTestRunner {
             largeGameSession.selectedPlayers = Array(largePlayers.prefix(100))
             
             // Assign players
-            largeGameSession.assignPlayersRandomly()
+            await largeGameSession.assignPlayersRandomly()
             
             // Add comprehensive bets
             let allEventTypes: [Bet.EventType] = [.goal, .assist, .yellowCard, .redCard, .ownGoal, .penalty, .penaltyMissed]
@@ -1272,16 +1272,16 @@ class LiveModeTestRunner {
         
         // Test cache write performance
         let cacheStartTime = Date()
-        MatchCacheManager.shared.cacheMatch(mockMatch)
-        MatchCacheManager.shared.cachePlayers(mockPlayers, for: mockMatch.id)
+        UnifiedCacheManager.shared.cacheMatch(mockMatch)
+        UnifiedCacheManager.shared.cachePlayers(mockPlayers, for: mockMatch.id)
         let cacheEndTime = Date()
         
         let cacheWriteTime = cacheEndTime.timeIntervalSince(cacheStartTime)
         
         // Test cache read performance
         let readStartTime = Date()
-        let cachedMatch = MatchCacheManager.shared.getCachedMatch(mockMatch.id)
-        let cachedPlayers = MatchCacheManager.shared.getCachedPlayers(for: mockMatch.id)
+        let cachedMatch = UnifiedCacheManager.shared.getCachedMatch(mockMatch.id)
+        let cachedPlayers = UnifiedCacheManager.shared.getCachedPlayers(for: mockMatch.id)
         let readEndTime = Date()
         
         let cacheReadTime = readEndTime.timeIntervalSince(readStartTime)
@@ -1475,7 +1475,7 @@ class LiveModeTestRunner {
     }
 
     private func testBackgroundMonitoringLifecycle() async -> Bool {
-        let gameSession = createTestGameSession()
+        let gameSession = await createTestGameSession()
         let backgroundManager = BackgroundTaskManager.shared
         
         // Test starting background monitoring

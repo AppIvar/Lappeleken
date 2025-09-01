@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ContentView: View {
     @StateObject private var gameSession = GameSession()
+    @EnvironmentObject var notificationDelegate: NotificationDelegate
     @State private var activeGame = false
     @State private var showAssignmentView = false
     @State private var showLiveGameSetupView = false
@@ -21,8 +22,9 @@ struct ContentView: View {
     @State private var showAutoSavePrompt = false
     @State private var isLoadingGame = false
     @State private var isContinuingSavedGame = false
+    @State private var notificationGameId: String?
+    @State private var showNotificationGame = false
 
-    
     var body: some View {
         NavigationView {
             if activeGame {
@@ -84,6 +86,13 @@ struct ContentView: View {
                     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ShowHistory"))) { _ in
                         showHistoryView = true
                     }
+                    // Handle notification navigation
+                    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenGameFromNotification"))) { notification in
+                        handleNotificationNavigation(notification: notification)
+                    }
+                    .onReceive(NotificationCenter.default.publisher(for: Notification.Name("NavigateToGame"))) { notification in
+                        handleNotificationNavigation(notification: notification)
+                    }
                     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ContinueSavedGame"))) { notification in
                         if let userInfo = notification.userInfo,
                            let restoredGameSession = userInfo["gameSession"] as? GameSession,
@@ -106,18 +115,16 @@ struct ContentView: View {
                             // Start the game
                             activeGame = true
                             
-                            print("✅ Continued saved game: \(gameName)")
-                            print("📊 Restored \(gameSession.participants.count) participants, \(gameSession.events.count) events")
+                            print("Continued saved game: \(gameName)")
+                            print("Restored \(gameSession.participants.count) participants, \(gameSession.events.count) events")
                         }
                     }
-
                     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("CloseHistoryView"))) { _ in
                         showHistoryView = false
                     }
                     .onReceive(NotificationCenter.default.publisher(for: Notification.Name("StartNewGame"))) { _ in
                         showHistoryView = false
                     }
-                
             }
         }
         .navigationViewStyle(StackNavigationViewStyle()) // Ensure consistent behavior across devices
@@ -150,6 +157,9 @@ struct ContentView: View {
         .sheet(isPresented: $showUpgradeView) {
             UpgradeView()
         }
+        .sheet(isPresented: $showNotificationGame) {
+            notificationGameView
+        }
         .alert("Save Game", isPresented: $showSaveGameSheet) {
             TextField("Game name", text: $gameName)
             
@@ -164,6 +174,83 @@ struct ContentView: View {
             }
         } message: {
             Text("Enter a name for this game session")
+        }
+    }
+    
+    private func handleNotificationNavigation(notification: Notification) {
+        if let userInfo = notification.userInfo,
+           let gameId = userInfo["gameId"] as? String,
+           let type = userInfo["type"] as? String {
+            
+            print("Handling notification navigation - Game: \(gameId), Type: \(type)")
+            
+            // Check if the game ID matches the current session
+            if gameSession.id.uuidString == gameId {
+                // Navigate to current game
+                if !activeGame {
+                    activeGame = true
+                }
+            } else {
+                // Try to load the saved game with this ID
+                let savedGames = GameHistoryManager.shared.getSavedGameSessions()
+                if let savedGame = savedGames.first(where: { $0.id.uuidString == gameId }) {
+                    // Load the saved game
+                    loadSavedGame(savedGame)
+                } else {
+                    // Show notification-specific view for game updates
+                    notificationGameId = gameId
+                    showNotificationGame = true
+                }
+            }
+        }
+    }
+    
+    private func loadSavedGame(_ savedGame: SavedGameSession) {
+        // Restore the game session
+        if let restoredSession = savedGame.toGameSession() {
+            gameSession.participants = restoredSession.participants
+            gameSession.events = restoredSession.events
+            gameSession.selectedPlayers = restoredSession.selectedPlayers
+            gameSession.availablePlayers = restoredSession.availablePlayers
+            gameSession.bets = restoredSession.bets
+            gameSession.id = restoredSession.id
+            
+            isContinuingSavedGame = true
+            activeGame = true
+        }
+    }
+    
+    private var notificationGameView: some View {
+        NavigationView {
+            VStack(spacing: 20) {
+                Image(systemName: "bell.badge")
+                    .font(.system(size: 50))
+                    .foregroundColor(AppDesignSystem.Colors.primary)
+                
+                Text("Match Update")
+                    .font(AppDesignSystem.Typography.headingFont)
+                
+                if let gameId = notificationGameId {
+                    Text("Game ID: \(gameId)")
+                        .font(.caption)
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                }
+                
+                Text("This game is no longer available or has ended.")
+                    .font(AppDesignSystem.Typography.bodyFont)
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+                
+                Button("OK") {
+                    showNotificationGame = false
+                    notificationGameId = nil
+                }
+                .buttonStyle(PrimaryButtonStyle())
+            }
+            .padding()
+            .navigationTitle("Game Update")
+            .navigationBarTitleDisplayMode(.inline)
         }
     }
     
