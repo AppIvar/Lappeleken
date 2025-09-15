@@ -157,6 +157,18 @@ struct GameView: View {
             // Ensure custom events are properly mapped
             gameSession.autoFixCustomEventsOnGameStart()
         }
+        .onReceive(gameSession.$events) { events in
+            // This will trigger whenever the events array changes
+            if let lastEvent = events.last {
+                // Check if it's a substitution event
+                if lastEvent.eventType == .custom,
+                   let customName = lastEvent.customEventName,
+                   customName.contains("Substitution") {
+                    print("🔄 GameView detected new substitution event: \(customName)")
+                    // The UI will automatically refresh since gameSession is @ObservedObject
+                }
+            }
+        }
     }
     
     private var customNavigationHeader: some View {

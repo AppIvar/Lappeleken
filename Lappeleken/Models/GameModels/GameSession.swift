@@ -864,7 +864,7 @@ class GameSession: ObservableObject, Codable {
         }
     }
     
-    @MainActor private func processLiveEvent(_ event: MatchEvent) {
+    @MainActor internal func processLiveEvent(_ event: MatchEvent) {
         // CRITICAL: Prevent duplicate events
         let eventKey = "\(event.id)_\(event.minute)_\(event.type)_\(event.playerId)"
 
@@ -878,7 +878,7 @@ class GameSession: ObservableObject, Codable {
         
         print("🔥 Processing new live event: \(event.type) at \(event.minute)' by \(event.playerName ?? "Unknown")")
         
-        // Handle substitutions via SubstitutionManager (UPDATED)
+        // Handle substitutions via SubstitutionManager
         if event.type.lowercased() == "substitution" {
             print("🔄 Processing substitution via SubstitutionManager...")
             
@@ -888,7 +888,7 @@ class GameSession: ObservableObject, Codable {
                 return
             }
             
-            // Process the substitution
+            // Process the substitution - this will create the timeline event
             SubstitutionManager.shared.processLiveSubstitution(
                 playerOutId: playerOffId,
                 playerInId: playerOnId,
@@ -897,21 +897,21 @@ class GameSession: ObservableObject, Codable {
                 in: self
             )
             
-            // Force UI update after substitution
-            Task { @MainActor in
-                self.objectWillChange.send()
-                print("🔄 Forced UI update after substitution")
+            // Important: Don't return here - the event has been added to timeline
+            // Just force another UI update to be sure
+            DispatchQueue.main.async { [weak self] in
+                self?.objectWillChange.send()
+                print("🔄 Forced additional UI update after substitution processing")
             }
             return
         }
         
-        // Look up player by API ID first, then fallback to name
+        // Handle other events...
         guard let player = findPlayerForEvent(event) else {
             print("❌ Could not find player for event: \(event.playerName ?? "Unknown") (ID: \(event.playerId))")
             return
         }
         
-        // Map API event to app event type
         guard let eventType = mapToEventType(event.type) else {
             print("❌ Unknown event type: \(event.type)")
             return

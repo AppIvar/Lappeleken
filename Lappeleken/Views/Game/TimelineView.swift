@@ -22,6 +22,18 @@ struct TimelineView: View {
     }()
     
     var body: some View {
+        let _ = {
+            let substitutionEvents = gameSession.events.filter { event in
+                event.eventType == .custom && (event.customEventName?.contains("Substitution") ?? false)
+            }
+            if !substitutionEvents.isEmpty {
+                print("📊 TimelineView - Found \(substitutionEvents.count) substitution events")
+                substitutionEvents.forEach { event in
+                    print("   - \(event.customEventName ?? "Unknown") at minute \(event.minute ?? 0)")
+                }
+            }
+        }()
+        
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 // Header

@@ -37,10 +37,6 @@ class SubstitutionManager {
         
         guard let index = participantIndex else {
             print("❌ Player \(playerOff.name) not found in any participant's roster")
-            print("   Current participant rosters:")
-            for (i, p) in gameSession.participants.enumerated() {
-                print("     \(p.name): \(p.selectedPlayers.map { $0.name })")
-            }
             return
         }
         
@@ -69,16 +65,26 @@ class SubstitutionManager {
         )
         gameSession.substitutions.append(substitution)
         
-        // Create timeline event
-        createSubstitutionTimelineEvent(substitution: substitution, source: source, in: gameSession)
+        // IMPORTANT: Create timeline event BEFORE forcing UI update
+        let eventName = "Substitution: \(substitution.from.name) → \(substitution.to.name)"
         
-        // Force UI update
+        let substitutionEvent = GameEvent(
+            player: substitution.from,
+            eventType: .custom,
+            timestamp: substitution.timestamp,
+            minute: substitution.minute,
+            customEventName: eventName
+        )
+        
+        // Add to events list for timeline display
+        gameSession.events.append(substitutionEvent)
+        
+        print("✅ Added substitution to timeline: \(eventName)")
+        print("   Total events now: \(gameSession.events.count)")
+        print("   Event ID: \(substitutionEvent.id)")
+        
+        // Force immediate UI update
         gameSession.objectWillChange.send()
-        
-        print("✅ Substitution complete - UI should update now")
-        print("   Participant \(gameSession.participants[index].name):")
-        print("   - Active: \(gameSession.participants[index].selectedPlayers.count)")
-        print("   - Substituted: \(gameSession.participants[index].substitutedPlayers.count)")
     }
     
     // MARK: - Live Mode Integration
@@ -96,21 +102,33 @@ class SubstitutionManager {
         print("   Player OUT ID: \(playerOutId)")
         print("   Player IN ID: \(playerInId)")
         
-        // Debug: Check available players
-        print("   Available players count: \(gameSession.availablePlayers.count)")
-        print("   Selected players count: \(gameSession.selectedPlayers.count)")
-        
-        // Find the player going out (must be in selected players)
+        // Find the player going out
         guard let playerOut = findPlayerInGameByApiId(playerOutId, in: gameSession) else {
-            print("❌ Player going out not found in selected players: \(playerOutId)")
-            print("   Selected player IDs: \(gameSession.selectedPlayers.compactMap { $0.apiId })")
+            print("⚠️ Player going out not found, creating timeline event anyway")
+            
+            // Try to find in available players for the name at least
+            if let playerOutFromAvailable = gameSession.availablePlayers.first(where: { $0.apiId == playerOutId }),
+               let playerInFromAvailable = gameSession.availablePlayers.first(where: { $0.apiId == playerInId }) {
+                
+                // Create a timeline event even if the player isn't in the game
+                let eventName = "Substitution: \(playerOutFromAvailable.name) → \(playerInFromAvailable.name)"
+                let substitutionEvent = GameEvent(
+                    player: playerOutFromAvailable,
+                    eventType: .custom,
+                    timestamp: Date(),
+                    minute: minute,
+                    customEventName: eventName
+                )
+                gameSession.events.append(substitutionEvent)
+                gameSession.objectWillChange.send()
+                print("✅ Created timeline event for substitution (players not in active game)")
+            }
             return
         }
         
-        // Find the substitute coming in (check available players)
+        // Find the substitute coming in
         guard let playerIn = findPlayerByApiId(playerInId, in: gameSession) else {
-            print("❌ Substitute player not found in available players: \(playerInId)")
-            print("   Available player IDs: \(gameSession.availablePlayers.compactMap { $0.apiId })")
+            print("⌠Substitute player not found in available players: \(playerInId)")
             return
         }
         

@@ -252,17 +252,17 @@ class FootballDataMatchService: MatchService {
         // Process substitutions
         if let substitutions = jsonData["substitutions"] as? [[String: Any]] {
             for sub in substitutions {
-                // Add comprehensive validation
                 guard let minute = sub["minute"] as? Int,
                       let playerOut = sub["playerOut"] as? [String: Any],
                       let playerOutId = playerOut["id"] as? Int,
                       let playerOutName = playerOut["name"] as? String,
                       let playerIn = sub["playerIn"] as? [String: Any],
                       let playerInId = playerIn["id"] as? Int,
+                      let playerInName = playerIn["name"] as? String,  // Add this
                       let team = sub["team"] as? [String: Any],
                       let teamId = team["id"] as? Int else {
-                    print("⚠️ Skipping malformed substitution data: missing required fields")
-                    continue // Skip this substitution and continue with the next one
+                    print("⚠️ Skipping malformed substitution data")
+                    continue
                 }
                 
                 // Additional validation checks
@@ -281,9 +281,6 @@ class FootballDataMatchService: MatchService {
                     continue
                 }
                 
-                // Optional: Get player in name for better logging (but don't require it)
-                let playerInName = (playerIn["name"] as? String) ?? "Unknown Player"
-                
                 // Create the substitution event
                 events.append(MatchEvent(
                     id: "sub_\(minute)_\(playerOutId)",
@@ -296,7 +293,7 @@ class FootballDataMatchService: MatchService {
                     playerOnId: "\(playerInId)"
                 ))
                 
-                print("✅ Processed substitution: \(playerOutName) → \(playerInName) at \(minute)'")
+                print("✅ Created substitution event: \(playerOutName) → \(playerInName) at \(minute)'")
             }
         }
         

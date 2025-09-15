@@ -112,14 +112,32 @@ class EventDrivenManager: ObservableObject {
         print("📡 Processing event update: \(update.newEvents.count) new events")
         
         for liveEvent in update.newEvents {
-            // Handle substitutions separately
+            // Handle substitutions through GameSession
             if liveEvent.type == .substitution {
-                // We need to get both player IDs from the original MatchEvent
-                // This requires passing more data through the LiveMatchEvent
-                print("🔄 Substitution detected - should be handled in GameSession")
+                print("🔄 Substitution detected in EventDrivenManager")
+                
+                // Create a MatchEvent from LiveMatchEvent for substitution
+                if let playerOff = liveEvent.player,
+                   let playerOn = liveEvent.substitutePlayer {
+                    
+                    let matchEvent = MatchEvent(
+                        id: liveEvent.id,
+                        type: "SUBSTITUTION",
+                        playerId: playerOff.apiId ?? "",
+                        playerName: playerOff.name,
+                        minute: liveEvent.minute,
+                        teamId: liveEvent.team.id.uuidString,
+                        playerOffId: playerOff.apiId,
+                        playerOnId: playerOn.apiId
+                    )
+                    
+                    // Let GameSession handle it through processLiveEvent
+                    gameSession.processLiveEvent(matchEvent)
+                }
                 continue
             }
             
+            // Handle other events
             if let gameEvent = convertToGameEvent(liveEvent, in: gameSession) {
                 gameSession.recordEvent(player: gameEvent.player, eventType: gameEvent.eventType)
                 print("✅ Recorded event: \(gameEvent.eventType) for \(gameEvent.player.name)")
@@ -134,6 +152,7 @@ class EventDrivenManager: ObservableObject {
         
         gameSession.objectWillChange.send()
     }
+    
     private func showMissedEventNotification(_ event: LiveMatchEvent, in gameSession: GameSession) {
         let matchName = "\(gameSession.selectedMatch?.homeTeam.shortName ?? "HOME") vs \(gameSession.selectedMatch?.awayTeam.shortName ?? "AWAY")"
         
@@ -283,9 +302,23 @@ class GameEventMonitor {
     private func convertAPIEventToLiveEvent(_ apiEvent: MatchEvent) -> LiveMatchEvent? {
         if apiEvent.type.lowercased() == "substitution" {
             // For substitutions, we need both players
-            guard let playerOff = findPlayerForEvent(apiEvent),
-                  let playerOnId = apiEvent.playerOnId,
-                  let playerOn = gameSession.selectedPlayers.first(where: { $0.apiId == playerOnId }) else {
+            guard let playerOff = findPlayerForEvent(apiEvent) else {
+                print("⚠️ Could not find player going OFF for substitution")
+                return nil
+            }
+            
+            guard let playerOnId = apiEvent.playerOnId else {
+                print("⚠️ Substitution missing playerOnId")
+                return nil
+            }
+            
+            // Find the substitute player by API ID
+            let playerOn = gameSession.availablePlayers.first { $0.apiId == playerOnId }
+            
+            if playerOn == nil {
+                print("⚠️ Could not find player coming ON (ID: \(playerOnId))")
+                // Debug: Show available player IDs
+                print("   Available player API IDs: \(gameSession.availablePlayers.compactMap { $0.apiId }.prefix(10))")
                 return nil
             }
             
@@ -293,11 +326,11 @@ class GameEventMonitor {
                 id: apiEvent.id,
                 type: .substitution,
                 minute: apiEvent.minute,
-                player: playerOff,  // Player going OFF
+                player: playerOff,
                 team: playerOff.team,
                 timestamp: Date(),
-                description: "Substitution: \(playerOff.name) OFF → \(playerOn.name) ON",
-                substitutePlayer: playerOn  // Player coming ON
+                description: "Substitution: \(playerOff.name) OFF → \(playerOn!.name) ON",
+                substitutePlayer: playerOn
             )
         }
         
@@ -319,6 +352,7 @@ class GameEventMonitor {
             substitutePlayer: nil
         )
     }
+
     
     private func findPlayerForEvent(_ apiEvent: MatchEvent) -> Player? {
         return gameSession.selectedPlayers.first { player in
