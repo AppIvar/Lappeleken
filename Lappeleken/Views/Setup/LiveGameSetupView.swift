@@ -34,6 +34,8 @@ struct LiveGameSetupView: View {
     @State private var pendingMatchId: String?
     @State private var pendingMatchName: String?
     @State private var expandedLeagues = Set<String>()
+    @State private var playerAssignments: [Participant: [Player]] = [:]
+    @State private var showingPlayerDrawing = false
 
     private let steps = ["Matches", "Participants", "Set Bets", "Select Players", "Review"]
     
@@ -108,6 +110,29 @@ struct LiveGameSetupView: View {
             }
         } message: {
             Text("Lineups are not available yet for \(pendingMatchName ?? "this match"). Lineups are usually not available until 1-2 hours before match start.\n\nWould you like to use the full squad instead, or go back and try again later?")
+        }
+        .sheet(isPresented: $showingPlayerDrawing) {
+            PlayerDrawingView(
+                gameSession: gameSession,
+                selectedPlayers: gameSession.availablePlayers.filter { selectedPlayerIds.contains($0.id) },
+                participants: gameSession.participants,
+                onComplete: { assignments in
+                    // FIXED: Actually apply the assignments to the gameSession
+                    for (participant, players) in assignments {
+                        if let index = gameSession.participants.firstIndex(where: { $0.id == participant.id }) {
+                            gameSession.participants[index].selectedPlayers = players
+                            gameSession.participants[index].balance = 0.0  // Initialize balance
+                        }
+                    }
+                    
+                    playerAssignments = assignments
+                    showingPlayerDrawing = false
+                    currentStep += 1
+                },
+                onBack: {
+                    showingPlayerDrawing = false
+                }
+            )
         }
     }
     
@@ -946,6 +971,23 @@ struct LiveGameSetupView: View {
         }
     }
     
+    // MARK: - Player Drawing View
+    
+    private var playerDrawingView: some View {
+        PlayerDrawingView(
+            gameSession: gameSession,
+            selectedPlayers: gameSession.availablePlayers.filter { selectedPlayerIds.contains($0.id) },
+            participants: gameSession.participants,
+            onComplete: { assignments in
+                playerAssignments = assignments
+                currentStep += 1
+            },
+            onBack: {
+                currentStep -= 1
+            }
+        )
+    }
+    
     // MARK: - Review View
     
     private var reviewView: some View {
@@ -1416,7 +1458,11 @@ struct LiveGameSetupView: View {
             gameSession.selectedPlayers = selectedStartingXI
             print("✅ Added \(selectedStartingXI.count) starting XI players and \(substitutePlayers.count) substitutes")
             
-        case 4: // Review (final step)
+            // Show drawing sheet
+            showingPlayerDrawing = true
+            return
+
+        case 4: // Review (was step 5)
             startGame()
             return
             
@@ -1445,26 +1491,20 @@ struct LiveGameSetupView: View {
                     gameSession.addBet(eventType: eventType, amount: amount)
                 }
                 
-                // 🔥 CRUCIAL: Set live mode flag
+                // Set live mode flag
                 gameSession.isLiveMode = true
                 
-                // 🔥 NEW: Store ALL selected matches, not just the first one
+                // Store selected matches
                 let selectedMatches = gameSession.availableMatches.filter { selectedMatchIds.contains($0.id) }
-                gameSession.selectedMatches = selectedMatches  
+                gameSession.selectedMatches = selectedMatches
                 
-                // 🔥 CRUCIAL: Set the primary selected match (for backwards compatibility)
+                // Set the primary selected match
                 if let firstSelectedMatchId = selectedMatchIds.first {
                     gameSession.selectedMatch = gameSession.availableMatches.first { $0.id == firstSelectedMatchId }
                 }
                 
-                // Assign players using GameLogicManager
-                if AppConfig.useNewGameLogicManager {
-                    GameLogicManager.shared.assignPlayersRandomly(in: gameSession)
-                    print("✨ Used NEW GameLogicManager for player assignment")
-                } else {
-                    gameSession.assignPlayersRandomly()
-                    print("🔧 Used OLD system for player assignment")
-                }
+                // Use the drawing assignments instead of random assignment
+                applyPlayerAssignments()
                 
                 // Save game using DataManager
                 if AppConfig.useNewDataManager {
@@ -1474,17 +1514,14 @@ struct LiveGameSetupView: View {
                 }
                 
                 await MainActor.run {
-                    // Close the setup view
                     presentationMode.wrappedValue.dismiss()
                     
-                    // 🔥 CRUCIAL: Start event-driven monitoring for ALL matches AFTER the view is dismissed
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                         Task { @MainActor in
                             gameSession.startRealEventDrivenModeForAllMatches()
                         }
                     }
                     
-                    // Notify that game should start
                     NotificationCenter.default.post(name: Notification.Name("StartGameWithSelectedMatch"), object: nil)
                 }
                 
@@ -1495,6 +1532,17 @@ struct LiveGameSetupView: View {
                 }
             }
         }
+    }
+    
+    private func applyPlayerAssignments() {
+        // Apply the assignments from the drawing
+        for (participant, players) in playerAssignments {
+            if let index = gameSession.participants.firstIndex(where: { $0.id == participant.id }) {
+                gameSession.participants[index].players = players
+            }
+        }
+        
+        print("✅ Applied drawing assignments: \(playerAssignments.count) participants with players")
     }
 
     private func generateGameName() -> String {

@@ -19,6 +19,8 @@ struct NewGameSetupView: View {
     @State private var showPlayerEntry = false
     @State private var showLineupSearch = false
     @State private var showCustomBetSheet = false
+    @State private var playerAssignments: [Participant: [Player]] = [:]
+    @State private var showingPlayerDrawing = false
     
     private let steps = ["Add Participants", "Select Players", "Set Bet Rules", "Review & Start"]
     
@@ -58,6 +60,30 @@ struct NewGameSetupView: View {
             .sheet(isPresented: $showCustomBetSheet) {
                 CustomBetView(gameSession: gameSession)
             }
+            .sheet(isPresented: $showingPlayerDrawing) {
+                PlayerDrawingView(
+                    gameSession: gameSession,
+                    selectedPlayers: gameSession.availablePlayers.filter { selectedPlayerIds.contains($0.id) },
+                    participants: gameSession.participants,
+                    onComplete: { assignments in
+                        // FIXED: Actually apply the assignments to the gameSession
+                        for (participant, players) in assignments {
+                            if let index = gameSession.participants.firstIndex(where: { $0.id == participant.id }) {
+                                gameSession.participants[index].selectedPlayers = players
+                                gameSession.participants[index].balance = 0.0  // Initialize balance
+                            }
+                        }
+                        
+                        playerAssignments = assignments
+                        showingPlayerDrawing = false
+                        currentStep += 1
+                    },
+                    onBack: {
+                        showingPlayerDrawing = false
+                    }
+                )
+            }
+
             .onAppear {
                 setupInitialData()
             }
@@ -789,8 +815,8 @@ struct NewGameSetupView: View {
         switch currentStep {
         case 0: return !gameSession.participants.isEmpty
         case 1: return !selectedPlayerIds.isEmpty
-        case 2: return true
-        case 3: return true
+        case 2: return !playerAssignments.isEmpty  // Must complete drawing to access bet rules
+        case 3: return true // Review
         default: return false
         }
     }
@@ -805,6 +831,19 @@ struct NewGameSetupView: View {
             }
         }
         
+        // Special handling for step 1 (player selection) - show drawing instead of going to bet rules
+        if currentStep == 1 {
+            // Validate that we have selected players
+            guard !selectedPlayerIds.isEmpty else {
+                return // Can't proceed without players
+            }
+            
+            // Show drawing sheet instead of proceeding to next step
+            showingPlayerDrawing = true
+            return
+        }
+        
+        // For other steps, proceed normally
         if currentStep < steps.count - 1 {
             withAnimation(AppDesignSystem.Animations.standard) {
                 currentStep += 1
@@ -881,10 +920,17 @@ struct NewGameSetupView: View {
         // Dismiss this view first
         presentationMode.wrappedValue.dismiss()
         
-        // Use the proper notification that ContentView listens for to trigger assignment
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            NotificationCenter.default.post(name: Notification.Name("ShowAssignment"), object: nil)
+    }
+    
+    private func applyPlayerAssignments() {
+        // Apply the assignments from the drawing
+        for (participant, players) in playerAssignments {
+            if let index = gameSession.participants.firstIndex(where: { $0.id == participant.id }) {
+                gameSession.participants[index].players = players
+            }
         }
+        
+        print("✅ Applied drawing assignments: \(playerAssignments.count) participants with players")
     }
     
     // MARK: - Helper functions for event types

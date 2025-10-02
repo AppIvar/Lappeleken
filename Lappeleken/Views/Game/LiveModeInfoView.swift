@@ -29,11 +29,7 @@ struct LiveModeInfoView: View {
                     liveModeFeaturesSection
                     
                     // Free testing info or normal limitations
-                    if AppConfig.isFreeLiveTestingActive {
-                        freeTestingInfoCard
-                    } else {
-                        freeModeInfoCard
-                    }
+                    freeModeInfoCard
                     
                     // Important notes
                     importantNotesSection
@@ -79,10 +75,6 @@ struct LiveModeInfoView: View {
     
     private var heroSectionWithFreeTesting: some View {
         VStack(spacing: 24) {
-            // Free testing banner (if active)
-            if AppConfig.isFreeLiveTestingActive {
-                freeTestingBanner
-            }
             
             // App icon with enhanced glow
             ZStack {
@@ -141,64 +133,6 @@ struct LiveModeInfoView: View {
         }
     }
     
-    // MARK: - Free Testing Banner
-    
-    private var freeTestingBanner: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: "gift.fill")
-                    .font(.system(size: 20))
-                    .foregroundColor(.white)
-                
-                Text("FREE TESTING PERIOD")
-                    .font(.system(size: 16, weight: .bold, design: .rounded))
-                    .foregroundColor(.white)
-                
-                // Beta badge
-                Text("BETA")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(AppDesignSystem.Colors.warning)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(AppDesignSystem.Colors.cardBackground)
-                    .cornerRadius(4)
-            }
-            
-            Text("Unlimited Live Mode matches for everyone! Help us test and improve the feature.")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(.white.opacity(0.9))
-                .multilineTextAlignment(.center)
-            
-            Text("⚠️ This is beta software and may contain bugs")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(.white.opacity(0.8))
-                .multilineTextAlignment(.center)
-        }
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(
-                    LinearGradient(
-                        colors: [
-                            AppDesignSystem.Colors.success,
-                            AppDesignSystem.Colors.success.opacity(0.8)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.white.opacity(0.3), lineWidth: 1)
-        )
-        .shadow(
-            color: AppDesignSystem.Colors.success.opacity(0.3),
-            radius: 8,
-            x: 0,
-            y: 4
-        )
-    }
     
     // MARK: - Features Section
     
@@ -212,63 +146,6 @@ struct LiveModeInfoView: View {
                 )
             }
         }
-    }
-    
-    // MARK: - Free Testing Info Card
-    
-    private var freeTestingInfoCard: some View {
-        VStack(spacing: 16) {
-            HStack {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 24))
-                    .foregroundColor(AppDesignSystem.Colors.success)
-                
-                Text("Free Testing Features")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
-                    .foregroundColor(AppDesignSystem.Colors.primaryText)
-                
-                Spacer()
-            }
-            
-            VStack(alignment: .leading, spacing: 12) {
-                FeatureCheckmark(text: "Unlimited Live Mode matches")
-                FeatureCheckmark(text: "Multiple match tracking")
-                FeatureCheckmark(text: "All leagues and competitions")
-                FeatureCheckmark(text: "Real-time event updates")
-                
-                Divider()
-                    .background(AppDesignSystem.Colors.success.opacity(0.3))
-                
-                HStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 14))
-                        .foregroundColor(AppDesignSystem.Colors.warning)
-                    
-                    Text("Testing phase - ads will be shown and bugs may occur")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                }
-                
-                Text("After the testing period ends, Live Mode will be limited to 1 match per day for free users.")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
-            }
-        }
-        .enhancedCard()
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(
-                    LinearGradient(
-                        colors: [
-                            AppDesignSystem.Colors.success.opacity(0.5),
-                            AppDesignSystem.Colors.success.opacity(0.2)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 2
-                )
-        )
     }
     
     // MARK: - Regular Free Mode Info Card
