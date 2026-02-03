@@ -69,7 +69,13 @@ struct GameView: View {
                             Label("Timeline", systemImage: "clock.arrow.circlepath")
                         }
                     
-                    // Tab 4: Settings
+                    // Tab 4: Match Score (NEW)
+                    MatchScoreView(gameSession: gameSession)
+                        .tabItem {
+                            Label("Match", systemImage: "soccerball")
+                        }
+                    
+                    // Tab 5: Settings
                     SettingsView()
                         .environmentObject(gameSession)
                         .tabItem {
@@ -376,7 +382,12 @@ struct GameView: View {
             let eventCounts = Dictionary(grouping: gameSession.events) { event in
                 gameSession.getEventDisplayName(for: event)
             }.mapValues { $0.count }
-             .sorted { $0.value > $1.value }
+                .sorted {
+                    if $0.value != $1.value {
+                        return $0.value > $1.value
+                    }
+                    return $0.key < $1.key  // Stable sort by name when counts are equal
+                }
             
             LazyVGrid(columns: [
                 GridItem(.flexible()),
@@ -482,13 +493,20 @@ struct GameView: View {
                     .foregroundColor(AppDesignSystem.Colors.secondaryText)
             }
             
-            ForEach(gameSession.participants.sorted(by: { $0.balance > $1.balance })) { participant in
+            // FIX: Use indices to ensure fresh data access on each render
+            let sortedParticipants = gameSession.participants.sorted(by: { $0.balance > $1.balance })
+            
+            ForEach(Array(sortedParticipants.enumerated()), id: \.element.id) { index, participant in
+                // FIX: Access participant directly from gameSession to get latest balance
+                let freshParticipant = gameSession.participants.first(where: { $0.id == participant.id }) ?? participant
+                
                 EnhancedParticipantStandingRow(
-                    participant: participant,
-                    position: gameSession.participants.sorted(by: { $0.balance > $1.balance })
-                        .firstIndex(where: { $0.id == participant.id })! + 1,
+                    participant: freshParticipant,
+                    position: index + 1,
                     gameSession: gameSession
                 )
+                // FIX: Force re-render when balance changes by adding it to the view's identity
+                .id("\(participant.id)-\(freshParticipant.balance)")
             }
         }
         .padding(20)

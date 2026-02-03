@@ -167,7 +167,39 @@ class GameSession: ObservableObject, Codable {
     // MARK: - Game setup methods
     
     func fetchAvailableMatches() async throws {
-        try await fetchAvailableMatchesRobust()
+        guard isLiveMode else {
+            throw NSError(domain: "GameSession", code: 1, userInfo: [
+                NSLocalizedDescriptionKey: "Live mode is not enabled"
+            ])
+        }
+        
+        print("🚀 Fetching available matches via DataManager...")
+        
+        do {
+            // NEW: Use DataManager instead of direct service access
+            let matches = try await DataManager.shared.fetchMatches()
+            
+            await MainActor.run {
+                self.availableMatches = matches
+                print("✅ Successfully loaded \(matches.count) matches")
+                for match in matches {
+                    print("  - \(match.homeTeam.name) vs \(match.awayTeam.name) (\(match.status))")
+                }
+                self.objectWillChange.send()
+            }
+            
+        } catch let error as DataError {
+            await MainActor.run {
+                print("❌ Failed to fetch matches: \(error.localizedDescription)")
+            }
+            throw error
+            
+        } catch {
+            await MainActor.run {
+                print("❌ Unexpected error fetching matches: \(error)")
+            }
+            throw error
+        }
     }
     
     func fetchMatchLineup(for matchId: String) async throws {
@@ -179,6 +211,7 @@ class GameSession: ObservableObject, Codable {
         print("📋 Fetching lineup for match \(matchId)")
         
         do {
+            // Keep using matchService for lineup (it has specific lineup logic)
             let lineup: Lineup
             if let footballService = matchService as? FootballDataMatchService {
                 lineup = try await footballService.fetchMatchLineup(matchId: matchId)
@@ -196,7 +229,7 @@ class GameSession: ObservableObject, Codable {
                 let startingPlayers = lineup.homeTeam.startingXI + lineup.awayTeam.startingXI
                 let substitutePlayers = lineup.homeTeam.substitutes + lineup.awayTeam.substitutes
                 
-                // Add ALL players to availablePlayers (for substitutions to work)
+                // Add ALL players to availablePlayers
                 let existingPlayerIds = Set(availablePlayers.map { $0.id })
                 let newPlayers = allLineupPlayers.filter { !existingPlayerIds.contains($0.id) }
                 availablePlayers.append(contentsOf: newPlayers)
@@ -345,19 +378,18 @@ class GameSession: ObservableObject, Codable {
     }
     
     // MARK: - Save logic
-    
+
     func saveGame(name: String, isUpdate: Bool = false) {
-        print("🎮 Starting to save game: \(name) (isUpdate: \(isUpdate))")
-        
         let finalName = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?
             "Game \(DateFormatter.localizedString(from: Date(), dateStyle: .short, timeStyle: .short))" :
             name
         
-        if isUpdate && hasBeenSaved && currentSaveName != nil {
-            // Update existing save
+        print("🎮 Saving game: \(finalName)")
+        
+        // Check if this is an update to existing save
+        if let existingSaveId = saveId, isUpdate {
             updateExistingSave(name: finalName)
         } else {
-            // Create new save
             createNewSave(name: finalName)
         }
     }
@@ -504,35 +536,32 @@ class GameSession: ObservableObject, Codable {
     }
 
     @MainActor func recordEvent(player: Player, eventType: Bet.EventType, minute: Int? = nil) {
-        // Check if player is active using SubstitutionManager (UPDATED)
+        // Check if player is active
         if !SubstitutionManager.shared.isPlayerActive(player) {
             print("⚠️ Cannot record event for substituted player: \(player.name)")
             return
         }
         
-        // Calculate event minute
-        let eventMinute = minute
-        
         // Create the event
-        let event = GameEvent(player: player, eventType: eventType, timestamp: Date(), minute: eventMinute)
+        let event = GameEvent(player: player, eventType: eventType, timestamp: Date(), minute: minute)
         
-        // Update player stats (this logic stays in GameSession)
+        // Update player stats
         updatePlayerStatsForEvent(player: player, eventType: eventType)
         
-        // Record event via data service (independent of game logic)
+        // NEW: Record event via DataManager (non-blocking)
         Task {
             do {
-                try await dataService.recordEvent(playerId: player.id, eventType: eventType)
+                try await DataManager.shared.recordEvent(playerId: player.id, eventType: eventType)
             } catch {
-                print("⚠️ Error recording event via service: \(error)")
+                print("⚠️ Error recording event via DataManager: \(error)")
+                // Don't throw - allow offline play
             }
         }
         
-        // Process game logic (betting, balances, etc.)
+        // Process game logic
         GameLogicManager.shared.processEvent(event, in: self)
         
-        // Log the event
-        print("📝 Event recorded: \(eventType.rawValue) for \(player.name) at \(eventMinute != nil ? "\(eventMinute!)'" : "unknown time")")
+        print("📝 Event recorded: \(eventType.rawValue) for \(player.name)")
         
         // Show ads after events (for free users)
         checkAndShowInterstitialAfterEvent()
@@ -1373,20 +1402,30 @@ class GameSession: ObservableObject, Codable {
             print("❌ No football service available")
             return
         }
-        await footballService.debugAPIAccess()
     }
     
     func fetchMatchPlayers(for matchId: String) async throws -> [Player] {
-        guard let matchService = matchService else {
+        guard isLiveMode else {
             throw NSError(domain: "GameSession", code: 1, userInfo: [
-                NSLocalizedDescriptionKey: "Match service not available"
+                NSLocalizedDescriptionKey: "Live mode is not enabled"
             ])
         }
         
-        if let footballService = matchService as? FootballDataMatchService {
-            return try await footballService.fetchMatchPlayers(matchId: matchId)
-        } else {
-            return try await matchService.fetchMatchPlayers(matchId: matchId)
+        print("👥 Fetching players for match \(matchId) via DataManager...")
+        
+        do {
+            // NEW: Use DataManager
+            let players = try await DataManager.shared.fetchPlayers(for: matchId)
+            print("✅ Fetched \(players.count) players")
+            return players
+            
+        } catch LineupError.notAvailableYet {
+            print("⚠️ Lineup not available yet")
+            throw LineupError.notAvailableYet
+            
+        } catch {
+            print("❌ Failed to fetch players: \(error)")
+            throw error
         }
     }
 

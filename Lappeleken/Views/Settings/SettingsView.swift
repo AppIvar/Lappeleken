@@ -773,32 +773,33 @@ struct SettingsView: View {
                 
                 VStack(spacing: 8) {
                     HStack(spacing: 8) {
-                        Button("API Access") {
-                            Task {
-                                if let footballService = ServiceProvider.shared.getMatchService() as? FootballDataMatchService {
-                                    await footballService.debugAPIAccess()
-                                }
-                            }
-                        }
-                        .debugButtonStyle(color: .blue)
+                        // COMMENTED OUT - Debug methods not currently available
+                        // Button("API Access") {
+                        //     Task {
+                        //         if let footballService = ServiceProvider.shared.getMatchService() as? FootballDataMatchService {
+                        //             await footballService.debugAPIAccess()
+                        //         }
+                        //     }
+                        // }
+                        // .debugButtonStyle(color: .blue)
                         
-                        Button("Recent Matches") {
-                            Task {
-                                if let footballService = ServiceProvider.shared.getMatchService() as? FootballDataMatchService {
-                                    await footballService.debugRecentFinishedMatches()
-                                }
-                            }
-                        }
-                        .debugButtonStyle(color: .green)
+                        // Button("Recent Matches") {
+                        //     Task {
+                        //         if let footballService = ServiceProvider.shared.getMatchService() as? FootballDataMatchService {
+                        //             await footballService.debugRecentFinishedMatches()
+                        //         }
+                        //     }
+                        // }
+                        // .debugButtonStyle(color: .green)
                         
-                        Button("Upcoming") {
-                            Task {
-                                if let footballService = ServiceProvider.shared.getMatchService() as? FootballDataMatchService {
-                                    await footballService.debugUpcomingMatches()
-                                }
-                            }
-                        }
-                        .debugButtonStyle(color: .orange)
+                        // Button("Upcoming") {
+                        //     Task {
+                        //         if let footballService = ServiceProvider.shared.getMatchService() as? FootballDataMatchService {
+                        //             await footballService.debugUpcomingMatches()
+                        //         }
+                        //     }
+                        // }
+                        // .debugButtonStyle(color: .orange)
                     }
                 }
             }
@@ -864,57 +865,59 @@ struct SettingsView: View {
                     Spacer()
                 }
                 
+                // COMMENTED OUT - Debug test views not currently available
                 // Navigation to full test suite
-                NavigationLink(destination: DebugTestView()) {
-                    HStack {
-                        Image(systemName: "testtube.2")
-                            .foregroundColor(AppDesignSystem.Colors.primary)
-                            .frame(width: 20)
-                        
-                        Text("Open Test Suite")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(AppDesignSystem.Colors.primaryText)
-                        
-                        Spacer()
-                        
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 12))
-                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                    }
-                    .padding(12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(AppDesignSystem.Colors.primary.opacity(0.1))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .stroke(AppDesignSystem.Colors.primary.opacity(0.3), lineWidth: 1)
-                            )
-                    )
-                }
+                // NavigationLink(destination: DebugTestView()) {
+                //     HStack {
+                //         Image(systemName: "testtube.2")
+                //             .foregroundColor(AppDesignSystem.Colors.primary)
+                //             .frame(width: 20)
+                //         
+                //         Text("Open Test Suite")
+                //             .font(.system(size: 14, weight: .semibold))
+                //             .foregroundColor(AppDesignSystem.Colors.primaryText)
+                //         
+                //         Spacer()
+                //         
+                //         Image(systemName: "chevron.right")
+                //             .font(.system(size: 12))
+                //             .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                //     }
+                //     .padding(12)
+                //     .background(
+                //         RoundedRectangle(cornerRadius: 8)
+                //             .fill(AppDesignSystem.Colors.primary.opacity(0.1))
+                //             .overlay(
+                //                 RoundedRectangle(cornerRadius: 8)
+                //                     .stroke(AppDesignSystem.Colors.primary.opacity(0.3), lineWidth: 1)
+                //             )
+                //     )
+                // }
                 
                 // Quick test buttons
                 VStack(spacing: 8) {
                     HStack(spacing: 8) {
-                        Button("Smoke Test") {
-                            Task {
-                                await LiveModeTestRunner.shared.smokeTest()
-                            }
-                        }
-                        .debugButtonStyle(color: .orange)
-                        
-                        Button("Betting Flow") {
-                            Task {
-                                await LiveModeTestRunner.shared.quickBettingTest()
-                            }
-                        }
-                        .debugButtonStyle(color: .green)
-                        
-                        Button("API Test") {
-                            Task {
-                                await LiveModeTestRunner.shared.quickAPITest()
-                            }
-                        }
-                        .debugButtonStyle(color: .purple)
+                        // COMMENTED OUT - LiveModeTestRunner not available
+                        // Button("Smoke Test") {
+                        //     Task {
+                        //         await LiveModeTestRunner.shared.smokeTest()
+                        //     }
+                        // }
+                        // .debugButtonStyle(color: .orange)
+                        // 
+                        // Button("Betting Flow") {
+                        //     Task {
+                        //         await LiveModeTestRunner.shared.quickBettingTest()
+                        //     }
+                        // }
+                        // .debugButtonStyle(color: .green)
+                        // 
+                        // Button("API Test") {
+                        //     Task {
+                        //         await LiveModeTestRunner.shared.quickAPITest()
+                        //     }
+                        // }
+                        // .debugButtonStyle(color: .purple)
                     }
                     
                     HStack(spacing: 8) {

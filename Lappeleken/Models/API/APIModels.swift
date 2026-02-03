@@ -343,16 +343,6 @@ struct APICoach: Codable {
     }
 }
 
-struct APIScore: Codable {
-    let fullTime: ScoreDetail?
-    let halfTime: ScoreDetail?
-    
-    struct ScoreDetail: Codable {
-        let home: Int?
-        let away: Int?
-    }
-}
-
 // MARK: - App Models (unchanged)
 
 struct Lineup {
@@ -385,6 +375,163 @@ struct TeamSquad {
     let team: Team
     let players: [Player]
     let coach: Coach?
+}
+
+struct APIMatchDetailResponse: Codable {
+    let id: Int
+    let competition: APICompetition
+    let utcDate: String
+    let status: String
+    let minute: Int?
+    let injuryTime: Int?
+    let attendance: Int?
+    let venue: String?
+    let matchday: Int?
+    let homeTeam: APITeamWithStats
+    let awayTeam: APITeamWithStats
+    let score: APIScore
+    let goals: [APIGoal]?
+    let bookings: [APIBooking]?
+    let substitutions: [APISubstitution]?
+    let referees: [APIReferee]?
+    
+    func toMatchDetail() -> MatchDetail {
+        let date = DateUtility.iso8601Full.date(from: utcDate) ?? Date()
+        
+        let match = Match(
+            id: "\(id)",
+            homeTeam: homeTeam.toAppModel(),
+            awayTeam: awayTeam.toAppModel(),
+            startTime: date,
+            status: matchStatus(from: status),
+            competition: competition.toAppModel()
+        )
+        
+        let matchScore = MatchScore(
+            winner: score.winner,
+            duration: score.duration,
+            fullTime: score.fullTime.map { MatchScore.ScoreValues(home: $0.home, away: $0.away) },
+            halfTime: score.halfTime.map { MatchScore.ScoreValues(home: $0.home, away: $0.away) }
+        )
+        
+        return MatchDetail(
+            match: match,
+            venue: venue,
+            attendance: attendance,
+            referee: referees?.first(where: { $0.type == "REFEREE" })?.name,
+            score: matchScore,
+            minute: minute,
+            injuryTime: injuryTime,
+            homeStatistics: homeTeam.statistics?.toAppModel(),
+            awayStatistics: awayTeam.statistics?.toAppModel()
+        )
+    }
+    
+    private func matchStatus(from status: String) -> MatchStatus {
+        switch status.uppercased() {
+        case "SCHEDULED", "TIMED": return .upcoming
+        case "LIVE", "IN_PLAY": return .inProgress
+        case "PAUSED": return .halftime
+        case "FINISHED": return .completed
+        case "POSTPONED": return .postponed
+        case "CANCELLED": return .cancelled
+        case "SUSPENDED": return .suspended
+        default: return .unknown
+        }
+    }
+}
+
+struct APITeamWithStats: Codable {
+    let id: Int
+    let name: String
+    let shortName: String?
+    let crest: String?
+    let formation: String?
+    let lineup: [APILineupPlayer]?
+    let bench: [APILineupPlayer]?
+    let statistics: APITeamStatistics?
+    
+    func toAppModel() -> Team {
+        return Team(
+            id: UUID(uuidString: "00000000-0000-0000-0000-\(String(format: "%012d", id))") ?? UUID(),
+            name: name,
+            shortName: shortName ?? String(name.prefix(3)).uppercased(),
+            logoName: "team_logo",
+            primaryColor: "#1a73e8"
+        )
+    }
+}
+
+struct APITeamStatistics: Codable {
+    let cornerKicks: Int?
+    let freeKicks: Int?
+    let goalKicks: Int?
+    let offsides: Int?
+    let fouls: Int?
+    let ballPossession: Int?
+    let saves: Int?
+    let throwIns: Int?
+    let shots: Int?
+    let shotsOnGoal: Int?
+    let shotsOffGoal: Int?
+    let yellowCards: Int?
+    let yellowRedCards: Int?
+    let redCards: Int?
+    
+    enum CodingKeys: String, CodingKey {
+        case cornerKicks = "corner_kicks"
+        case freeKicks = "free_kicks"
+        case goalKicks = "goal_kicks"
+        case offsides, fouls
+        case ballPossession = "ball_possession"
+        case saves
+        case throwIns = "throw_ins"
+        case shots
+        case shotsOnGoal = "shots_on_goal"
+        case shotsOffGoal = "shots_off_goal"
+        case yellowCards = "yellow_cards"
+        case yellowRedCards = "yellow_red_cards"
+        case redCards = "red_cards"
+    }
+    
+    func toAppModel() -> TeamStatistics {
+        return TeamStatistics(
+            cornerKicks: cornerKicks,
+            freeKicks: freeKicks,
+            goalKicks: goalKicks,
+            offsides: offsides,
+            fouls: fouls,
+            ballPossession: ballPossession,
+            saves: saves,
+            throwIns: throwIns,
+            shots: shots,
+            shotsOnGoal: shotsOnGoal,
+            shotsOffGoal: shotsOffGoal,
+            yellowCards: yellowCards,
+            yellowRedCards: yellowRedCards,
+            redCards: redCards
+        )
+    }
+}
+
+struct APIReferee: Codable {
+    let id: Int
+    let name: String
+    let type: String
+    let nationality: String?
+}
+
+// Update APIScore to include winner/duration
+struct APIScore: Codable {
+    let winner: String?
+    let duration: String?
+    let fullTime: ScoreDetail?
+    let halfTime: ScoreDetail?
+    
+    struct ScoreDetail: Codable {
+        let home: Int?
+        let away: Int?
+    }
 }
 
 // MARK: - Codable Extensions for App Models

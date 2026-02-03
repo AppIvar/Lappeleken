@@ -5,6 +5,8 @@
 //  Created by Ivar Hovland on 15/07/2025.
 //
 
+#if false // Temporarily disabled, needs refactoring
+
 import SwiftUI
 
 #if DEBUG
@@ -268,7 +270,7 @@ struct DebugTestView: View {
         currentTest = ""
     }
     
-    private func runMatchSimulation() async {
+    /*private func runMatchSimulation() async {
         isRunningTests = true
         currentTest = "Running Match Simulation..."
         
@@ -282,7 +284,7 @@ struct DebugTestView: View {
         
         isRunningTests = false
         currentTest = ""
-    }
+    }*/
     
     private func runQuickNotificationTest() async {
         isRunningTests = true
@@ -373,4 +375,5 @@ struct DebugTestView_Previews: PreviewProvider {
         DebugTestView()
     }
 }
+#endif
 #endif

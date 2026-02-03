@@ -409,3 +409,25 @@ struct CacheStatistics {
     let estimatedMemoryUsage: String
     let hitRate: Double
 }
+
+// MARK: - Cache expiration
+
+enum CacheExpiration {
+    case minutes(Int)
+    case hours(Int)
+    case days(Int)
+    case never
+    
+    var timeInterval: TimeInterval {
+        switch self {
+        case .minutes(let m):
+            return TimeInterval(m * 60)
+        case .hours(let h):
+            return TimeInterval(h * 60 * 60)
+        case .days(let d):
+            return TimeInterval(d * 24 * 60 * 60)
+        case .never:
+            return TimeInterval.greatestFiniteMagnitude
+        }
+    }
+}

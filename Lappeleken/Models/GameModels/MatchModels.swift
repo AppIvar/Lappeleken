@@ -85,8 +85,71 @@ struct MatchDetail: Codable {
     let venue: String?
     let attendance: Int?
     let referee: String?
-    let homeScore: Int
-    let awayScore: Int
+    
+    // Score data
+    let score: MatchScore?
+    
+    // Live match data
+    let minute: Int?
+    let injuryTime: Int?
+    
+    // Team statistics
+    let homeStatistics: TeamStatistics?
+    let awayStatistics: TeamStatistics?
+    
+    // Computed properties for backwards compatibility
+    var homeScore: Int {
+        score?.fullTime?.home ?? 0
+    }
+    
+    var awayScore: Int {
+        score?.fullTime?.away ?? 0
+    }
+}
+
+struct MatchScore: Codable {
+    let winner: String?
+    let duration: String?
+    let fullTime: ScoreValues?
+    let halfTime: ScoreValues?
+    
+    struct ScoreValues: Codable {
+        let home: Int?
+        let away: Int?
+    }
+}
+
+struct TeamStatistics: Codable {
+    let cornerKicks: Int?
+    let freeKicks: Int?
+    let goalKicks: Int?
+    let offsides: Int?
+    let fouls: Int?
+    let ballPossession: Int?
+    let saves: Int?
+    let throwIns: Int?
+    let shots: Int?
+    let shotsOnGoal: Int?
+    let shotsOffGoal: Int?
+    let yellowCards: Int?
+    let yellowRedCards: Int?
+    let redCards: Int?
+    
+    enum CodingKeys: String, CodingKey {
+        case cornerKicks = "corner_kicks"
+        case freeKicks = "free_kicks"
+        case goalKicks = "goal_kicks"
+        case offsides, fouls
+        case ballPossession = "ball_possession"
+        case saves
+        case throwIns = "throw_ins"
+        case shots
+        case shotsOnGoal = "shots_on_goal"
+        case shotsOffGoal = "shots_off_goal"
+        case yellowCards = "yellow_cards"
+        case yellowRedCards = "yellow_red_cards"
+        case redCards = "red_cards"
+    }
 }
 
 // MARK: - MatchEvent

@@ -1127,23 +1127,13 @@ struct LiveGameSetupView: View {
         
         Task {
             do {
-                if AppConfig.useNewDataManager {
-                    // NEW: Use centralized DataManager
-                    let matches = try await DataManager.shared.fetchMatches(mode: .live)
-                    
-                    await MainActor.run {
-                        gameSession.availableMatches = matches
-                        isLoading = false
-                        print("✨ Used NEW DataManager: loaded \(matches.count) matches")
-                    }
-                } else {
-                    // OLD: Use existing GameSession method
-                    try await gameSession.fetchAvailableMatches()
-                    
-                    await MainActor.run {
-                        isLoading = false
-                        print("🔧 Used OLD system: loaded \(gameSession.availableMatches.count) matches")
-                    }
+                // NEW: Use centralized DataManager
+                let matches = try await DataManager.shared.fetchMatches()
+                
+                await MainActor.run {
+                    gameSession.availableMatches = matches
+                    isLoading = false
+                    print("✅ Loaded \(matches.count) matches via DataManager")
                 }
             } catch {
                 await MainActor.run {
@@ -1166,6 +1156,7 @@ struct LiveGameSetupView: View {
                 
                 await MainActor.run {
                     gameSession.availablePlayers = []
+                    gameSession.matchLineups = [:] // Clear existing lineups
                 }
                 
                 var allPlayers: [Player] = []
@@ -1173,93 +1164,40 @@ struct LiveGameSetupView: View {
                 
                 print("🔄 Loading players for \(matchIdsToLoad.count) matches...")
                 
-                // Process matches sequentially to respect rate limits
                 for (index, matchId) in matchIdsToLoad.enumerated() {
                     if let match = gameSession.availableMatches.first(where: { $0.id == matchId }) {
                         do {
-                            print("📥 Loading players for match \(index + 1)/\(matchIdsToLoad.count): \(match.homeTeam.name) vs \(match.awayTeam.name)")
+                            print("📥 Loading lineup for match \(index + 1)/\(matchIdsToLoad.count): \(match.homeTeam.name) vs \(match.awayTeam.name)")
                             
-                            var players: [Player] = []
+                            // NEW: Fetch lineup structure (not just players)
+                            try await gameSession.fetchMatchLineup(for: matchId)
                             
-                            // Step 1: Try to fetch lineup data first
-                            do {
-                                print("📋 Attempting to fetch lineup for match \(matchId)")
-                                try await gameSession.fetchMatchLineup(for: matchId)
-                                
-                                // If lineup fetch succeeds, extract players from the lineup
-                                if let lineup = gameSession.matchLineups[matchId] {
-                                    players = extractPlayersFromLineup(lineup)
-                                    print("✅ Successfully loaded lineup: \(players.count) players")
-                                }
-                                
-                            } catch {
-                                print("⚠️ Lineup fetch failed: \(error)")
-                                
-                                // Step 2: Check if it's a lineup not available error and fallback to squad
-                                if error.isLineupNotAvailable {
-                                    print("📦 Lineup not available yet, falling back to full squad...")
-                                    
-                                    if let footballService = gameSession.matchService as? FootballDataMatchService {
-                                        players = try await footballService.fetchMatchSquad(matchId: matchId)
-                                        print("✅ Loaded full squad: \(players.count) players")
-                                    } else {
-                                        // Ultimate fallback: use fetchMatchPlayersRobust
-                                        players = try await gameSession.fetchMatchPlayers(for: matchId) ?? []
-                                        print("✅ Loaded players via robust method: \(players.count) players")
-                                    }
-                                    
-                                    lineupFailures.append(match)
-                                } else {
-                                    // For other errors, try squad fallback too
-                                    print("📦 Other error, trying squad fallback: \(error)")
-                                    if let footballService = gameSession.matchService as? FootballDataMatchService {
-                                        do {
-                                            players = try await footballService.fetchMatchSquad(matchId: matchId)
-                                            print("✅ Loaded squad after error: \(players.count) players")
-                                            lineupFailures.append(match)
-                                        } catch {
-                                            print("❌ Squad fallback also failed: \(error)")
-                                            throw error
-                                        }
-                                    } else {
-                                        throw error
-                                    }
-                                }
+                            // Get players from the stored lineup
+                            if let lineup = gameSession.matchLineups[matchId] {
+                                let lineupPlayers = lineup.homeTeam.startingXI + lineup.homeTeam.substitutes +
+                                                   lineup.awayTeam.startingXI + lineup.awayTeam.substitutes
+                                allPlayers.append(contentsOf: lineupPlayers)
+                                print("✅ Got \(lineupPlayers.count) players from lineup")
                             }
-                            
-                            // Check if we got real players or dummy/placeholder players
-                            let hasDummyPlayers = players.isEmpty || players.contains(where: {
-                                $0.name.contains("Player ") || $0.name.contains("Dummy")
-                            })
-                            
-                            if hasDummyPlayers {
-                                print("⚠️ Got placeholder players for \(match.homeTeam.name) vs \(match.awayTeam.name)")
-                                if !lineupFailures.contains(where: { $0.id == match.id }) {
-                                    lineupFailures.append(match)
-                                }
-                            } else {
-                                print("✅ Got \(players.count) real players for \(match.homeTeam.name) vs \(match.awayTeam.name)")
-                            }
-                            
-                            allPlayers.append(contentsOf: players)
                             
                             // Track usage for free users
                             if AppPurchaseManager.shared.currentTier == .free {
                                 AppConfig.incrementMatchUsage()
                             }
                             
-                            // Rate limiting: Add delay between matches (except for the last one)
+                            // Rate limiting delay
                             if index < matchIdsToLoad.count - 1 {
-                                print("⏳ Waiting 2 seconds before next match to respect API limits...")
+                                print("⏳ Waiting 2 seconds before next match...")
                                 try await Task.sleep(nanoseconds: 2_000_000_000)
                             }
                             
-                        } catch {
-                            print("❌ Error loading players for match \(matchId): \(error)")
+                        } catch LineupError.notAvailableYet {
+                            print("⚠️ Lineup not available yet for match \(matchId)")
                             lineupFailures.append(match)
                             
-                            // Continue processing other matches even if one fails
-                            continue
+                        } catch {
+                            print("❌ Error loading lineup for match \(matchId): \(error)")
+                            lineupFailures.append(match)
                         }
                     }
                 }
@@ -1270,16 +1208,18 @@ struct LiveGameSetupView: View {
                     
                     if !allPlayers.isEmpty {
                         print("✅ Successfully loaded \(allPlayers.count) total players")
+                        print("📋 Lineups stored for \(gameSession.matchLineups.count) matches")
                         
                         if !lineupFailures.isEmpty {
-                            print("⚠️ \(lineupFailures.count) matches had lineup issues")
                             showLineupChoiceAlert(matches: lineupFailures)
                         } else {
-                            // All lineups loaded successfully, proceed to next step
                             currentStep += 1
                         }
+                    } else if !lineupFailures.isEmpty {
+                        // All matches failed - show choice for first one
+                        showLineupChoiceAlert(matches: lineupFailures)
                     } else {
-                        error = "No players found for the selected match(es). This might be because team lineups haven't been announced yet, or there's an issue with the football data service. Please try again later."
+                        error = "No players found for the selected match(es)."
                     }
                     
                     gameSession.objectWillChange.send()
@@ -1288,44 +1228,19 @@ struct LiveGameSetupView: View {
             } catch {
                 await MainActor.run {
                     isLoading = false
-                    
-                    if let dataError = error as? DataError {
-                        switch dataError {
-                        case .rateLimited(let retryAfter):
-                            showingRateLimit = true
-                            self.error = "Too many requests to the football API. Please wait \(Int(retryAfter)) seconds and try again."
-                        case .networkUnavailable:
-                            self.error = "Network connection issue. Please check your internet and try again."
-                        case .fetchFailed(let resource, _):
-                            self.error = "Failed to load \(resource). Please try again later."
-                        default:
-                            self.error = dataError.localizedDescription
-                        }
-                    } else if let apiError = error as? APIError {
-                        switch apiError {
-                        case .rateLimited:
-                            showingRateLimit = true
-                            self.error = "Too many requests to the football API. Please wait a moment and try again."
-                        case .networkError:
-                            self.error = "Network connection issue. Please check your internet and try again."
-                        case .serverError(let code, _):
-                            if code >= 500 {
-                                self.error = "The football data service is temporarily unavailable. Please try again later."
-                            } else if code == 429 {
-                                showingRateLimit = true
-                                self.error = "API rate limit exceeded. Please wait before trying again."
-                            } else {
-                                self.error = "There was a problem loading player data. Please try again."
-                            }
-                        default:
-                            self.error = "Error loading players: \(error.localizedDescription)"
-                        }
-                    } else {
-                        self.error = "Error loading players: \(error.localizedDescription)"
-                    }
+                    self.error = handleDataError(error)
                 }
             }
         }
+    }
+    
+    private func loadSquadFallback(for matchId: String) async throws -> [Player] {
+        print("📦 Attempting squad fallback for match \(matchId)")
+        
+        // NEW: Use DataManager for squad fallback
+        let squadPlayers = try await DataManager.shared.fetchSquad(for: matchId)
+        print("✅ Loaded \(squadPlayers.count) squad players via fallback")
+        return squadPlayers
     }
     
     private func showLineupChoiceAlert(matches: [Match]) {
@@ -1341,45 +1256,25 @@ struct LiveGameSetupView: View {
         showingLineupChoiceAlert = true
     }
     
-    private func extractPlayersFromLineup(_ lineup: Lineup) -> [Player] {
-        var players: [Player] = []
-        
-        // Extract home team players
-        players.append(contentsOf: lineup.homeTeam.startingXI)
-        players.append(contentsOf: lineup.homeTeam.substitutes)
-        
-        // Extract away team players
-        players.append(contentsOf: lineup.awayTeam.startingXI)
-        players.append(contentsOf: lineup.awayTeam.substitutes)
-        
-        return players
-    }
-    
     private func loadFullSquadForMatch(_ matchId: String) {
         isLoading = true
         
         Task {
             do {
-                if let footballService = gameSession.matchService as? FootballDataMatchService {
-                    // Use fetchMatchSquad, not fetchTeamSquad
-                    let squadPlayers = try await footballService.fetchMatchSquad(matchId: matchId)
+                // NEW: Use DataManager for squad
+                let squadPlayers = try await DataManager.shared.fetchSquad(for: matchId)
+                
+                await MainActor.run {
+                    self.isLoading = false
+                    gameSession.availablePlayers = squadPlayers
                     
-                    await MainActor.run {
-                        self.isLoading = false
-                        gameSession.availablePlayers = squadPlayers
-                        
-                        print("✅ Loaded full squad: \(squadPlayers.count) players")
-                        
-                        if self.currentStep < self.steps.count - 1 {
-                            self.currentStep += 1
-                        }
-                        
-                        gameSession.objectWillChange.send()
+                    print("✅ Loaded full squad: \(squadPlayers.count) players")
+                    
+                    if self.currentStep < self.steps.count - 1 {
+                        self.currentStep += 1
                     }
-                } else {
-                    throw NSError(domain: "SquadError", code: 1, userInfo: [
-                        NSLocalizedDescriptionKey: "Match service not available"
-                    ])
+                    
+                    gameSession.objectWillChange.send()
                 }
             } catch {
                 await MainActor.run {
@@ -1503,15 +1398,13 @@ struct LiveGameSetupView: View {
                     gameSession.selectedMatch = gameSession.availableMatches.first { $0.id == firstSelectedMatchId }
                 }
                 
-                // Use the drawing assignments instead of random assignment
+                // Apply player assignments
                 applyPlayerAssignments()
                 
-                // Save game using DataManager
-                if AppConfig.useNewDataManager {
-                    let gameName = generateGameName()
-                    try await DataManager.shared.saveGame(gameSession, name: gameName)
-                    print("✨ Used NEW DataManager for game saving")
-                }
+                // NEW: Save game using DataManager
+                let gameName = generateGameName()
+                try await DataManager.shared.saveGame(gameSession, name: gameName)
+                print("✅ Game saved via DataManager")
                 
                 await MainActor.run {
                     presentationMode.wrappedValue.dismiss()

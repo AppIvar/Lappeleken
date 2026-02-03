@@ -2,7 +2,7 @@
 //  LineupSearchView.swift
 //  Lucky Football Slip
 //
-//  Search for team lineups from football-data.org with rewarded ad integration
+//  Search for team lineups from football-data.org
 //
 
 import SwiftUI
@@ -10,16 +10,14 @@ import SwiftUI
 struct LineupSearchView: View {
     @ObservedObject var gameSession: GameSession
     @Environment(\.presentationMode) var presentationMode
-    @StateObject private var adManager = AdManager.shared
     
     @State private var searchResults: [Match] = []
     @State private var selectedMatch: Match?
     @State private var lineup: Lineup?
-    @State private var isLoading = false
-    @State private var errorMessage = ""
-    @State private var showError = false
     @State private var searchPhase: SearchPhase = .initial
     @State private var selectedPlayers: Set<UUID> = []
+    @State private var errorMessage = ""
+    @State private var showError = false
     @State private var showFeatureInfo = false
     
     enum SearchPhase {
@@ -28,19 +26,16 @@ struct LineupSearchView: View {
         case matchSelection
         case loadingLineup
         case playerSelection
-        case featureInfo
     }
     
     var body: some View {
         NavigationView {
             VStack(spacing: 0) {
-                // Header
                 headerView
                 
-                // Main content
                 Group {
                     switch searchPhase {
-                    case .initial, .featureInfo:
+                    case .initial:
                         initialView
                     case .loadingMatches:
                         loadingView("Searching for today's matches...")
@@ -54,21 +49,33 @@ struct LineupSearchView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 
-                // Bottom button
                 if searchPhase == .playerSelection {
                     bottomActionButton
                 }
             }
             .navigationTitle("Search Lineups")
-            .navigationBarItems(
-                leading: Button("Cancel") {
-                    presentationMode.wrappedValue.dismiss()
-                },
-                trailing: searchPhase == .playerSelection ? Button("Add Players") {
-                    addSelectedPlayers()
-                }.disabled(selectedPlayers.isEmpty) : nil
-            )
-            .alert("Lineup Search", isPresented: $showError) {
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        presentationMode.wrappedValue.dismiss()
+                    }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    if searchPhase == .playerSelection {
+                        if #available(iOS 16.0, *) {
+                            Button("Add") {
+                                addSelectedPlayers()
+                            }
+                            .disabled(selectedPlayers.isEmpty)
+                            .fontWeight(.semibold)
+                        } else {
+                            // Fallback on earlier versions
+                        }
+                    }
+                }
+            }
+            .alert("Error", isPresented: $showError) {
                 Button("OK") { }
             } message: {
                 Text(errorMessage)
@@ -79,70 +86,70 @@ struct LineupSearchView: View {
         }
     }
     
-    // MARK: - Views
+    // MARK: - Header
     
     private var headerView: some View {
         VStack(spacing: 12) {
             HStack {
                 Image(systemName: "magnifyingglass.circle.fill")
                     .font(.title2)
-                    .foregroundColor(.blue)
+                    .foregroundColor(AppDesignSystem.Colors.primary)
                 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Lineup Search")
-                        .font(.headline)
-                        .fontWeight(.semibold)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
                     
-                    Text("Find real team lineups and add professional players")
+                    Text("Import real team lineups")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
                 }
                 
                 Spacer()
                 
-                // Info button for feature explanation
-                Button(action: {
-                    showFeatureInfo = true
-                }) {
+                Button(action: { showFeatureInfo = true }) {
                     Image(systemName: "info.circle")
-                        .foregroundColor(.blue)
+                        .foregroundColor(AppDesignSystem.Colors.primary)
                         .font(.title3)
                 }
             }
             
-            // Feature status banner
-            if AppConfig.canAccessLineupSearch {
-                HStack {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(.green)
-                    
-                    Text("Feature available during testing period")
-                        .font(.subheadline)
-                        .foregroundColor(.green)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(Color.green.opacity(0.1))
-                .cornerRadius(8)
-            } else {
-                HStack {
-                    Image(systemName: "lock.circle.fill")
-                        .foregroundColor(.orange)
-                    
-                    Text("Premium feature - Coming soon")
-                        .font(.subheadline)
-                        .foregroundColor(.orange)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(Color.orange.opacity(0.1))
-                .cornerRadius(8)
-            }
+            // Feature status
+            featureStatusBanner
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
-        .background(Color(UIColor.systemBackground))
+        .background(AppDesignSystem.Colors.cardBackground)
     }
+    
+    @ViewBuilder
+    private var featureStatusBanner: some View {
+        if AppConfig.canAccessLineupSearch {
+            HStack(spacing: 8) {
+                Image(systemName: "checkmark.circle.fill")
+                Text("Available during testing")
+            }
+            .font(.subheadline)
+            .foregroundColor(AppDesignSystem.Colors.success)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(AppDesignSystem.Colors.success.opacity(0.1))
+            .cornerRadius(8)
+        } else {
+            HStack(spacing: 8) {
+                Image(systemName: "lock.circle.fill")
+                Text("Premium feature - Coming soon")
+            }
+            .font(.subheadline)
+            .foregroundColor(AppDesignSystem.Colors.warning)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(AppDesignSystem.Colors.warning.opacity(0.1))
+            .cornerRadius(8)
+        }
+    }
+    
+    // MARK: - Initial View
     
     private var initialView: some View {
         VStack(spacing: 24) {
@@ -151,290 +158,268 @@ struct LineupSearchView: View {
             VStack(spacing: 16) {
                 Image(systemName: "sportscourt.fill")
                     .font(.system(size: 60))
-                    .foregroundColor(.blue)
+                    .foregroundColor(AppDesignSystem.Colors.primary)
                 
                 Text("Search Team Lineups")
                     .font(.title2)
                     .fontWeight(.bold)
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
                 
-                Text("Find today's matches and import real team lineups with professional players into your game.")
+                Text("Find today's matches and import real team lineups into your game.")
                     .font(.subheadline)
-                    .foregroundColor(.secondary)
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 20)
+                    .padding(.horizontal, 32)
             }
             
             VStack(spacing: 12) {
                 if AppConfig.canAccessLineupSearch {
-                    Button("Search Today's Matches") {
-                        searchForMatches()
+                    Button(action: searchForMatches) {
+                        HStack {
+                            Image(systemName: "magnifyingglass")
+                            Text("Search Today's Matches")
+                        }
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(AppDesignSystem.Colors.primary)
+                        .cornerRadius(12)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .font(.headline)
+                    .padding(.horizontal, 40)
                     
                     Text("Powered by football-data.org")
                         .font(.caption)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
                 } else {
-                    Button("Feature Not Available") {
-                        showFeatureInfo = true
+                    Button(action: { showFeatureInfo = true }) {
+                        Text("Feature Not Available")
+                            .font(.headline)
                     }
                     .buttonStyle(.bordered)
-                    .font(.headline)
                     .disabled(true)
-                    
-                    Text("This feature will be available in a future update")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
                 }
             }
             
             Spacer()
         }
-        .onAppear {
-            checkFeatureAccess()
-        }
     }
     
-    private var featureInfoSheet: some View {
-        NavigationView {
-            VStack(spacing: 24) {
-                // Header
-                VStack(spacing: 16) {
-                    Image(systemName: "magnifyingglass.circle.fill")
-                        .font(.system(size: 50))
-                        .foregroundColor(.blue)
-                    
-                    Text("Lineup Search Feature")
-                        .font(.title2)
-                        .fontWeight(.bold)
-                    
-                    Text("Import real team lineups with professional players from today's matches.")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 20)
-                }
-                
-                // Feature status
-                VStack(spacing: 16) {
-                    if AppConfig.canAccessLineupSearch {
-                        // Available during testing
-                        VStack(spacing: 12) {
-                            HStack {
-                                Image(systemName: "gift.fill")
-                                    .font(.system(size: 24))
-                                    .foregroundColor(.green)
-                                
-                                Text("Available During Testing")
-                                    .font(.system(size: 18, weight: .bold))
-                                    .foregroundColor(.green)
-                                
-                                Spacer()
-                            }
-                            
-                            Text("This feature is currently available for free during our testing period. We're excited to have you try it out and would love your feedback!")
-                                .font(.system(size: 14))
-                                .foregroundColor(.secondary)
-                                .multilineTextAlignment(.leading)
-                        }
-                        .padding()
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Color.green.opacity(0.1))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(Color.green.opacity(0.3), lineWidth: 1)
-                                )
-                        )
-                    } else {
-                        // Not available
-                        VStack(spacing: 12) {
-                            HStack {
-                                Image(systemName: "lock.fill")
-                                    .font(.system(size: 24))
-                                    .foregroundColor(.orange)
-                                
-                                Text("Premium Feature")
-                                    .font(.system(size: 18, weight: .bold))
-                                    .foregroundColor(.orange)
-                                
-                                Spacer()
-                            }
-                            
-                            Text("This feature may require a premium subscription in the future. We're currently working on making it available for everyone.")
-                                .font(.system(size: 14))
-                                .foregroundColor(.secondary)
-                                .multilineTextAlignment(.leading)
-                        }
-                        .padding()
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Color.orange.opacity(0.1))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(Color.orange.opacity(0.3), lineWidth: 1)
-                                )
-                        )
-                    }
-                }
-                
-                // How it works
-                VStack(spacing: 16) {
-                    Text("How It Works")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(.primary)
-                    
-                    VStack(spacing: 12) {
-                        featureStepRow("1", "Search", "Find today's football matches")
-                        featureStepRow("2", "Select", "Choose a match to view lineups")
-                        featureStepRow("3", "Import", "Add professional players to your game")
-                    }
-                }
-                .padding()
-                .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(Color(UIColor.systemBackground))
-                        .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
-                )
-                
-                Spacer()
-            }
-            .padding(20)
-            .navigationTitle("Feature Info")
-            .navigationBarItems(
-                trailing: Button("Done") {
-                    showFeatureInfo = false
-                }
-            )
-        }
-    }
-    
-    private func featureStepRow(_ number: String, _ title: String, _ description: String) -> some View {
-        HStack(spacing: 12) {
-            Text(number)
-                .font(.system(size: 16, weight: .bold))
-                .foregroundColor(.white)
-                .frame(width: 24, height: 24)
-                .background(Color.blue)
-                .clipShape(Circle())
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(.primary)
-                
-                Text(description)
-                    .font(.system(size: 14))
-                    .foregroundColor(.secondary)
-            }
-            
-            Spacer()
-        }
-    }
-    
-    private func loadingView(_ message: String) -> some View {
-        VStack(spacing: 16) {
-            ProgressView()
-                .scaleEffect(1.2)
-            
-            Text(message)
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
+    // MARK: - Match Selection
     
     private var matchSelectionView: some View {
         VStack(spacing: 16) {
-            Text("Select a Match")
-                .font(.headline)
-                .padding(.top, 20)
+            HStack {
+                Text("Select a Match")
+                    .font(.headline)
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                Spacer()
+                
+                Button("Back") {
+                    withAnimation { searchPhase = .initial }
+                }
+                .font(.subheadline)
+                .foregroundColor(AppDesignSystem.Colors.primary)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
             
             if searchResults.isEmpty {
-                VStack(spacing: 12) {
-                    Image(systemName: "calendar.badge.exclamationmark")
-                        .font(.system(size: 40))
-                        .foregroundColor(.gray)
-                    
-                    Text("No matches found for today")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                    
-                    Button("Try Again") {
-                        searchForMatches()
-                    }
-                    .buttonStyle(.bordered)
-                }
-                .padding(.vertical, 40)
+                emptyMatchesView
             } else {
                 ScrollView {
                     LazyVStack(spacing: 12) {
                         ForEach(searchResults, id: \.id) { match in
-                            MatchCard(match: match) {
+                            LineupMatchCard(match: match) {
                                 selectMatch(match)
                             }
                         }
                     }
                     .padding(.horizontal, 20)
+                    .padding(.bottom, 20)
                 }
             }
         }
     }
     
+    private var emptyMatchesView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "calendar.badge.exclamationmark")
+                .font(.system(size: 50))
+                .foregroundColor(AppDesignSystem.Colors.secondaryText)
+            
+            Text("No matches found for today")
+                .font(.headline)
+                .foregroundColor(AppDesignSystem.Colors.primaryText)
+            
+            Button("Try Again") {
+                searchForMatches()
+            }
+            .font(.subheadline)
+            .foregroundColor(AppDesignSystem.Colors.primary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    
+    // MARK: - Player Selection
+    
     private var playerSelectionView: some View {
         VStack(spacing: 0) {
-            if let lineup = lineup {
-                Text("Select Players to Add")
-                    .font(.headline)
-                    .padding(.vertical, 16)
+            if let lineup = lineup, let match = selectedMatch {
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Select Players")
+                            .font(.headline)
+                            .foregroundColor(AppDesignSystem.Colors.primaryText)
+                        
+                        Text("\(match.homeTeam.shortName) vs \(match.awayTeam.shortName)")
+                            .font(.subheadline)
+                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    }
+                    
+                    Spacer()
+                    
+                    VibrantStatusBadge("\(selectedPlayers.count) selected", color: AppDesignSystem.Colors.success)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
                 
                 ScrollView {
                     VStack(spacing: 20) {
                         // Home team
-                        TeamLineupSection(
+                        LineupTeamSection(
                             team: lineup.homeTeam.team,
                             players: lineup.homeTeam.startingXI + lineup.homeTeam.substitutes,
                             selectedPlayers: $selectedPlayers
                         )
                         
-                        Divider()
-                            .padding(.horizontal, 20)
+                        Divider().padding(.horizontal, 20)
                         
                         // Away team
-                        TeamLineupSection(
+                        LineupTeamSection(
                             team: lineup.awayTeam.team,
                             players: lineup.awayTeam.startingXI + lineup.awayTeam.substitutes,
                             selectedPlayers: $selectedPlayers
                         )
                     }
-                    .padding(.bottom, 100) // Space for bottom button
+                    .padding(.bottom, 100)
                 }
             }
         }
     }
     
+    // MARK: - Bottom Action
+    
     private var bottomActionButton: some View {
         VStack(spacing: 0) {
             Divider()
             
-            Button("Add \(selectedPlayers.count) Players") {
-                addSelectedPlayers()
+            Button(action: addSelectedPlayers) {
+                HStack {
+                    Image(systemName: "plus.circle.fill")
+                    Text("Add \(selectedPlayers.count) Players")
+                }
+                .font(.headline)
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(
+                    selectedPlayers.isEmpty ?
+                    Color.gray : AppDesignSystem.Colors.success
+                )
+                .cornerRadius(12)
             }
             .disabled(selectedPlayers.isEmpty)
-            .buttonStyle(.borderedProminent)
-            .frame(maxWidth: .infinity, minHeight: 50)
             .padding(.horizontal, 20)
             .padding(.vertical, 16)
-            .background(Color(UIColor.systemBackground))
+            .background(AppDesignSystem.Colors.cardBackground)
         }
     }
     
-    // MARK: - Helper Methods
+    // MARK: - Feature Info Sheet
     
-    private func checkFeatureAccess() {
-        searchPhase = .initial
+    private var featureInfoSheet: some View {
+        NavigationView {
+            VStack(spacing: 24) {
+                Image(systemName: "magnifyingglass.circle.fill")
+                    .font(.system(size: 60))
+                    .foregroundColor(AppDesignSystem.Colors.primary)
+                
+                Text("Lineup Search")
+                    .font(.title2)
+                    .fontWeight(.bold)
+                
+                VStack(alignment: .leading, spacing: 16) {
+                    featureRow("1", "Search", "Find today's football matches")
+                    featureRow("2", "Select", "Choose a match to view lineups")
+                    featureRow("3", "Import", "Add professional players to your game")
+                }
+                .padding(20)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(AppDesignSystem.Colors.cardBackground)
+                )
+                
+                if AppConfig.canAccessLineupSearch {
+                    Text("This feature is free during our testing period!")
+                        .font(.subheadline)
+                        .foregroundColor(AppDesignSystem.Colors.success)
+                        .multilineTextAlignment(.center)
+                }
+                
+                Spacer()
+            }
+            .padding(24)
+            .navigationTitle("Feature Info")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") { showFeatureInfo = false }
+                }
+            }
+        }
     }
+    
+    private func featureRow(_ number: String, _ title: String, _ desc: String) -> some View {
+        HStack(spacing: 12) {
+            Text(number)
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(.white)
+                .frame(width: 24, height: 24)
+                .background(AppDesignSystem.Colors.primary)
+                .clipShape(Circle())
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                Text(desc)
+                    .font(.system(size: 13))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+            }
+            
+            Spacer()
+        }
+    }
+    
+    // MARK: - Loading View
+    
+    private func loadingView(_ message: String) -> some View {
+        VStack(spacing: 16) {
+            ProgressView()
+                .scaleEffect(1.2)
+                .tint(AppDesignSystem.Colors.primary)
+            
+            Text(message)
+                .font(.subheadline)
+                .foregroundColor(AppDesignSystem.Colors.secondaryText)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+    
+    // MARK: - Actions
     
     private func searchForMatches() {
         guard AppConfig.canAccessLineupSearch else {
@@ -446,23 +431,19 @@ struct LineupSearchView: View {
         
         Task {
             do {
-                // Use the football data service to fetch today's matches
-                let matchService = ServiceProvider.shared.getMatchService()
-                if let footballService = matchService as? FootballDataMatchService {
-                    let matches = try await footballService.fetchTodaysMatchesForLineupSearch()
+                let matches = try await DataManager.shared.fetchMatches()
+                
+                await MainActor.run {
+                    self.searchResults = matches
+                    self.searchPhase = .matchSelection
                     
-                    DispatchQueue.main.async {
-                        self.searchResults = matches
-                        self.searchPhase = .matchSelection
-                    }
-                } else {
-                    throw NSError(domain: "LineupSearch", code: 1, userInfo: [
-                        NSLocalizedDescriptionKey: "Match service not available"
-                    ])
+                    let impact = UIImpactFeedbackGenerator(style: .light)
+                    impact.impactOccurred()
                 }
             } catch {
-                DispatchQueue.main.async {
-                    self.showErrorMessage(message: "Failed to load matches: \(error.localizedDescription)")
+                await MainActor.run {
+                    self.errorMessage = "Failed to load matches: \(error.localizedDescription)"
+                    self.showError = true
                     self.searchPhase = .initial
                 }
             }
@@ -475,22 +456,49 @@ struct LineupSearchView: View {
         
         Task {
             do {
-                let matchService = ServiceProvider.shared.getMatchService()
-                if let footballService = matchService as? FootballDataMatchService {
-                    let matchLineup = try await footballService.fetchMatchLineupForSearch(matchId: match.id)
-                    
-                    DispatchQueue.main.async {
-                        self.lineup = matchLineup
-                        self.searchPhase = .playerSelection
+                var players: [Player] = []
+                
+                // Try official lineup first
+                do {
+                    players = try await DataManager.shared.fetchPlayers(for: match.id)
+                    print("✅ Got official lineup: \(players.count) players")
+                } catch LineupError.notAvailableYet {
+                    // Fallback to full squad
+                    print("⚠️ Lineup not available, fetching full squad...")
+                    players = try await DataManager.shared.fetchSquad(for: match.id)
+                    print("✅ Got squad fallback: \(players.count) players")
+                }
+                
+                guard !players.isEmpty else {
+                    await MainActor.run {
+                        self.errorMessage = "No players found for this match."
+                        self.showError = true
+                        self.searchPhase = .matchSelection
                     }
-                } else {
-                    throw NSError(domain: "LineupSearch", code: 2, userInfo: [
-                        NSLocalizedDescriptionKey: "Cannot fetch lineup"
-                    ])
+                    return
+                }
+                
+                // Group players by team
+                let homePlayers = players.filter { $0.team.id == match.homeTeam.id }
+                let awayPlayers = players.filter { $0.team.id == match.awayTeam.id }
+                
+                // Create lineup from fetched players
+                let matchLineup = Lineup(
+                    homeTeam: TeamLineup(team: match.homeTeam, formation: nil, startingXI: homePlayers, substitutes: [], coach: nil),
+                    awayTeam: TeamLineup(team: match.awayTeam, formation: nil, startingXI: awayPlayers, substitutes: [], coach: nil)
+                )
+                
+                await MainActor.run {
+                    self.lineup = matchLineup
+                    self.searchPhase = .playerSelection
+                    
+                    let impact = UIImpactFeedbackGenerator(style: .medium)
+                    impact.impactOccurred()
                 }
             } catch {
-                DispatchQueue.main.async {
-                    self.showErrorMessage(message: "Failed to load lineup: \(error.localizedDescription)")
+                await MainActor.run {
+                    self.errorMessage = "Failed to load lineup: \(error.localizedDescription)"
+                    self.showError = true
                     self.searchPhase = .matchSelection
                 }
             }
@@ -505,94 +513,95 @@ struct LineupSearchView: View {
         
         let playersToAdd = allPlayers.filter { selectedPlayers.contains($0.id) }
         
-        // Add players to game session (avoiding duplicates)
+        // Add players avoiding duplicates
+        var addedCount = 0
         for player in playersToAdd {
             if !gameSession.availablePlayers.contains(where: { $0.id == player.id }) {
                 gameSession.availablePlayers.append(player)
+                addedCount += 1
             }
         }
         
-        // Save the updated players list
+        // Save and dismiss
         gameSession.saveCustomPlayers()
         
-        // Track success
-        print("✅ Added \(playersToAdd.count) players from lineup search")
+        let impact = UINotificationFeedbackGenerator()
+        impact.notificationOccurred(.success)
+        
+        print("✅ Added \(addedCount) players from lineup search")
         
         presentationMode.wrappedValue.dismiss()
     }
-    
-    private func showErrorMessage(message: String) {
-        errorMessage = message
-        showError = true
-    }
 }
 
+// MARK: - Lineup Match Card
 
-// MARK: - Match Card Component
-
-struct MatchCard: View {
+struct LineupMatchCard: View {
     let match: Match
     let onSelect: () -> Void
     
+    private var timeFormatter: DateFormatter {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        return formatter
+    }
+    
     var body: some View {
         Button(action: onSelect) {
-            HStack(spacing: 16) {
+            HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 8) {
-                    HStack {
+                    HStack(spacing: 8) {
                         Text(match.homeTeam.name)
-                            .font(.subheadline)
                             .fontWeight(.medium)
                         
                         Text("vs")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
                         
                         Text(match.awayTeam.name)
-                            .font(.subheadline)
                             .fontWeight(.medium)
                     }
+                    .font(.subheadline)
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
                     
                     HStack {
                         Text(match.competition.name)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        
                         Spacer()
-                        
-                        Text(formatMatchTime(match.startTime))
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        Text(timeFormatter.string(from: match.startTime))
                     }
+                    .font(.caption)
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
                 }
                 
-                Spacer()
-                
                 Image(systemName: "chevron.right")
-                    .foregroundColor(.blue)
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundColor(AppDesignSystem.Colors.primary)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(Color.gray.opacity(0.05))
-            .cornerRadius(8)
+            .padding(16)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(AppDesignSystem.Colors.cardBackground)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(AppDesignSystem.Colors.primary.opacity(0.2), lineWidth: 1)
+                    )
+            )
         }
         .buttonStyle(PlainButtonStyle())
     }
-    
-    private func formatMatchTime(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
-    }
 }
 
-// MARK: - Team Lineup Section Component
+// MARK: - Lineup Team Section
 
-struct TeamLineupSection: View {
+struct LineupTeamSection: View {
     let team: Team
     let players: [Player]
     @Binding var selectedPlayers: Set<UUID>
     
     @State private var isExpanded = true
+    
+    private var allSelected: Bool {
+        players.allSatisfy { selectedPlayers.contains($0.id) }
+    }
     
     var body: some View {
         VStack(spacing: 12) {
@@ -609,121 +618,108 @@ struct TeamLineupSection: View {
                     
                     Text(team.name)
                         .font(.headline)
-                        .foregroundColor(.primary)
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
                     
-                    Text("(\(players.count) players)")
+                    Text("(\(players.count))")
                         .font(.subheadline)
-                        .foregroundColor(.secondary)
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
                     
                     Spacer()
                     
-                    // Select all/none button
-                    Button(allPlayersSelected ? "Deselect All" : "Select All") {
-                        if allPlayersSelected {
-                            for player in players {
-                                selectedPlayers.remove(player.id)
-                            }
+                    Button(allSelected ? "Deselect All" : "Select All") {
+                        let impact = UIImpactFeedbackGenerator(style: .light)
+                        impact.impactOccurred()
+                        
+                        if allSelected {
+                            players.forEach { selectedPlayers.remove($0.id) }
                         } else {
-                            for player in players {
-                                selectedPlayers.insert(player.id)
-                            }
+                            players.forEach { selectedPlayers.insert($0.id) }
                         }
                     }
                     .font(.caption)
-                    .foregroundColor(.blue)
-                    .padding(.trailing, 8)
+                    .foregroundColor(AppDesignSystem.Colors.primary)
                     
                     Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                        .foregroundColor(.secondary)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 10)
-                .background(AppDesignSystem.TeamColors.getColor(for: team).opacity(0.1))
-                .cornerRadius(8)
+                .padding(.vertical, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(AppDesignSystem.TeamColors.getAccentColor(for: team))
+                )
             }
             .buttonStyle(PlainButtonStyle())
+            .padding(.horizontal, 20)
             
             // Players grid
             if isExpanded {
                 LazyVGrid(columns: [
                     GridItem(.flexible()),
                     GridItem(.flexible())
-                ], spacing: 8) {
+                ], spacing: 10) {
                     ForEach(players, id: \.id) { player in
-                        LineupPlayerCard(
+                        LineupPlayerSelectCard(
                             player: player,
-                            isSelected: selectedPlayers.contains(player.id),
-                            onToggleSelection: {
-                                if selectedPlayers.contains(player.id) {
-                                    selectedPlayers.remove(player.id)
-                                } else {
-                                    selectedPlayers.insert(player.id)
-                                }
+                            isSelected: selectedPlayers.contains(player.id)
+                        ) {
+                            let impact = UIImpactFeedbackGenerator(style: .light)
+                            impact.impactOccurred()
+                            
+                            if selectedPlayers.contains(player.id) {
+                                selectedPlayers.remove(player.id)
+                            } else {
+                                selectedPlayers.insert(player.id)
                             }
-                        )
+                        }
                     }
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, 20)
             }
         }
     }
-    
-    private var allPlayersSelected: Bool {
-        players.allSatisfy { selectedPlayers.contains($0.id) }
-    }
 }
 
-// MARK: - Lineup Player Card Component
+// MARK: - Lineup Player Card
 
-struct LineupPlayerCard: View {
+struct LineupPlayerSelectCard: View {
     let player: Player
     let isSelected: Bool
-    let onToggleSelection: () -> Void
+    let onToggle: () -> Void
     
     var body: some View {
-        Button(action: onToggleSelection) {
-            VStack(spacing: 8) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(player.name)
-                            .font(.subheadline)
-                            .fontWeight(.medium)
-                            .lineLimit(2)
-                            .multilineTextAlignment(.leading)
-                        
-                        Text(player.position.rawValue)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
+        Button(action: onToggle) {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(player.name)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
                     
-                    Spacer()
-                    
-                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                        .foregroundColor(isSelected ? .green : .gray)
-                        .font(.title3)
+                    Text(player.position.rawValue)
+                        .font(.caption)
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
                 }
                 
-                if isSelected {
-                    HStack {
-                        Image(systemName: "plus.circle.fill")
-                            .foregroundColor(.green)
-                            .font(.caption)
-                        
-                        Text("Will be added")
-                            .font(.caption)
-                            .fontWeight(.medium)
-                            .foregroundColor(.green)
-                    }
-                }
+                Spacer()
+                
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 20))
+                    .foregroundColor(isSelected ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.secondaryText)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
             .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(isSelected ? Color.green.opacity(0.1) : Color.gray.opacity(0.05))
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(isSelected ? AppDesignSystem.Colors.success.opacity(0.1) : AppDesignSystem.Colors.cardBackground)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(isSelected ? Color.green : Color.gray.opacity(0.3), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(
+                                isSelected ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.secondaryText.opacity(0.2),
+                                lineWidth: 1
+                            )
                     )
             )
         }
