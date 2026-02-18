@@ -4,7 +4,7 @@
 //
 //  Easy controls for enabling/disabling free Live Mode testing
 //
-
+/*
 import Foundation
 import UIKit
 
@@ -55,7 +55,6 @@ struct FreeLiveModeTesting {
     /// Get current testing status and analytics
     @MainActor static func getTestingStatus() -> String {
         let config = AppConfig.getFreeLiveModeAnalytics()
-        let adAnalytics = AdManager.shared.getFreeTestingAdAnalytics()
         
         if AppConfig.isFreeLiveTestingActive {
             let startDate = config["startDate"] as? Date ?? Date()
@@ -202,3 +201,4 @@ extension DateFormatter {
         return formatter
     }()
 }
+*/

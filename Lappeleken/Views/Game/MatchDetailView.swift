@@ -53,7 +53,7 @@ struct MatchDetailView: View {
                 pulseMatchHeader = true
             }
         }
-        .showBannerAdForFreeUsers()
+        .withMinimalBanner()
     }
     
     // MARK: - Enhanced Background

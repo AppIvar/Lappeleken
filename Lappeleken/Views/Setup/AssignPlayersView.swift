@@ -381,7 +381,7 @@ struct AssignPlayersView: View {
     }
     
     private func startGameAction() {
-        if AppPurchaseManager.shared.currentTier == .free && AdManager.shared.shouldShowInterstitialAfterGameComplete() {
+        if AppPurchaseManager.shared.currentTier == .free && AdManager.shared.shouldShowInterstitial(for: .gameComplete) {
             showInterstitialBeforeStartingGame()
         } else {
             startGame()

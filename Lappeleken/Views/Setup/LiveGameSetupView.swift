@@ -26,7 +26,6 @@ struct LiveGameSetupView: View {
     @State private var unavailableMatchesMessage = ""
     @State private var temporaryStep: Int? = nil
     @State private var isPresentingAlert = false
-    @StateObject private var networkMonitor = NetworkMonitor()
     @State private var isConnected = true
     @State private var showingRateLimit = false
     @State private var nextUpdateTime = 90
@@ -36,6 +35,12 @@ struct LiveGameSetupView: View {
     @State private var expandedLeagues = Set<String>()
     @State private var playerAssignments: [Participant: [Player]] = [:]
     @State private var showingPlayerDrawing = false
+    @State private var showingUpgradeSheet = false
+    @State private var selectedLeagueForUpgrade: String? = nil
+    
+    @StateObject private var networkMonitor = NetworkMonitor()
+    @ObservedObject private var leagueManager = LeagueAccessManager.shared
+
 
     private let steps = ["Matches", "Participants", "Set Bets", "Select Players", "Review"]
     
@@ -134,6 +139,9 @@ struct LiveGameSetupView: View {
                 }
             )
         }
+        .sheet(isPresented: $showingUpgradeSheet) {
+            UpgradeView()
+        }
     }
     
     // MARK: - Helper Methods
@@ -160,13 +168,12 @@ struct LiveGameSetupView: View {
     
     private func initializeBetAmounts() {
         for eventType in Bet.EventType.allCases {
-            betAmounts[eventType] = 1.0
+            betAmounts[eventType] = 0.0
             
             // Set certain bets as negative by default
-            if eventType == .ownGoal || eventType == .redCard ||
-               eventType == .yellowCard || eventType == .penaltyMissed {
+            if eventType == .ownGoal || eventType == .penaltyMissed {
                 betNegativeFlags[eventType] = true
-                betAmounts[eventType] = -1.0
+                betAmounts[eventType] = -0.0
             } else {
                 betNegativeFlags[eventType] = false
             }
@@ -435,7 +442,7 @@ struct LiveGameSetupView: View {
     }
 
     private var leagueOrder: [String] {
-        ["TIP", "WC", "CL", "BL1", "DED", "BSA", "PD", "FL1", "ELC", "PPL", "EC", "SA", "PL"]
+        ["TIP", "WC", "CL", "PL", "BL1", "DED", "BSA", "PD", "FL1", "ELC", "PPL", "EC", "SA"]
     }
 
     private var sortedLeagueCodes: [String] {
@@ -501,12 +508,19 @@ struct LiveGameSetupView: View {
     }
 
     private func leagueDropdownHeader(_ leagueGroup: LeagueGroup) -> some View {
-        HStack {
+        let accessStatus = leagueManager.getAccessStatus(for: leagueGroup.league)
+        
+        return HStack {
             // League info
             VStack(alignment: .leading, spacing: 4) {
-                Text(leagueGroup.name)
-                    .font(AppDesignSystem.Typography.subheadingFont.bold())
-                    .foregroundColor(AppDesignSystem.Colors.primary)
+                HStack(spacing: 6) {
+                    Text(leagueGroup.name)
+                        .font(AppDesignSystem.Typography.subheadingFont.bold())
+                        .foregroundColor(AppDesignSystem.Colors.primary)
+                    
+                    // Access badge
+                    leagueAccessBadge(for: accessStatus)
+                }
                 
                 Text("\(leagueGroup.matches.count) match\(leagueGroup.matches.count == 1 ? "" : "es")")
                     .font(AppDesignSystem.Typography.captionFont)
@@ -542,14 +556,74 @@ struct LiveGameSetupView: View {
             Image(systemName: expandedLeagues.contains(leagueGroup.league) ? "chevron.up" : "chevron.down")
                 .font(.system(size: 14, weight: .medium))
                 .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                .rotationEffect(.degrees(expandedLeagues.contains(leagueGroup.league) ? 0 : 0))
                 .animation(.easeInOut(duration: 0.2), value: expandedLeagues.contains(leagueGroup.league))
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .contentShape(Rectangle()) // Makes entire area tappable
+        .contentShape(Rectangle())
     }
-
+    
+    @ViewBuilder
+    private func leagueAccessBadge(for status: LeagueAccessStatus) -> some View {
+        switch status {
+        case .unlocked(let reason):
+            switch reason {
+            case .premium:
+                Label("Premium", systemImage: "crown.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.yellow)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.yellow.opacity(0.2))
+                    .cornerRadius(4)
+            case .leagueSubscription:
+                Label("Subscribed", systemImage: "checkmark.seal.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.green)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.green.opacity(0.2))
+                    .cornerRadius(4)
+            case .freeLeague:
+                Label("Free", systemImage: "gift.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.blue)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.blue.opacity(0.2))
+                    .cornerRadius(4)
+            case .testingMode:
+                Label("Test", systemImage: "hammer.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.purple)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.purple.opacity(0.2))
+                    .cornerRadius(4)
+            default:
+                EmptyView()
+            }
+            
+        case .limitedFree(let remaining):
+            Label("\(remaining) free", systemImage: "ticket.fill")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(.orange)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color.orange.opacity(0.2))
+                .cornerRadius(4)
+            
+        case .locked(_):
+            Label("Locked", systemImage: "lock.fill")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundColor(.red)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 2)
+                .background(Color.red.opacity(0.2))
+                .cornerRadius(4)
+        }
+    }
+    
     private func dateSection(_ dateGroup: DateGroup, showDateHeader: Bool) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             if showDateHeader {
@@ -564,6 +638,7 @@ struct LiveGameSetupView: View {
                 MatchSelectionCard(
                     match: match,
                     isSelected: selectedMatchIds.contains(match.id),
+                    accessStatus: leagueManager.getAccessStatus(for: match.competition.code),
                     onToggle: {
                         toggleMatchSelection(match)
                     }
@@ -1358,6 +1433,21 @@ struct LiveGameSetupView: View {
             return
 
         case 4: // Review (was step 5)
+            for matchId in selectedMatchIds {
+                if let match = gameSession.availableMatches.first(where: { $0.id == matchId }) {
+                    let leagueCode = match.competition.code
+                    if AppConfig.LeagueConfig.bigLeagues.contains(leagueCode) {
+                        // Only count if not subscribed to this league
+                        if !AppPurchaseManager.shared.hasPremium {
+                            let productID = LeagueAccessManager.leagueToProductID[leagueCode]
+                            if productID == nil || !AppPurchaseManager.shared.hasAccess(to: productID!) {
+                                leagueManager.useFreeMatch(for: leagueCode)
+                            }
+                        }
+                    }
+                }
+            }
+            
             startGame()
             return
             
@@ -1454,6 +1544,30 @@ struct LiveGameSetupView: View {
     // MARK: - Helper Methods
     
     private func toggleMatchSelection(_ match: Match) {
+        let leagueCode = match.competition.code
+        
+        // Check league access
+        let accessStatus = leagueManager.getAccessStatus(for: leagueCode)
+        
+        switch accessStatus {
+        case .locked(_):
+            // Show upgrade sheet
+            selectedLeagueForUpgrade = leagueCode
+            showingUpgradeSheet = true
+            return
+            
+        case .limitedFree(let remaining):
+            // Allow selection but warn if this will use a free match
+            if !selectedMatchIds.contains(match.id) && remaining == 1 {
+                // Last free match - could add a warning here
+                print("⚠️ This is your last free \(leagueManager.getLeagueDisplayName(for: leagueCode)) match")
+            }
+            
+        case .unlocked(_):
+            break // No restrictions
+        }
+        
+        // Existing selection logic
         if selectedMatchIds.contains(match.id) {
             selectedMatchIds.remove(match.id)
         } else {
@@ -1744,6 +1858,7 @@ struct EnhancedParticipantCard: View {
 struct MatchSelectionCard: View {
     let match: Match
     let isSelected: Bool
+    let accessStatus: LeagueAccessStatus
     let onToggle: () -> Void
     
     private let dateFormatter: DateFormatter = {
@@ -1752,6 +1867,13 @@ struct MatchSelectionCard: View {
         formatter.timeStyle = .short
         return formatter
     }()
+    
+    private var isLocked: Bool {
+        if case .locked(_) = accessStatus {
+            return true
+        }
+        return false
+    }
     
     var body: some View {
         Button(action: onToggle) {
@@ -1773,7 +1895,7 @@ struct MatchSelectionCard: View {
                                 .font(AppDesignSystem.Typography.bodyFont.bold())
                                 .lineLimit(1)
                                 .multilineTextAlignment(.center)
-                                .foregroundColor(AppDesignSystem.Colors.primaryText)
+                                .foregroundColor(isLocked ? AppDesignSystem.Colors.secondaryText : AppDesignSystem.Colors.primaryText)
                         }
                         
                         Text("vs")
@@ -1785,7 +1907,7 @@ struct MatchSelectionCard: View {
                                 .font(AppDesignSystem.Typography.bodyFont.bold())
                                 .lineLimit(1)
                                 .multilineTextAlignment(.center)
-                                .foregroundColor(AppDesignSystem.Colors.primaryText)
+                                .foregroundColor(isLocked ? AppDesignSystem.Colors.secondaryText : AppDesignSystem.Colors.primaryText)
                         }
                     }
                     .padding(.vertical, 8)
@@ -1796,6 +1918,7 @@ struct MatchSelectionCard: View {
                 }
                 .padding(.horizontal, 4)
             }
+            .opacity(isLocked ? 0.6 : 1.0)
             .overlay(
                 RoundedRectangle(cornerRadius: AppDesignSystem.Layout.cornerRadius)
                     .stroke(
@@ -1807,15 +1930,40 @@ struct MatchSelectionCard: View {
                 HStack {
                     Spacer()
                     VStack {
-                        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                            .foregroundColor(
-                                isSelected ?
-                                AppDesignSystem.Colors.primary :
-                                AppDesignSystem.Colors.secondaryText.opacity(0.7)
-                            )
-                            .font(.title2)
-                            .padding(8)
+                        if isLocked {
+                            Image(systemName: "lock.fill")
+                                .foregroundColor(.red)
+                                .font(.title2)
+                                .padding(8)
+                        } else {
+                            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                                .foregroundColor(
+                                    isSelected ?
+                                    AppDesignSystem.Colors.primary :
+                                        AppDesignSystem.Colors.secondaryText.opacity(0.7)
+                                )
+                                .font(.title2)
+                                .padding(8)
+                        }
                         Spacer()
+                    }
+                }
+            )
+            // Lock overlay for locked matches
+            .overlay(
+                Group {
+                    if isLocked {
+                        VStack {
+                            Spacer()
+                            Text("Tap to unlock")
+                                .font(.caption)
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(Color.red.opacity(0.8))
+                                .cornerRadius(4)
+                                .padding(.bottom, 8)
+                        }
                     }
                 }
             )

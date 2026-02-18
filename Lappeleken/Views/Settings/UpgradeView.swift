@@ -3,6 +3,7 @@
 //  Lucky Football Slip
 //
 //  Created by Ivar Hovland on 22/05/2025.
+//  Updated for tiered purchase system on 04/02/2026.
 //
 
 import SwiftUI
@@ -11,24 +12,42 @@ import StoreKit
 struct UpgradeView: View {
     @Environment(\.presentationMode) var presentationMode
     @ObservedObject private var purchaseManager = AppPurchaseManager.shared
+    @ObservedObject private var leagueManager = LeagueAccessManager.shared
     @State private var selectedTab = 0
     @State private var isLoadingProducts = true
     @State private var showingError = false
     @State private var errorMessage = ""
+    @State private var expandedSection: PurchaseSection? = nil
+    
+    enum PurchaseSection: String, CaseIterable {
+        case premium = "Premium"
+        case leagues = "Leagues"
+        case extras = "Extras"
+    }
     
     var body: some View {
         NavigationView {
             ScrollView {
                 VStack(spacing: 24) {
-                    // Hero Section
-                    heroSection
+                    // Current Status Card
+                    currentStatusCard
                     
-                    // Main Content Based on Tab
-                    if selectedTab == 0 {
-                        subscriptionView
-                    } else {
-                        featuresView
+                    // Tab Selector
+                    Picker("View", selection: $selectedTab) {
+                        Text("Packages").tag(0)
+                        Text("My Access").tag(1)
                     }
+                    .pickerStyle(SegmentedPickerStyle())
+                    .padding(.horizontal)
+                    
+                    if selectedTab == 0 {
+                        purchaseOptionsView
+                    } else {
+                        myAccessView
+                    }
+                    
+                    // Restore Purchases
+                    restorePurchasesButton
                     
                     Spacer(minLength: 40)
                 }
@@ -37,7 +56,7 @@ struct UpgradeView: View {
             .navigationTitle("Upgrade")
             .navigationBarTitleDisplayMode(.large)
             .navigationBarItems(
-                leading: Button("Cancel") {
+                leading: Button("Close") {
                     presentationMode.wrappedValue.dismiss()
                 }
             )
@@ -52,150 +71,41 @@ struct UpgradeView: View {
         }
     }
     
-    // MARK: - Hero Section
+    // MARK: - Current Status Card
     
-    private var heroSection: some View {
-        VStack(spacing: 16) {
-            // Tab Selector
-            Picker("View", selection: $selectedTab) {
-                Text("Premium").tag(0)
-                Text("Features").tag(1)
-            }
-            .pickerStyle(SegmentedPickerStyle())
-            .padding(.horizontal)
-            
-            // Status Card
-            EnhancedStatusCard(
-                title: purchaseManager.currentTier == .premium ? "Premium Active" : "Free Plan",
-                subtitle: purchaseManager.currentTier == .premium ? "Unlimited matches • No ads" : "\(purchaseManager.remainingFreeMatchesToday) matches left today",
-                icon: purchaseManager.currentTier == .premium ? "crown.fill" : "person.circle",
-                color: purchaseManager.currentTier == .premium ? AppDesignSystem.Colors.warning : AppDesignSystem.Colors.primary,
-                isPremium: purchaseManager.currentTier == .premium
-            )
-        }
-    }
-    
-    // MARK: - Subscription View
-    
-    private var subscriptionView: some View {
-        VStack(spacing: 24) {
-            if purchaseManager.currentTier == .premium {
-                // Already Premium
-                premiumActiveView
-            } else {
-                // Free User - Show Subscription
-                freeUserSubscriptionView
-            }
-        }
-    }
-    
-    private var premiumActiveView: some View {
-        VStack(spacing: 20) {
-            // Premium Status
-            VStack(spacing: 16) {
-                Image(systemName: "crown.fill")
-                    .font(.system(size: 50))
-                    .foregroundColor(.yellow)
-                
-                Text("You're Premium!")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .foregroundColor(.primary)
-                
-                Text("Enjoy unlimited live matches and an ad-free experience")
-                    .font(.system(size: 16))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
-            }
-            .padding(.vertical, 30)
-            .frame(maxWidth: .infinity)
-            .background(
-                LinearGradient(
-                    colors: [
-                        AppDesignSystem.Colors.warning.opacity(0.1),
-                        AppDesignSystem.Colors.warning.opacity(0.05)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-            )
-            .cornerRadius(16)
-            
-            // Manage Subscription Button
-            Button("Manage Subscription") {
-                if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
-                    UIApplication.shared.open(url)
-                }
-            }
-            .font(.system(size: 16, weight: .semibold))
-            .foregroundColor(.blue)
-            .padding()
-            .frame(maxWidth: .infinity)
-            .background(Color.blue.opacity(0.1))
-            .cornerRadius(12)
-        }
-    }
-    
-    private var freeUserSubscriptionView: some View {
-        VStack(spacing: 20) {
-            // Live matches status
-            dailyMatchesStatusCard
-            
-            // Subscription offer
-            if isLoadingProducts {
-                LoadingCard()
-            } else if let premiumProduct = purchaseManager.availableProducts.first(where: { $0.id == AppPurchaseManager.ProductID.premium.rawValue }) {
-                SubscriptionOfferCard(product: premiumProduct)
-            } else {
-                ErrorCard {
-                    loadProducts()
-                }
-            }
-            
-            // Watch Ad Option
-            if purchaseManager.remainingFreeMatchesToday == 0 && AdManager.shared.isRewardedReady {
-                watchAdCard
-            }
-        }
-    }
-    
-    private var dailyMatchesStatusCard: some View {
+    private var currentStatusCard: some View {
         VStack(spacing: 12) {
             HStack {
-                Image(systemName: "sportscourt")
-                    .font(.system(size: 20))
-                    .foregroundColor(purchaseManager.remainingFreeMatchesToday > 0 ? .green : .red)
-                
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Today's Live Matches")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.primary)
+                    HStack {
+                        Image(systemName: purchaseManager.hasPremium ? "crown.fill" : "person.circle")
+                            .foregroundColor(purchaseManager.hasPremium ? .yellow : AppDesignSystem.Colors.primary)
+                        
+                        Text(purchaseManager.hasPremium ? "Premium" : "Free Plan")
+                            .font(.headline)
+                    }
                     
-                    Text("\(purchaseManager.remainingFreeMatchesToday) remaining")
-                        .font(.system(size: 14))
-                        .foregroundColor(.secondary)
+                    if purchaseManager.hasPremium {
+                        Text("All features unlocked")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    } else {
+                        Text("Upgrade to unlock more features")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 }
                 
                 Spacer()
                 
-                // Progress indicator
-                ZStack {
-                    Circle()
-                        .stroke(Color.white.opacity(0.2), lineWidth: 3)
-                        .frame(width: 30, height: 30)
-                    
-                    Circle()
-                        .trim(from: 0, to: CGFloat(purchaseManager.remainingFreeMatchesToday))
-                        .stroke(
-                            purchaseManager.remainingFreeMatchesToday > 0 ? Color.green : Color.red,
-                            style: StrokeStyle(lineWidth: 3, lineCap: .round)
-                        )
-                        .frame(width: 30, height: 30)
-                        .rotationEffect(.degrees(-90))
-                    
-                    Text("\(purchaseManager.remainingFreeMatchesToday)")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(.primary)
+                if purchaseManager.isAdFree {
+                    Label("Ad-Free", systemImage: "xmark.circle.fill")
+                        .font(.caption)
+                        .foregroundColor(.green)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.green.opacity(0.1))
+                        .cornerRadius(8)
                 }
             }
             .padding()
@@ -204,128 +114,304 @@ struct UpgradeView: View {
         }
     }
     
-    private var watchAdCard: some View {
-        VStack(spacing: 12) {
-            HStack {
-                Image(systemName: "play.rectangle.fill")
-                    .font(.system(size: 20))
-                    .foregroundColor(.blue)
+    // MARK: - Purchase Options View
+    
+    private var purchaseOptionsView: some View {
+        VStack(spacing: 20) {
+            // Premium - Best Value
+            premiumSection
+            
+            // Individual League Subscriptions
+            leaguesSection
+            
+            // One-time Purchases
+            extrasSection
+        }
+    }
+    
+    // MARK: - Premium Section
+    
+    private var premiumSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionHeader("Best Value", icon: "star.fill", color: .yellow)
+            
+            PurchaseCard(
+                productID: .premium,
+                title: "Premium All-Access",
+                subtitle: "Everything included",
+                price: "$19.99/year",
+                features: [
+                    "All leagues & competitions",
+                    "Unlimited live matches daily",
+                    "Multiple match selection",
+                    "No advertisements",
+                    "World Cup 2026 included"
+                ],
+                isPurchased: purchaseManager.hasPremium,
+                isHighlighted: true,
+                onPurchase: { purchaseProduct(.premium) }
+            )
+        }
+    }
+    
+    // MARK: - Leagues Section
+    
+    private var leaguesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionHeader("League Subscriptions", icon: "sportscourt.fill", color: AppDesignSystem.Colors.primary)
+            
+            Text("Unlimited matches for your favorite league")
+                .font(.caption)
+                .foregroundColor(.secondary)
+            
+            // Big 4 Leagues
+            VStack(spacing: 8) {
+                LeaguePurchaseRow(
+                    productID: .leaguePL,
+                    leagueName: "Premier League",
+                    leagueCode: "PL",
+                    price: "$6.99/year",
+                    isPurchased: purchaseManager.hasAccess(to: .leaguePL),
+                    freeMatchesRemaining: leagueManager.getRemainingFreeMatches(for: "PL"),
+                    onPurchase: { purchaseProduct(.leaguePL) }
+                )
                 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Watch Ad for Extra Match")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.primary)
-                    
-                    Text("Get another live match for today")
-                        .font(.system(size: 14))
-                        .foregroundColor(.secondary)
+                LeaguePurchaseRow(
+                    productID: .leagueLaLiga,
+                    leagueName: "La Liga",
+                    leagueCode: "PD",
+                    price: "$6.99/year",
+                    isPurchased: purchaseManager.hasAccess(to: .leagueLaLiga),
+                    freeMatchesRemaining: leagueManager.getRemainingFreeMatches(for: "PD"),
+                    onPurchase: { purchaseProduct(.leagueLaLiga) }
+                )
+                
+                LeaguePurchaseRow(
+                    productID: .leagueBundesliga,
+                    leagueName: "Bundesliga",
+                    leagueCode: "BL1",
+                    price: "$6.99/year",
+                    isPurchased: purchaseManager.hasAccess(to: .leagueBundesliga),
+                    freeMatchesRemaining: leagueManager.getRemainingFreeMatches(for: "BL1"),
+                    onPurchase: { purchaseProduct(.leagueBundesliga) }
+                )
+                
+                LeaguePurchaseRow(
+                    productID: .leagueSerieA,
+                    leagueName: "Serie A",
+                    leagueCode: "SA",
+                    price: "$6.99/year",
+                    isPurchased: purchaseManager.hasAccess(to: .leagueSerieA),
+                    freeMatchesRemaining: leagueManager.getRemainingFreeMatches(for: "SA"),
+                    onPurchase: { purchaseProduct(.leagueSerieA) }
+                )
+            }
+            
+            // Champions League
+            Divider().padding(.vertical, 4)
+            
+            LeaguePurchaseRow(
+                productID: .leagueCL,
+                leagueName: "Champions League",
+                leagueCode: "CL",
+                price: "$4.99/year",
+                isPurchased: purchaseManager.hasAccess(to: .leagueCL),
+                freeMatchesRemaining: 0, // CL has no free matches
+                isLocked: true,
+                onPurchase: { purchaseProduct(.leagueCL) }
+            )
+        }
+    }
+    
+    // MARK: - Extras Section
+    
+    private var extrasSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            sectionHeader("One-Time Purchases", icon: "bag.fill", color: .orange)
+            
+            // Remove Ads
+            PurchaseCard(
+                productID: .removeAds,
+                title: "Remove Ads",
+                subtitle: "One-time purchase",
+                price: "$2.99",
+                features: [
+                    "Remove all banner ads",
+                    "Remove interstitial ads",
+                    "Cleaner experience"
+                ],
+                isPurchased: purchaseManager.hasRemovedAds,
+                isHighlighted: false,
+                onPurchase: { purchaseProduct(.removeAds) }
+            )
+            
+            // World Cup 2026
+            PurchaseCard(
+                productID: .worldCup2026,
+                title: "World Cup 2026",
+                subtitle: "Valid until August 2026",
+                price: "$4.99",
+                features: [
+                    "All World Cup matches",
+                    "June - July 2026",
+                    "One-time purchase"
+                ],
+                isPurchased: purchaseManager.hasWorldCup2026,
+                isHighlighted: false,
+                onPurchase: { purchaseProduct(.worldCup2026) }
+            )
+        }
+    }
+    
+    // MARK: - My Access View
+    
+    private var myAccessView: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            // Free Leagues
+            accessSection(
+                title: "Free Leagues",
+                icon: "checkmark.seal.fill",
+                color: .green,
+                items: [
+                    ("Eredivisie", "Unlimited (with ads)", true),
+                    ("Primeira Liga", "Unlimited (with ads)", true),
+                    ("Championship", "Unlimited (with ads)", true),
+                    ("Eliteserien", "Unlimited (with ads)", true)
+                ]
+            )
+            
+            // Big Leagues
+            accessSection(
+                title: "Big Leagues",
+                icon: "star.fill",
+                color: .blue,
+                items: [
+                    ("Premier League", bigLeagueStatus(for: "PL"), purchaseManager.hasAccess(to: .leaguePL) || leagueManager.getRemainingFreeMatches(for: "PL") > 0),
+                    ("La Liga", bigLeagueStatus(for: "PD"), purchaseManager.hasAccess(to: .leagueLaLiga) || leagueManager.getRemainingFreeMatches(for: "PD") > 0),
+                    ("Bundesliga", bigLeagueStatus(for: "BL1"), purchaseManager.hasAccess(to: .leagueBundesliga) || leagueManager.getRemainingFreeMatches(for: "BL1") > 0),
+                    ("Serie A", bigLeagueStatus(for: "SA"), purchaseManager.hasAccess(to: .leagueSerieA) || leagueManager.getRemainingFreeMatches(for: "SA") > 0)
+                ]
+            )
+            
+            // Premium Competitions
+            accessSection(
+                title: "Premium Competitions",
+                icon: "crown.fill",
+                color: .yellow,
+                items: [
+                    ("Champions League", purchaseManager.hasAccess(to: .leagueCL) ? "Subscribed" : "Locked", purchaseManager.hasAccess(to: .leagueCL)),
+                    ("World Cup 2026", purchaseManager.hasWorldCup2026 ? "Purchased" : "Locked", purchaseManager.hasWorldCup2026)
+                ]
+            )
+            
+            // Features
+            accessSection(
+                title: "Features",
+                icon: "gearshape.fill",
+                color: .purple,
+                items: [
+                    ("Ad-Free Experience", purchaseManager.isAdFree ? "Active" : "Upgrade required", purchaseManager.isAdFree),
+                    ("Multiple Match Selection", purchaseManager.hasPremium ? "Active" : "Premium only", purchaseManager.hasPremium),
+                    ("Unlimited Daily Matches", purchaseManager.hasPremium ? "Active" : "1 per day", purchaseManager.hasPremium)
+                ]
+            )
+        }
+    }
+    
+    private func bigLeagueStatus(for code: String) -> String {
+        let productID: AppPurchaseManager.ProductID
+        switch code {
+        case "PL": productID = .leaguePL
+        case "PD": productID = .leagueLaLiga
+        case "BL1": productID = .leagueBundesliga
+        case "SA": productID = .leagueSerieA
+        default: return "Unknown"
+        }
+        
+        if purchaseManager.hasPremium || purchaseManager.hasAccess(to: productID) {
+            return "Unlimited"
+        }
+        
+        let remaining = leagueManager.getRemainingFreeMatches(for: code)
+        if remaining > 0 {
+            return "\(remaining) free left"
+        }
+        return "Locked"
+    }
+    
+    // MARK: - Helper Views
+    
+    private func sectionHeader(_ title: String, icon: String, color: Color) -> some View {
+        HStack {
+            Image(systemName: icon)
+                .foregroundColor(color)
+            Text(title)
+                .font(.headline)
+            Spacer()
+        }
+    }
+    
+    private func accessSection(title: String, icon: String, color: Color, items: [(String, String, Bool)]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            sectionHeader(title, icon: icon, color: color)
+            
+            VStack(spacing: 4) {
+                ForEach(items, id: \.0) { item in
+                    HStack {
+                        Text(item.0)
+                            .font(.subheadline)
+                        Spacer()
+                        HStack(spacing: 4) {
+                            Image(systemName: item.2 ? "checkmark.circle.fill" : "lock.fill")
+                                .foregroundColor(item.2 ? .green : .red)
+                                .font(.caption)
+                            Text(item.1)
+                                .font(.caption)
+                                .foregroundColor(item.2 ? .green : .secondary)
+                        }
+                    }
+                    .padding(.vertical, 4)
                 }
-                
-                Spacer()
-                
-                Button("Watch Ad") {
-                    showRewardedAd()
-                }
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundColor(.white)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(Color.blue)
-                .cornerRadius(8)
             }
             .padding()
-            .background(Color.blue.opacity(0.05))
-            .cornerRadius(12)
-            .overlay(
-                RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.blue.opacity(0.2), lineWidth: 1)
-            )
+            .background(Color(UIColor.secondarySystemBackground))
+            .cornerRadius(8)
         }
     }
     
-    // MARK: - Features View
-    
-    private var featuresView: some View {
-        VStack(spacing: 20) {
-            // Comparison Cards
-            FeatureComparisonCard(
-                title: "Live Matches",
-                freeFeature: "1 match per day",
-                premiumFeature: "Unlimited matches",
-                icon: "sportscourt.fill"
-            )
-            
-            FeatureComparisonCard(
-                title: "Ad Experience",
-                freeFeature: "Banner & video ads",
-                premiumFeature: "Completely ad-free",
-                icon: "rectangle.slash"
-            )
-            
-            FeatureComparisonCard(
-                title: "Multiple Matches",
-                freeFeature: "One at a time",
-                premiumFeature: "Track multiple simultaneously",
-                icon: "square.grid.2x2"
-            )
-            
-            FeatureComparisonCard(
-                title: "Data Export",
-                freeFeature: "Not available",
-                premiumFeature: "Export game summaries",
-                icon: "square.and.arrow.up"
-            )
-            
-            FeatureComparisonCard(
-                title: "Support",
-                freeFeature: "Standard support",
-                premiumFeature: "Priority customer support",
-                icon: "headphones"
-            )
+    private var restorePurchasesButton: some View {
+        Button("Restore Purchases") {
+            Task {
+                await purchaseManager.restorePurchases()
+            }
         }
+        .font(.subheadline)
+        .foregroundColor(AppDesignSystem.Colors.primary)
+        .padding(.top, 8)
     }
     
-    // MARK: - Helper Methods
+    // MARK: - Actions
     
     private func loadProducts() {
         isLoadingProducts = true
         Task {
             await purchaseManager.loadProducts()
-            await MainActor.run {
-                isLoadingProducts = false
-            }
+            isLoadingProducts = false
         }
     }
     
-    private func showRewardedAd() {
-        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-              let rootViewController = windowScene.windows.first?.rootViewController else {
+    private func purchaseProduct(_ productID: AppPurchaseManager.ProductID) {
+        // Check if purchases are enabled (feature flag)
+        guard AppConfig.PurchaseConfig.purchasesEnabled else {
+            errorMessage = "Purchases are not enabled in this build. This is a testing/preview version."
+            showingError = true
             return
         }
         
-        AdManager.shared.showRewardedAdForExtraMatch(from: rootViewController) { success in
-            if success {
-                // UI will automatically update due to @Published properties
-                print("✅ Extra match granted via rewarded ad")
-            } else {
-                DispatchQueue.main.async {
-                    errorMessage = "Unable to show ad right now. Please try again later."
-                    showingError = true
-                }
-            }
-        }
-    }
-    
-    private func purchasePremium(product: Product) async {
-        do {
-            let success = try await purchaseManager.purchase(.premium)
-            if success {
-                await MainActor.run {
-                    presentationMode.wrappedValue.dismiss()
-                }
-            }
-        } catch {
-            await MainActor.run {
+        Task {
+            do {
+                _ = try await purchaseManager.purchase(productID)
+            } catch {
                 errorMessage = error.localizedDescription
                 showingError = true
             }
@@ -333,325 +419,149 @@ struct UpgradeView: View {
     }
 }
 
-// MARK: - Subscription Offer Card
+// MARK: - Purchase Card
 
-struct SubscriptionOfferCard: View {
-    let product: Product
-    @ObservedObject private var purchaseManager = AppPurchaseManager.shared
-    @State private var isPurchasing = false
-    
-    var body: some View {
-        VStack(spacing: 16) {
-            // Header
-            VStack(spacing: 8) {
-                Image(systemName: "crown.fill")
-                    .font(.system(size: 40))
-                    .foregroundColor(.yellow)
-                
-                Text("Go Premium")
-                    .font(.system(size: 24, weight: .bold, design: .rounded))
-                    .foregroundColor(.primary)
-                
-                Text("Unlimited live matches and ad-free experience")
-                    .font(.system(size: 16))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            
-            // Price
-            VStack(spacing: 4) {
-                Text(product.displayPrice)
-                    .font(.system(size: 32, weight: .bold, design: .rounded))
-                    .foregroundColor(.primary)
-                
-                Text("per month")
-                    .font(.system(size: 16))
-                    .foregroundColor(.secondary)
-            }
-            
-            // Features List
-            VStack(alignment: .leading, spacing: 8) {
-                FeatureBullet(text: "Unlimited live matches daily")
-                FeatureBullet(text: "Completely ad-free experience")
-                FeatureBullet(text: "Priority customer support")
-            }
-            
-            // Subscribe Button
-            Button(action: {
-                Task {
-                    isPurchasing = true
-                    do {
-                        _ = try await purchaseManager.purchase(.premium)
-                    } catch {
-                        print("Purchase failed: \(error)")
-                    }
-                    isPurchasing = false
-                }
-            }) {
-                HStack {
-                    if isPurchasing {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            .scaleEffect(0.8)
-                    }
-                    
-                    Text(isPurchasing ? "Processing..." : "Start Premium Subscription")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(.white)
-                }
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(
-                    LinearGradient(
-                        colors: [.blue, .purple],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .cornerRadius(12)
-            }
-            .disabled(isPurchasing)
-            
-            // Terms
-            Text("Cancel anytime. Auto-renewable subscription.")
-                .font(.system(size: 12))
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .padding(20)
-        .background(
-            LinearGradient(
-                colors: [
-                    AppDesignSystem.Colors.warning.opacity(0.05),
-                    AppDesignSystem.Colors.primary.opacity(0.05)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        )
-        .cornerRadius(16)
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(
-                    LinearGradient(
-                        colors: [
-                            AppDesignSystem.Colors.warning.opacity(0.3),
-                            AppDesignSystem.Colors.primary.opacity(0.3)
-                        ],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    ),
-                    lineWidth: 1
-                )
-        )
-    }
-}
-
-// MARK: - Feature Comparison Card
-
-struct FeatureComparisonCard: View {
-    let title: String
-    let freeFeature: String
-    let premiumFeature: String
-    let icon: String
-    
-    var body: some View {
-        VStack(spacing: 12) {
-            // Header
-            HStack {
-                Image(systemName: icon)
-                    .font(.system(size: 20))
-                    .foregroundColor(.primary)
-                
-                Text(title)
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(.primary)
-                
-                Spacer()
-            }
-            
-            // Comparison
-            HStack(spacing: 16) {
-                // Free
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Free")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.secondary)
-                    
-                    Text(freeFeature)
-                        .font(.system(size: 14))
-                        .foregroundColor(.primary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                
-                Divider()
-                    .frame(height: 30)
-                
-                // Premium
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text("Premium")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(.blue)
-                        
-                        Image(systemName: "crown.fill")
-                            .font(.system(size: 12))
-                            .foregroundColor(.yellow)
-                    }
-                    
-                    Text(premiumFeature)
-                        .font(.system(size: 14))
-                        .foregroundColor(.primary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-        .padding()
-        .background(Color(UIColor.secondarySystemBackground))
-        .cornerRadius(12)
-    }
-}
-
-// MARK: - Feature Bullet Point
-
-struct FeatureBullet: View {
-    let text: String
-    
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 16))
-                .foregroundColor(.green)
-            
-            Text(text)
-                .font(.system(size: 14))
-                .foregroundColor(.primary)
-            
-            Spacer()
-        }
-    }
-}
-
-// MARK: - Enhanced Status Card
-
-struct EnhancedStatusCard: View {
+struct PurchaseCard: View {
+    let productID: AppPurchaseManager.ProductID
     let title: String
     let subtitle: String
-    let icon: String
-    let color: Color
-    var showProgress: Bool = false
-    var progress: Double = 0.0
-    var isPremium: Bool = false
+    let price: String
+    let features: [String]
+    let isPurchased: Bool
+    let isHighlighted: Bool
+    let onPurchase: () -> Void
     
     var body: some View {
-        HStack(spacing: 16) {
-            // Icon
-            ZStack {
-                Circle()
-                    .fill(color.opacity(0.1))
-                    .frame(width: 50, height: 50)
+        VStack(alignment: .leading, spacing: 12) {
+            // Header
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .font(.headline)
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
                 
-                Image(systemName: icon)
-                    .font(.system(size: 24))
-                    .foregroundColor(color)
+                Spacer()
+                
+                if isPurchased {
+                    Label("Active", systemImage: "checkmark.seal.fill")
+                        .font(.caption)
+                        .foregroundColor(.green)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.green.opacity(0.1))
+                        .cornerRadius(8)
+                } else {
+                    Text(price)
+                        .font(.headline)
+                        .foregroundColor(AppDesignSystem.Colors.primary)
+                }
             }
             
-            // Content
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(.primary)
+            // Features
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(features, id: \.self) { feature in
+                    HStack(spacing: 8) {
+                        Image(systemName: "checkmark")
+                            .foregroundColor(.green)
+                            .font(.caption)
+                        Text(feature)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+            
+            // Purchase Button
+            if !isPurchased {
+                Button(action: onPurchase) {
+                    Text("Purchase")
+                        .font(.headline)
+                        .foregroundColor(.white)
+                        .frame(maxWidth: .infinity)
+                        .padding()
+                        .background(
+                            isHighlighted ?
+                            LinearGradient(colors: [.yellow, .orange], startPoint: .leading, endPoint: .trailing) :
+                            LinearGradient(colors: [AppDesignSystem.Colors.primary, AppDesignSystem.Colors.primary.opacity(0.8)], startPoint: .leading, endPoint: .trailing)
+                        )
+                        .cornerRadius(10)
+                }
+            }
+        }
+        .padding()
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color(UIColor.secondarySystemBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(isHighlighted && !isPurchased ? Color.yellow : Color.clear, lineWidth: 2)
+        )
+    }
+}
+
+// MARK: - League Purchase Row
+
+struct LeaguePurchaseRow: View {
+    let productID: AppPurchaseManager.ProductID
+    let leagueName: String
+    let leagueCode: String
+    let price: String
+    let isPurchased: Bool
+    var freeMatchesRemaining: Int = 0
+    var isLocked: Bool = false
+    let onPurchase: () -> Void
+    
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(leagueName)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
                 
-                Text(subtitle)
-                    .font(.system(size: 14))
-                    .foregroundColor(.secondary)
-                
-                if showProgress {
-                    ProgressView(value: progress)
-                        .progressViewStyle(LinearProgressViewStyle(tint: color))
-                        .frame(height: 4)
+                if isPurchased {
+                    Text("Unlimited access")
+                        .font(.caption)
+                        .foregroundColor(.green)
+                } else if isLocked {
+                    Text("Subscription required")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                } else if freeMatchesRemaining > 0 {
+                    Text("\(freeMatchesRemaining) free matches left")
+                        .font(.caption)
+                        .foregroundColor(.blue)
+                } else {
+                    Text("No free matches left")
+                        .font(.caption)
+                        .foregroundColor(.red)
                 }
             }
             
             Spacer()
             
-            // Premium badge
-            if isPremium {
-                HStack(spacing: 4) {
-                    Image(systemName: "crown.fill")
-                        .font(.system(size: 12))
-                        .foregroundColor(.yellow)
-                    
-                    Text("PREMIUM")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.yellow)
+            if isPurchased {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundColor(.green)
+            } else {
+                Button(action: onPurchase) {
+                    Text(price)
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(AppDesignSystem.Colors.primary)
+                        .cornerRadius(8)
                 }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color.yellow.opacity(0.1))
-                .cornerRadius(8)
             }
         }
         .padding()
-        .background(Color(UIColor.secondarySystemBackground))
-        .cornerRadius(12)
-    }
-}
-
-// MARK: - Loading Card
-
-struct LoadingCard: View {
-    var body: some View {
-        VStack(spacing: 16) {
-            ProgressView()
-                .progressViewStyle(CircularProgressViewStyle())
-                .scaleEffect(1.2)
-            
-            Text("Loading subscription options...")
-                .font(.system(size: 16))
-                .foregroundColor(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(40)
-        .background(Color(UIColor.secondarySystemBackground))
-        .cornerRadius(12)
-    }
-}
-
-// MARK: - Error Card
-
-struct ErrorCard: View {
-    let onRetry: () -> Void
-    
-    var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 40))
-                .foregroundColor(.orange)
-            
-            Text("Unable to load subscription options")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(.primary)
-                .multilineTextAlignment(.center)
-            
-            Text("Please check your internet connection and try again.")
-                .font(.system(size: 14))
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-            
-            Button("Try Again") {
-                onRetry()
-            }
-            .font(.system(size: 16, weight: .semibold))
-            .foregroundColor(.white)
-            .padding()
-            .background(Color.blue)
-            .cornerRadius(8)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(30)
-        .background(Color(UIColor.secondarySystemBackground))
-        .cornerRadius(12)
+        .background(Color(UIColor.tertiarySystemBackground))
+        .cornerRadius(8)
     }
 }
 

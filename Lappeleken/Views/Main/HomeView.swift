@@ -87,7 +87,7 @@ struct HomeView: View {
                 pulseApp = true
             }
         }
-        .withSmartBanner()
+        .withMinimalBanner()
     }
     
     // MARK: - Background
@@ -299,7 +299,7 @@ struct HomeView: View {
     // MARK: - Helper Methods (keeping your existing logic)
     
     private func openHistoryWithAd() {
-        if AdManager.shared.shouldShowInterstitialForHistoryView() {
+        if AdManager.shared.shouldShowInterstitial(for: .historyView) {
             showInterstitialThenOpenHistory()
         } else {
             showingHistoryView = true

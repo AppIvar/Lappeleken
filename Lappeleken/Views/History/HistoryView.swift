@@ -115,7 +115,7 @@ struct HistoryView: View {
                 }
             }
         }
-        .withSmartBanner()
+        .withMinimalBanner()
         .withInterstitialAd(trigger: .historyView)
     }
     
@@ -861,7 +861,7 @@ struct GameDetailSheet: View {
     
     @MainActor private func continueGame() {
         if AppPurchaseManager.shared.currentTier == .free &&
-            AdManager.shared.shouldShowInterstitialForSettings() {
+            AdManager.shared.shouldShowInterstitial(for: .historyView) {
             showInterstitialThenContinueGame()
         } else {
             loadAndContinueGame()

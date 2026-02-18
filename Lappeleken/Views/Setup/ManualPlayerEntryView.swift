@@ -132,7 +132,7 @@ struct ManualPlayerEntryView: View {
                 )
             }
         }
-        .withSmartBanner()
+        .withMinimalBanner()
     }
     
     // MARK: - Enhanced Team Selection Section

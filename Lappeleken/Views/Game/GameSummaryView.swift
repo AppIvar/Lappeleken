@@ -103,7 +103,7 @@ struct GameSummaryView: View {
             }
         }
         
-        .withSmartBanner()
+        .withMinimalBanner()
         .onAppear {
             // Show interstitial after game completion
             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
@@ -115,7 +115,7 @@ struct GameSummaryView: View {
     private func showInterstitialIfNeeded() {
         guard AppPurchaseManager.shared.currentTier == .free else { return }
         
-        if AdManager.shared.shouldShowInterstitialAfterGameComplete() {
+        if AdManager.shared.shouldShowInterstitial(for: .gameComplete) {
             guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
                   let rootViewController = windowScene.windows.first?.rootViewController else {
                 return
@@ -689,7 +689,7 @@ struct GameSummaryView: View {
                 }
             }
         }
-        .showBannerAdForFreeUsers()
+        .withMinimalBanner()
     }
     
     

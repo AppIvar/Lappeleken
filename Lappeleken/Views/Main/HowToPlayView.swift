@@ -103,7 +103,7 @@ struct HowToPlayView: View {
                 }
             }
         }
-        .withSmartMonetization()
+        .withMinimalBanner()
     }
     
     // MARK: - Background

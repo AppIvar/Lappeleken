@@ -521,7 +521,7 @@ func getDefaultBetAmount(for eventType: Bet.EventType) -> Double {
 
 func getDefaultIsNegative(for eventType: Bet.EventType) -> Bool {
     switch eventType {
-    case .ownGoal, .redCard, .yellowCard, .penaltyMissed:
+    case .ownGoal, .penaltyMissed:
         return true
     default:
         return false

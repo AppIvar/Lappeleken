@@ -12,13 +12,14 @@ struct AppConfig {
     // MARK: - Master Feature Flags
     
     /// Master toggle for subscription system
-    static let subscriptionEnabled = false // ← Set to false for first release
-    
+    static var subscriptionEnabled: Bool {
+        return PurchaseConfig.purchasesEnabled
+    }
     /// Individual premium feature flags (can be enabled separately for testing)
     struct PremiumFeatures {
-        static let multipleMatchSelection = true    // ← Premium: Select multiple live matches
-        static let unlimitedDailyMatches = true     // ← Premium: No 1-per-day limit
-        static let adFreeExperience = false          // ← Premium: Remove all ads
+        static let multipleMatchSelection = true    // â† Premium: Select multiple live matches
+        static let unlimitedDailyMatches = true     // â† Premium: No 1-per-day limit
+        static let adFreeExperience = false          // â† Premium: Remove all ads
         static let lineupSearchAccess = true
         
         //MARK: - Phase 1 Cleanup features
@@ -28,10 +29,32 @@ struct AppConfig {
     
     /// Ad configuration
     struct AdSettings {
-        static let showAdsForAllUsers = true         // ← Show ads to everyone for now
-        static let showBannerAds = true              // ← Banner ads throughout app
-        static let showInterstitialAds = true       // ← Interstitial ads after games
-        static let showRewardedAds = false           // ← Rewarded ads for extra features
+        static let showAdsForAllUsers = true         // â† Show ads to everyone for now
+        static let showBannerAds = true              // â† Banner ads throughout app
+        static let showInterstitialAds = true       // â† Interstitial ads after games
+        static let showRewardedAds = false           // â† Rewarded ads for extra features
+    }
+    
+    /// Purchase system configuration
+    struct PurchaseConfig {
+        /// Master toggle for all purchases (for testing without payments)
+        static let purchasesEnabled = true  // Set to true when ready to enable purchases
+        
+        /// World Cup 2026 expiry date (August 1, 2026)
+        static let worldCup2026ExpiryDate: Date = {
+            Calendar.current.date(from: DateComponents(year: 2026, month: 8, day: 1)) ?? Date()
+        }()
+    }
+    
+    /// League configuration
+    struct LeagueConfig {
+        static let freeLeagues: Set<String> = ["DED", "PPL", "ELC", "EL"]
+        static let bigLeagues: Set<String> = ["PL", "PD", "BL1", "SA"]
+        static let championsLeague: Set<String> = ["CL"]
+        static let worldCup: Set<String> = ["WC"]
+        
+        /// Free matches allowed per big league before requiring subscription
+        static let freeMatchesPerBigLeague = 3
     }
     
     // MARK: - Feature Flag Helpers
@@ -115,7 +138,7 @@ struct AppConfig {
 static func toggleGameLogicManagerForTesting() {
     let currentValue = UserDefaults.standard.bool(forKey: "useNewGameLogicManager_debug")
     UserDefaults.standard.set(!currentValue, forKey: "useNewGameLogicManager_debug")
-    print("🔄 GameLogicManager debug toggle: \(!currentValue ? "NEW" : "OLD") system")
+    print("ðŸ”„ GameLogicManager debug toggle: \(!currentValue ? "NEW" : "OLD") system")
 }
 #endif
 
@@ -123,7 +146,7 @@ static func toggleGameLogicManagerForTesting() {
 static func toggleDataManagerForTesting() {
     let currentValue = UserDefaults.standard.bool(forKey: "useNewDataManager_debug")
     UserDefaults.standard.set(!currentValue, forKey: "useNewDataManager_debug")
-    print("🔄 DataManager debug toggle: \(!currentValue ? "NEW" : "OLD") system")
+    print("ðŸ”„ DataManager debug toggle: \(!currentValue ? "NEW" : "OLD") system")
 }
 #endif
     
@@ -193,14 +216,14 @@ static func toggleDataManagerForTesting() {
     static func enableFreeLiveModeTesting() {
         UserDefaults.standard.set(true, forKey: "liveModeFreeTesting_enabled")
         UserDefaults.standard.set(Date(), forKey: "liveModeFreeTesting_startDate")
-        print("🎁 FREE Live Mode testing ENABLED - unlimited matches for all users!")
+        print("ðŸŽ FREE Live Mode testing ENABLED - unlimited matches for all users!")
     }
     
     /// Disable free Live Mode testing (call this to end the free period)
     static func disableFreeLiveModeTesting() {
         UserDefaults.standard.set(false, forKey: "liveModeFreeTesting_enabled")
         UserDefaults.standard.removeObject(forKey: "liveModeFreeTesting_startDate")
-        print("🔒 FREE Live Mode testing DISABLED - back to 1 match per day limit")
+        print("ðŸ”’ FREE Live Mode testing DISABLED - back to 1 match per day limit")
     }
     
     /// Get testing start date (for analytics)
@@ -290,7 +313,7 @@ static func toggleDataManagerForTesting() {
         let currentCount = UserDefaults.standard.integer(forKey: key)
         UserDefaults.standard.set(currentCount + 1, forKey: key)
         
-        print("📊 Free Live Mode usage recorded: \(currentCount + 1) today")
+        print("ðŸ“Š Free Live Mode usage recorded: \(currentCount + 1) today")
     }
     
     @MainActor
@@ -329,17 +352,17 @@ static func toggleDataManagerForTesting() {
         assert(footballDataAPIKey != "your-api-key-here", "Replace placeholder API key")
         
 #if DEBUG
-        print("✅ App configuration validated")
-        print("🔑 API Key: \(footballDataAPIKey.prefix(8))...")
-        print("🌍 Environment: \(environment)")
-        print("📊 Logging enabled: \(enableDetailedLogging)")
-        print("💰 Purchase tier: \(AppPurchaseManager.shared.currentTier.displayName)")
-        print("🎁 Free Live Mode Testing: \(isFreeLiveTestingActive ? "ACTIVE" : "INACTIVE")")
-        print("🚀 Subscription enabled: \(subscriptionEnabled)")
-        print("🎯 Feature flags: Multiple matches=\(canSelectMultipleMatches), Unlimited=\(hasUnlimitedDailyMatches), Ad-free=\(hasAdFreeExperience)")
-        print("📱 Ads shown: \(shouldShowAdsForCurrentUser)")
-        print("🎯 GameLogicManager: \(useNewGameLogicManager ? "NEW" : "OLD") system")
-        print("🗂️ DataManager: \(useNewDataManager ? "NEW" : "OLD") system")
+        print("âœ… App configuration validated")
+        print("ðŸ”‘ API Key: \(footballDataAPIKey.prefix(8))...")
+        print("ðŸŒ Environment: \(environment)")
+        print("ðŸ“Š Logging enabled: \(enableDetailedLogging)")
+        print("ðŸ’° Purchase tier: \(AppPurchaseManager.shared.currentTier.displayName)")
+        print("ðŸŽ Free Live Mode Testing: \(isFreeLiveTestingActive ? "ACTIVE" : "INACTIVE")")
+        print("ðŸš€ Subscription enabled: \(subscriptionEnabled)")
+        print("ðŸŽ¯ Feature flags: Multiple matches=\(canSelectMultipleMatches), Unlimited=\(hasUnlimitedDailyMatches), Ad-free=\(hasAdFreeExperience)")
+        print("ðŸ“± Ads shown: \(shouldShowAdsForCurrentUser)")
+        print("ðŸŽ¯ GameLogicManager: \(useNewGameLogicManager ? "NEW" : "OLD") system")
+        print("ðŸ—‚ï¸ DataManager: \(useNewDataManager ? "NEW" : "OLD") system")
 #endif
     }
     
@@ -362,7 +385,7 @@ static func toggleDataManagerForTesting() {
 extension AppConfig {
     /// Set this to true when you want to enable free testing for everyone
     /// Change this value and release an app update to control the feature
-    private static let PRODUCTION_FREE_TESTING_ENABLED = true // ← Change this to true/false
+    private static let PRODUCTION_FREE_TESTING_ENABLED = true // â† Change this to true/false
     
     /// Production version of free testing check
     @MainActor

@@ -34,42 +34,96 @@ class AppPurchaseManager: ObservableObject {
             switch self {
             case .free:
                 return [
-                    "Manual mode games",
-                    "1 free live match daily",
-                    "All leagues & competitions",
-                    "Watch ads for extra matches",
+                    "Free leagues unlimited (with ads)",
+                    "1 live match per day",
+                    "3 free matches per big league",
                     "Banner ads throughout app"
                 ]
             case .premium:
                 return [
-                    "Unlimited live matches daily",
                     "All leagues & competitions",
+                    "Unlimited live matches daily",
+                    "Multiple match selection",
                     "Completely ad-free experience",
-                    "Premium support"
+                    "World Cup 2026 included"
                 ]
             }
         }
         
-        var monthlyPrice: String {
+        var yearlyPrice: String {
             switch self {
             case .free: return "Free"
-            case .premium: return "$2.99/month"
+            case .premium: return "$19.99/year"
             }
         }
     }
     
     enum ProductID: String, CaseIterable {
-        case premium = "Lucky.Football.Slip.premium_monthly"
+        // One-time purchases
+        case removeAds = "Lucky.Football.Slip.remove_ads"
+        case worldCup2026 = "Lucky.Football.Slip.worldcup_2026"
+        
+        // Yearly subscriptions - Individual leagues
+        case leaguePL = "Lucky.Football.Slip.league_pl"
+        case leagueLaLiga = "Lucky.Football.Slip.league_laliga"
+        case leagueBundesliga = "Lucky.Football.Slip.league_bundesliga"
+        case leagueSerieA = "Lucky.Football.Slip.league_seriea"
+        case leagueCL = "Lucky.Football.Slip.league_cl"
+        
+        // Yearly subscription - Premium (all access)
+        case premium = "Lucky.Football.Slip.premium_yearly"
         
         var displayName: String {
             switch self {
-            case .premium: return "Premium Monthly"
+            case .removeAds: return "Remove Ads"
+            case .worldCup2026: return "World Cup 2026"
+            case .leaguePL: return "Premier League"
+            case .leagueLaLiga: return "La Liga"
+            case .leagueBundesliga: return "Bundesliga"
+            case .leagueSerieA: return "Serie A"
+            case .leagueCL: return "Champions League"
+            case .premium: return "Premium All-Access"
             }
         }
         
         var description: String {
             switch self {
-            case .premium: return "Unlimited live matches and ad-free experience"
+            case .removeAds: return "Remove all banner and interstitial ads forever"
+            case .worldCup2026: return "Access World Cup 2026 matches (June-July 2026)"
+            case .leaguePL: return "Unlimited Premier League matches"
+            case .leagueLaLiga: return "Unlimited La Liga matches"
+            case .leagueBundesliga: return "Unlimited Bundesliga matches"
+            case .leagueSerieA: return "Unlimited Serie A matches"
+            case .leagueCL: return "Champions League access"
+            case .premium: return "All leagues, no ads, unlimited matches"
+            }
+        }
+        
+        var price: String {
+            switch self {
+            case .removeAds: return "$2.99"
+            case .worldCup2026: return "$4.99"
+            case .leaguePL, .leagueLaLiga, .leagueBundesliga, .leagueSerieA: return "$6.99/year"
+            case .leagueCL: return "$4.99/year"
+            case .premium: return "$19.99/year"
+            }
+        }
+        
+        var isSubscription: Bool {
+            switch self {
+            case .removeAds, .worldCup2026:
+                return false
+            case .leaguePL, .leagueLaLiga, .leagueBundesliga, .leagueSerieA, .leagueCL, .premium:
+                return true
+            }
+        }
+        
+        var isLeagueSubscription: Bool {
+            switch self {
+            case .leaguePL, .leagueLaLiga, .leagueBundesliga, .leagueSerieA, .leagueCL:
+                return true
+            default:
+                return false
             }
         }
     }
@@ -77,7 +131,52 @@ class AppPurchaseManager: ObservableObject {
     // MARK: - Feature Flag Integration
     
     var isSubscriptionEnabled: Bool {
-        return AppConfig.subscriptionEnabled
+        return AppConfig.PurchaseConfig.purchasesEnabled
+    }
+    
+    // MARK: - One-Time Purchase Tracking
+    
+    var hasRemovedAds: Bool {
+        get { UserDefaults.standard.bool(forKey: "purchase_removeAds") }
+        set {
+            UserDefaults.standard.set(newValue, forKey: "purchase_removeAds")
+            objectWillChange.send()
+        }
+    }
+    
+    var hasWorldCup2026: Bool {
+        get {
+            // Check if purchased and not expired (Aug 1, 2026)
+            guard UserDefaults.standard.bool(forKey: "purchase_worldCup2026") else { return false }
+            let expiryDate = Calendar.current.date(from: DateComponents(year: 2026, month: 8, day: 1)) ?? Date()
+            return Date() < expiryDate
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: "purchase_worldCup2026")
+            objectWillChange.send()
+        }
+    }
+    
+    // MARK: - Subscription Tracking
+    
+    @Published var activeSubscriptions: Set<String> = []
+    
+    var hasPremium: Bool {
+        currentTier == .premium || activeSubscriptions.contains(ProductID.premium.rawValue)
+    }
+    
+    var hasAnyLeagueSubscription: Bool {
+        ProductID.allCases.filter { $0.isLeagueSubscription }.contains { hasAccess(to: $0) }
+    }
+    
+    // MARK: - Ad-Free Check
+    
+    var isAdFree: Bool {
+        // Feature flag bypass
+        if !AppConfig.PurchaseConfig.purchasesEnabled && AppConfig.PremiumFeatures.adFreeExperience {
+            return true
+        }
+        return hasRemovedAds || hasPremium
     }
     
     // MARK: - Initialization
@@ -98,10 +197,10 @@ class AppPurchaseManager: ObservableObject {
 
     #if DEBUG
     func debugProductConfiguration() {
-        print("🐛 DEBUG: ProductID.premium.rawValue = '\(ProductID.premium.rawValue)'")
-        print("🐛 DEBUG: All cases = \(ProductID.allCases.map { "'\($0.rawValue)'" })")
-        print("🐛 DEBUG: Bundle ID = '\(Bundle.main.bundleIdentifier ?? "nil")'")
-        print("🐛 DEBUG: Subscription enabled = \(isSubscriptionEnabled)")
+        print("ðŸ› DEBUG: ProductID.premium.rawValue = '\(ProductID.premium.rawValue)'")
+        print("ðŸ› DEBUG: All cases = \(ProductID.allCases.map { "'\($0.rawValue)'" })")
+        print("ðŸ› DEBUG: Bundle ID = '\(Bundle.main.bundleIdentifier ?? "nil")'")
+        print("ðŸ› DEBUG: Subscription enabled = \(isSubscriptionEnabled)")
     }
     #endif
     
@@ -182,25 +281,25 @@ class AppPurchaseManager: ObservableObject {
     func useFreeLiveMatch() {
         // Don't count usage if unlimited feature is enabled
         if AppConfig.hasUnlimitedDailyMatches {
-            print("🎁 Unlimited matches feature enabled - usage not counted")
+            print("ðŸŽ Unlimited matches feature enabled - usage not counted")
             return
         }
         
         // Don't count usage during free testing period
         if AppConfig.isFreeLiveTestingActive {
-            print("🎁 Free testing active - match usage not counted")
+            print("ðŸŽ Free testing active - match usage not counted")
             AppConfig.recordFreeLiveModeUsage()
             return
         }
         
         // Normal usage counting
         dailyFreeMatchesUsed += 1
-        print("📊 Used daily live match. Remaining today: \(remainingFreeMatchesToday)")
+        print("ðŸ“Š Used daily live match. Remaining today: \(remainingFreeMatchesToday)")
     }
     
     func grantAdRewardedMatch() {
         adRewardedMatchesToday += 1
-        print("🎁 Granted ad-rewarded match. Total ad matches today: \(adRewardedMatchesToday)")
+        print("ðŸŽ Granted ad-rewarded match. Total ad matches today: \(adRewardedMatchesToday)")
         objectWillChange.send()
     }
     
@@ -215,17 +314,17 @@ class AppPurchaseManager: ObservableObject {
     
     func loadProducts() async {
         guard isSubscriptionEnabled else {
-            print("💡 Subscription disabled for this release")
+            print("ðŸ’¡ Subscription disabled for this release")
             return
         }
         
-        print("🔍 Loading products...")
+        print("ðŸ” Loading products...")
         isLoading = true
         purchaseError = nil
         
         do {
             let productIDs = Set(ProductID.allCases.map { $0.rawValue })
-            print("🔍 Requesting products: \(productIDs)")
+            print("ðŸ” Requesting products: \(productIDs)")
             
             let products = try await Product.products(for: productIDs)
             
@@ -235,9 +334,9 @@ class AppPurchaseManager: ObservableObject {
                 
                 if products.isEmpty {
                     self.purchaseError = "Subscription not available. Please try again later."
-                    print("❌ No products loaded - check App Store Connect status")
+                    print("âŒ No products loaded - check App Store Connect status")
                 } else {
-                    print("✅ Loaded \(products.count) products:")
+                    print("âœ… Loaded \(products.count) products:")
                     for product in products {
                         print("  - \(product.id): \(product.displayName) - \(product.displayPrice)")
                         if let subscription = product.subscription {
@@ -251,7 +350,7 @@ class AppPurchaseManager: ObservableObject {
             await MainActor.run {
                 self.isLoading = false
                 self.purchaseError = "Failed to load subscription: \(error.localizedDescription)"
-                print("❌ Failed to load products: \(error)")
+                print("âŒ Failed to load products: \(error)")
             }
         }
     }
@@ -309,46 +408,65 @@ class AppPurchaseManager: ObservableObject {
     }
     
     func hasAccess(to productID: ProductID) -> Bool {
+        // Feature flag bypass - if purchases disabled, check feature flags instead
+        if !AppConfig.PurchaseConfig.purchasesEnabled {
+            return true // All access when purchases disabled for testing
+        }
+        
+        // Premium gives access to everything
+        if hasPremium {
+            return true
+        }
+        
         switch productID {
         case .premium:
-            return currentTier == .premium
+            return currentTier == .premium || activeSubscriptions.contains(productID.rawValue)
+            
+        case .removeAds:
+            return hasRemovedAds
+            
+        case .worldCup2026:
+            return hasWorldCup2026
+            
+        case .leaguePL, .leagueLaLiga, .leagueBundesliga, .leagueSerieA, .leagueCL:
+            return activeSubscriptions.contains(productID.rawValue)
         }
     }
     
     func validateSubscriptionConfiguration() {
-        print("🔍 Validating subscription configuration...")
+        print("ðŸ” Validating subscription configuration...")
         
         guard let bundleID = Bundle.main.bundleIdentifier else {
-            print("❌ No bundle identifier found")
+            print("âŒ No bundle identifier found")
             return
         }
         
-        print("📱 Bundle ID: \(bundleID)")
-        print("🛍️ Expected Product ID: \(ProductID.premium.rawValue)")
-        print("🚀 Subscription enabled: \(isSubscriptionEnabled)")
+        print("ðŸ“± Bundle ID: \(bundleID)")
+        print("ðŸ›ï¸ Expected Product ID: \(ProductID.premium.rawValue)")
+        print("ðŸš€ Subscription enabled: \(isSubscriptionEnabled)")
         
         if availableProducts.isEmpty && isSubscriptionEnabled {
-            print("❌ No products loaded - subscription may not be active in App Store Connect")
+            print("âŒ No products loaded - subscription may not be active in App Store Connect")
         } else if !isSubscriptionEnabled {
-            print("💡 Subscription disabled - using feature flags for premium features")
+            print("ðŸ’¡ Subscription disabled - using feature flags for premium features")
         } else {
-            print("✅ App Store products loaded successfully")
+            print("âœ… App Store products loaded successfully")
         }
     }
     
     // MARK: - Restore Purchases
     
     func restorePurchases() async {
-        print("🔄 Restoring purchases...")
+        print("ðŸ”„ Restoring purchases...")
         isLoading = true
         purchaseError = nil
         
         do {
             try await AppStore.sync()
             await updateEntitlements()
-            print("✅ Purchases restored successfully")
+            print("âœ… Purchases restored successfully")
         } catch {
-            print("❌ Failed to restore purchases: \(error)")
+            print("âŒ Failed to restore purchases: \(error)")
             purchaseError = "Failed to restore purchases: \(error.localizedDescription)"
         }
         
@@ -365,7 +483,7 @@ class AppPurchaseManager: ObservableObject {
                     await self.updatePurchaseState(for: transaction)
                     await transaction.finish()
                 } catch {
-                    print("❌ Transaction verification failed: \(error)")
+                    print("âŒ Transaction verification failed: \(error)")
                 }
             }
         }
@@ -382,50 +500,74 @@ class AppPurchaseManager: ObservableObject {
     
     func updateEntitlements() async {
         var hasActivePremium = false
+        var newActiveSubscriptions: Set<String> = []
         
         for await result in Transaction.currentEntitlements {
             do {
                 let transaction = try checkVerified(result)
+                let productIDString = transaction.productID
                 
-                if transaction.productID == ProductID.premium.rawValue {
-                    // For subscriptions, check expiration date
+                // Handle subscriptions
+                if let product = ProductID(rawValue: productIDString), product.isSubscription {
                     if let expirationDate = transaction.expirationDate {
                         if expirationDate > Date() {
-                            hasActivePremium = true
-                            print("✅ Active premium subscription expires: \(expirationDate)")
-                        } else {
-                            print("❌ Premium subscription expired: \(expirationDate)")
+                            newActiveSubscriptions.insert(productIDString)
+                            if product == .premium {
+                                hasActivePremium = true
+                            }
+                            print("Active subscription: \(product.displayName) expires \(expirationDate)")
                         }
                     } else {
-                        // No expiration date means it's active
-                        hasActivePremium = true
-                        print("✅ Active premium subscription (no expiration)")
+                        newActiveSubscriptions.insert(productIDString)
+                        if product == .premium {
+                            hasActivePremium = true
+                        }
                     }
                 }
+                
+                // Handle one-time purchases
+                if productIDString == ProductID.removeAds.rawValue {
+                    await MainActor.run { self.hasRemovedAds = true }
+                }
+                if productIDString == ProductID.worldCup2026.rawValue {
+                    await MainActor.run { self.hasWorldCup2026 = true }
+                }
+                
             } catch {
-                print("❌ Failed to verify transaction: \(error)")
+                print("Failed to verify transaction: \(error)")
             }
         }
         
         await MainActor.run {
+            self.activeSubscriptions = newActiveSubscriptions
             let newTier: PurchaseTier = hasActivePremium ? .premium : .free
             if newTier != currentTier {
                 currentTier = newTier
                 savePurchaseState()
-                print("🔄 Tier updated to: \(newTier.displayName)")
             }
         }
     }
     
     private func updatePurchaseState(for transaction: Transaction) async {
-        switch transaction.productID {
-        case ProductID.premium.rawValue:
+        let productIDString = transaction.productID
+        
+        // Handle Premium subscription
+        if productIDString == ProductID.premium.rawValue {
             currentTier = .premium
             savePurchaseState()
-            print("✅ Premium subscription activated")
-            
-        default:
-            break
+        }
+        
+        // Handle one-time purchases
+        if productIDString == ProductID.removeAds.rawValue {
+            hasRemovedAds = true
+        }
+        if productIDString == ProductID.worldCup2026.rawValue {
+            hasWorldCup2026 = true
+        }
+        
+        // Handle league subscriptions
+        if let product = ProductID(rawValue: productIDString), product.isLeagueSubscription {
+            activeSubscriptions.insert(productIDString)
         }
     }
     
@@ -439,7 +581,7 @@ class AppPurchaseManager: ObservableObject {
     
     private func savePurchaseState() {
         UserDefaults.standard.set(currentTier.rawValue, forKey: "purchaseTier")
-        print("💾 Purchase state saved - Tier: \(currentTier.displayName)")
+        print("ðŸ’¾ Purchase state saved - Tier: \(currentTier.displayName)")
     }
     
     // MARK: - Session Management
@@ -477,6 +619,7 @@ class AppPurchaseManager: ObservableObject {
     /// Sets the user to premium tier for testing purposes (Debug builds only)
     func setToPremiumForTesting() {
         currentTier = .premium
+        activeSubscriptions.insert(ProductID.premium.rawValue)
         savePurchaseState()
         print("🧪 User set to premium for testing")
         objectWillChange.send()
@@ -485,6 +628,9 @@ class AppPurchaseManager: ObservableObject {
     /// Resets the user to free tier for testing purposes (Debug builds only)
     func setToFreeForTesting() {
         currentTier = .free
+        activeSubscriptions.removeAll()
+        hasRemovedAds = false
+        hasWorldCup2026 = false
         savePurchaseState()
         print("🧪 User set to free for testing")
         objectWillChange.send()
@@ -498,6 +644,81 @@ class AppPurchaseManager: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "adRewardedMatches_\(todayString)")
         print("🧪 Daily match usage reset for testing")
         objectWillChange.send()
+    }
+    
+    /// Simulates purchasing Remove Ads
+    func simulateRemoveAdsPurchase() {
+        hasRemovedAds = true
+        print("🧪 Simulated Remove Ads purchase")
+        objectWillChange.send()
+    }
+    
+    /// Simulates purchasing World Cup 2026
+    func simulateWorldCupPurchase() {
+        hasWorldCup2026 = true
+        print("🧪 Simulated World Cup 2026 purchase")
+        objectWillChange.send()
+    }
+    
+    /// Simulates subscribing to a specific league
+    func simulateLeagueSubscription(_ productID: ProductID) {
+        guard productID.isLeagueSubscription else {
+            print("🧪 Error: \(productID.displayName) is not a league subscription")
+            return
+        }
+        activeSubscriptions.insert(productID.rawValue)
+        print("🧪 Simulated \(productID.displayName) subscription")
+        objectWillChange.send()
+    }
+    
+    /// Removes a simulated league subscription
+    func removeSimulatedLeagueSubscription(_ productID: ProductID) {
+        activeSubscriptions.remove(productID.rawValue)
+        print("🧪 Removed simulated \(productID.displayName) subscription")
+        objectWillChange.send()
+    }
+    
+    /// Resets all simulated purchases
+    func resetAllSimulatedPurchases() {
+        currentTier = .free
+        activeSubscriptions.removeAll()
+        hasRemovedAds = false
+        hasWorldCup2026 = false
+        UserDefaults.standard.removeObject(forKey: "purchase_removeAds")
+        UserDefaults.standard.removeObject(forKey: "purchase_worldCup2026")
+        savePurchaseState()
+        print("🧪 All simulated purchases reset")
+        objectWillChange.send()
+    }
+    
+    /// Returns debug status of all purchases
+    func getDebugPurchaseStatus() -> [String: Any] {
+        var status: [String: Any] = [:]
+        
+        status["currentTier"] = currentTier.displayName
+        status["hasPremium"] = hasPremium
+        status["hasRemovedAds"] = hasRemovedAds
+        status["hasWorldCup2026"] = hasWorldCup2026
+        status["isAdFree"] = isAdFree
+        status["activeSubscriptions"] = Array(activeSubscriptions)
+        
+        var productAccess: [String: Bool] = [:]
+        for product in ProductID.allCases {
+            productAccess[product.displayName] = hasAccess(to: product)
+        }
+        status["productAccess"] = productAccess
+        
+        return status
+    }
+    
+    /// Prints debug status to console
+    func printDebugStatus() {
+        print("========== PURCHASE MANAGER DEBUG STATUS ==========")
+        let status = getDebugPurchaseStatus()
+        for (key, value) in status.sorted(by: { $0.key < $1.key }) {
+            print("  \(key): \(value)")
+        }
+        print("===================================================")
     }
     #endif
 }
