@@ -254,6 +254,7 @@ enum LeagueAccessStatus {
         case worldCupPurchase
         case freeLeague
         case testingMode
+        case freeMatch
     }
     
     var isAccessible: Bool {
@@ -274,6 +275,7 @@ enum LeagueAccessStatus {
             case .worldCupPurchase: return "Purchased"
             case .freeLeague: return "Free"
             case .testingMode: return "Testing Mode"
+            case .freeMatch: return "Free"
             }
         case .limitedFree(let remaining):
             return "\(remaining) free match\(remaining == 1 ? "" : "es") left"

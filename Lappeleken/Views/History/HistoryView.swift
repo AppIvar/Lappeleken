@@ -214,7 +214,7 @@ struct HistoryView: View {
                     object: nil
                 )
             }
-            .buttonStyle(EnhancedPrimaryButtonStyle())
+            .buttonStyle(PrimaryButtonStyle())
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding()
@@ -803,12 +803,12 @@ struct GameDetailSheet: View {
                     Button("Continue This Game") {
                         continueGame()
                     }
-                    .buttonStyle(EnhancedPrimaryButtonStyle())
+                    .buttonStyle(PrimaryButtonStyle())
                     
                     Button("View Full Summary") {
                         showingFullSummary = true
                     }
-                    .buttonStyle(EnhancedSecondaryButtonStyle())
+                    .buttonStyle(SecondaryButtonStyle())
 
                     // Remove the export-related code and keep the sheet for full summary:
                     .sheet(isPresented: $showingFullSummary) {
@@ -1507,7 +1507,7 @@ struct SavedGameSummaryView: View {
             Button("Close") {
                 presentationMode.wrappedValue.dismiss()
             }
-            .buttonStyle(EnhancedPrimaryButtonStyle())
+            .buttonStyle(PrimaryButtonStyle())
         }
     }
     

@@ -2,13 +2,14 @@
 //  CustomBetView.swift
 //  Lucky Football Slip
 //
-//  Created by Ivar Hovland on 14/05/2025.
+//  Add custom betting events - Football themed
 //
 
 import SwiftUI
 
 struct CustomBetView: View {
     @Environment(\.presentationMode) var presentationMode
+    @Environment(\.colorScheme) var colorScheme
     @ObservedObject var gameSession: GameSession
 
     @State private var eventName = ""
@@ -20,171 +21,299 @@ struct CustomBetView: View {
         UserDefaults.standard.string(forKey: "currencySymbol") ?? "€"
     }
 
-    private var amountFormatter: NumberFormatter {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.minimumFractionDigits = 2
-        formatter.maximumFractionDigits = 2
-        return formatter
-    }
-
     var body: some View {
         NavigationView {
-            ScrollView {
-                VStack(spacing: 24) {
-                    eventDetailsSection
-                    summarySection
-                    addEventButton
-                    Spacer()
+            ZStack {
+                footballBackground
+                
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 20) {
+                        headerIcon
+                        eventDetailsCard
+                        previewCard
+                        addButton
+                        Spacer(minLength: 40)
+                    }
+                    .padding(20)
                 }
-                .padding(.vertical)
             }
-            .background(Color(.systemGroupedBackground).ignoresSafeArea())
             .navigationTitle("Custom Event")
-            .navigationBarItems(trailing: Button("Cancel") {
-                presentationMode.wrappedValue.dismiss()
-            })
-        }
-        .alert(isPresented: $showConfirmation) {
-            Alert(
-                title: Text("Custom Event Added"),
-                message: Text("\"\(eventName)\" has been added."),
-                dismissButton: .default(Text("OK")) {
-                    presentationMode.wrappedValue.dismiss()
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Cancel") { presentationMode.wrappedValue.dismiss() }
+                        .foregroundColor(AppDesignSystem.Colors.grassGreen)
                 }
-            )
-        }
-    }
-    
-    // MARK: - Event Details Section
-    private var eventDetailsSection: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text("Custom Event Details")
-                .font(.title3)
-                .fontWeight(.semibold)
-                .padding(.bottom, 4)
-
-            eventNameField
-            eventTypeToggle
-            amountField
-        }
-        .padding()
-        .background(Color(.systemBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .shadow(color: Color.primary.opacity(0.05), radius: 8, x: 0, y: 4)
-        .padding(.horizontal)
-    }
-    
-    // MARK: - Event Name Field
-    private var eventNameField: some View {
-        TextField("Event Name", text: $eventName)
-            .padding()
-            .background(Color(.systemGray6))
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .textFieldStyle(.plain)
-    }
-    
-    // MARK: - Event Type Toggle
-    private var eventTypeToggle: some View {
-        HStack {
-            Text("Event Type")
-                .font(.headline)
-            Spacer()
-            Button(action: {
-                withAnimation(.spring()) {
-                    isNegativeBet.toggle()
-                }
-            }) {
-                eventTypeButton
             }
         }
-    }
-    
-    private var eventTypeButton: some View {
-        HStack {
-            Image(systemName: isNegativeBet ? "minus.circle.fill" : "plus.circle.fill")
-                .foregroundColor(isNegativeBet ? .red : .green)
-                .font(.title2)
-            Text(isNegativeBet ? "Negative" : "Positive")
-                .foregroundColor(isNegativeBet ? .red : .green)
-        }
-        .padding(.vertical, 6)
-        .padding(.horizontal, 16)
-        .background((isNegativeBet ? Color.red : Color.green).opacity(0.15))
-        .clipShape(Capsule())
-    }
-    
-    // MARK: - Amount Field
-    private var amountField: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Amount")
-                .font(.headline)
-            amountInputField
+        .alert("Event Added!", isPresented: $showConfirmation) {
+            Button("OK") { presentationMode.wrappedValue.dismiss() }
+        } message: {
+            Text("\"\(eventName)\" has been added.")
         }
     }
     
-    private var amountInputField: some View {
-        HStack {
-            Text(currencySymbol)
-                .fontWeight(.semibold)
-            TextField("Amount", value: $betAmount, formatter: amountFormatter)
-                .keyboardType(.decimalPad)
-                .textFieldStyle(.plain)
-                .frame(minWidth: 60)
+    // MARK: - Background
+    
+    private var footballBackground: some View {
+        ZStack {
+            Color(colorScheme == .dark ? UIColor(red: 0.05, green: 0.08, blue: 0.06, alpha: 1) : UIColor(red: 0.96, green: 0.98, blue: 0.96, alpha: 1))
+            VStack {
+                LinearGradient(colors: [AppDesignSystem.Colors.accent.opacity(colorScheme == .dark ? 0.15 : 0.08), Color.clear], startPoint: .top, endPoint: .bottom)
+                    .frame(height: 150)
+                Spacer()
+            }
         }
-        .padding()
-        .background(Color(.systemGray6))
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .ignoresSafeArea()
     }
     
-    // MARK: - Summary Section
-    private var summarySection: some View {
+    // MARK: - Header
+    
+    private var headerIcon: some View {
+        ZStack {
+            Circle()
+                .fill(AppDesignSystem.Colors.accent.opacity(0.15))
+                .frame(width: 64, height: 64)
+            Image(systemName: "star.fill")
+                .font(.system(size: 28))
+                .foregroundColor(AppDesignSystem.Colors.accent)
+        }
+    }
+    
+    // MARK: - Event Details Card
+    
+    private var eventDetailsCard: some View {
+        VStack(spacing: 18) {
+            // Event name
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Event Name")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                
+                HStack {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 14))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    TextField("e.g., Hat-trick, Penalty save...", text: $eventName)
+                        .font(.system(size: 14))
+                }
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(colorScheme == .dark ? Color.white.opacity(0.05) : Color.black.opacity(0.03))
+                        .overlay(RoundedRectangle(cornerRadius: 8).stroke(AppDesignSystem.Colors.accent.opacity(0.2), lineWidth: 1))
+                )
+            }
+            
+            // Event type
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Event Type")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                
+                HStack(spacing: 10) {
+                    EventTypeButton(
+                        title: "Positive",
+                        subtitle: "Earns money",
+                        icon: "plus.circle.fill",
+                        color: AppDesignSystem.Colors.grassGreen,
+                        isSelected: !isNegativeBet
+                    ) {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { isNegativeBet = false }
+                    }
+                    
+                    EventTypeButton(
+                        title: "Negative",
+                        subtitle: "Loses money",
+                        icon: "minus.circle.fill",
+                        color: AppDesignSystem.Colors.error,
+                        isSelected: isNegativeBet
+                    ) {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) { isNegativeBet = true }
+                    }
+                }
+            }
+            
+            // Amount
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Amount")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                
+                HStack {
+                    Text(currencySymbol)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
+                    
+                    TextField("0.00", value: $betAmount, format: .number.precision(.fractionLength(2)))
+                        .font(.system(size: 16, weight: .medium))
+                        .keyboardType(.decimalPad)
+                    
+                    Spacer()
+                    
+                    HStack(spacing: 6) {
+                        ForEach([1.0, 5.0, 10.0], id: \.self) { amount in
+                            QuickAmountButton(amount: amount, isSelected: betAmount == amount) {
+                                betAmount = amount
+                            }
+                        }
+                    }
+                }
+                .padding(12)
+                .background(RoundedRectangle(cornerRadius: 8).fill(colorScheme == .dark ? Color.white.opacity(0.05) : Color.black.opacity(0.03)))
+            }
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(AppDesignSystem.Colors.cardBackground)
+                .shadow(color: colorScheme == .dark ? Color.black.opacity(0.2) : Color.black.opacity(0.05), radius: 6, x: 0, y: 3)
+        )
+    }
+    
+    // MARK: - Preview Card
+    
+    private var previewCard: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Summary")
-                .font(.headline)
-                .padding(.bottom, 2)
-            summaryContent
+            HStack(spacing: 6) {
+                Image(systemName: "eye")
+                    .font(.system(size: 12))
+                Text("Preview")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .foregroundColor(AppDesignSystem.Colors.secondaryText)
+            
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(AppDesignSystem.Colors.accent.opacity(0.15))
+                        .frame(width: 36, height: 36)
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 16))
+                        .foregroundColor(AppDesignSystem.Colors.accent)
+                }
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(eventName.isEmpty ? "Event Name" : eventName)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(eventName.isEmpty ? AppDesignSystem.Colors.secondaryText : AppDesignSystem.Colors.primaryText)
+                    Text("Custom Event")
+                        .font(.system(size: 11))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                }
+                
+                Spacer()
+                
+                HStack(spacing: 4) {
+                    Image(systemName: isNegativeBet ? "minus.circle.fill" : "plus.circle.fill")
+                        .font(.system(size: 14))
+                    Text("\(currencySymbol)\(String(format: "%.2f", betAmount))")
+                        .font(.system(size: 15, weight: .semibold))
+                }
+                .foregroundColor(isNegativeBet ? AppDesignSystem.Colors.error : AppDesignSystem.Colors.grassGreen)
+            }
+            .padding(12)
+            .background(RoundedRectangle(cornerRadius: 8).fill(colorScheme == .dark ? Color.white.opacity(0.03) : Color.black.opacity(0.02)))
         }
-        .padding()
-        .background(Color(.systemGray6))
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .padding(.horizontal)
+        .padding(16)
+        .background(RoundedRectangle(cornerRadius: 14).fill(AppDesignSystem.Colors.cardBackground))
     }
     
-    private var summaryContent: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Name: \(eventName.isEmpty ? "—" : eventName)")
-            Text("Type: \(isNegativeBet ? "Negative" : "Positive")")
-                .foregroundColor(isNegativeBet ? .red : .green)
-            Text("Amount: \(currencySymbol)\(String(format: "%.2f", betAmount))")
-        }
-    }
+    // MARK: - Add Button
     
-    // MARK: - Add Event Button
-    private var addEventButton: some View {
+    private var addButton: some View {
         Button(action: addCustomEvent) {
-            Text("Add Custom Event")
-                .font(.headline)
-                .foregroundColor(.white)
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(Color.blue)
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            HStack(spacing: 8) {
+                Image(systemName: "plus.circle.fill")
+                Text("Add Custom Event")
+            }
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundColor(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(isAddButtonDisabled ? AppDesignSystem.Colors.secondaryText.opacity(0.4) : AppDesignSystem.Colors.grassGreen)
+            )
+            .shadow(color: isAddButtonDisabled ? Color.clear : AppDesignSystem.Colors.grassGreen.opacity(0.3), radius: 8, x: 0, y: 4)
         }
-        .padding(.horizontal)
         .disabled(isAddButtonDisabled)
-        .opacity(isAddButtonDisabled ? 0.7 : 1.0)
     }
     
-    // MARK: - Helper Properties and Methods
     private var isAddButtonDisabled: Bool {
-        eventName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || betAmount <= 0
+        eventName.trimmingCharacters(in: .whitespaces).isEmpty || betAmount <= 0
     }
     
     private func addCustomEvent() {
-        let trimmedName = eventName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let finalAmount = isNegativeBet ? -betAmount : betAmount
-        gameSession.addCustomEvent(name: trimmedName, amount: finalAmount)
+        let name = eventName.trimmingCharacters(in: .whitespaces)
+        let amount = isNegativeBet ? -betAmount : betAmount
+        gameSession.addCustomEvent(name: name, amount: amount)
         showConfirmation = true
+    }
+}
+
+// MARK: - Event Type Button
+
+struct EventTypeButton: View {
+    let title: String
+    let subtitle: String
+    let icon: String
+    let color: Color
+    let isSelected: Bool
+    let action: () -> Void
+    
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 22))
+                    .foregroundColor(isSelected ? color : AppDesignSystem.Colors.secondaryText)
+                
+                VStack(spacing: 1) {
+                    Text(title)
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(isSelected ? color : AppDesignSystem.Colors.primaryText)
+                    Text(subtitle)
+                        .font(.system(size: 10))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(isSelected ? color.opacity(0.1) : colorScheme == .dark ? Color.white.opacity(0.03) : Color.black.opacity(0.02))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(isSelected ? color : Color.clear, lineWidth: 1.5)
+                    )
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+}
+
+// MARK: - Quick Amount Button
+
+struct QuickAmountButton: View {
+    let amount: Double
+    let isSelected: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            Text("\(Int(amount))")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(isSelected ? .white : AppDesignSystem.Colors.secondaryText)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(isSelected ? AppDesignSystem.Colors.grassGreen : AppDesignSystem.Colors.secondaryText.opacity(0.15))
+                )
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 }

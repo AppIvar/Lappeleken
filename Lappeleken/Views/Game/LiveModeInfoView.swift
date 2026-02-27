@@ -1,14 +1,15 @@
 //
-//  Enhanced LiveModeInfoView.swift
+//  LiveModeInfoView.swift
 //  Lucky Football Slip
 //
-//  Enhanced for Free Testing Period
+//  Football themed live mode info screen
 //
 
 import SwiftUI
 
 struct LiveModeInfoView: View {
     @Environment(\.presentationMode) var presentationMode
+    @Environment(\.colorScheme) var colorScheme
     @State private var animateFeatures = false
     let onGetStarted: () -> Void
     
@@ -19,128 +20,122 @@ struct LiveModeInfoView: View {
     var body: some View {
         NavigationView {
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 32) {
-                    Spacer(minLength: 20)
-                    
-                    // Hero section with free testing banner
-                    heroSectionWithFreeTesting
-                    
-                    // Feature showcase
-                    liveModeFeaturesSection
-                    
-                    // Free testing info or normal limitations
-                    freeModeInfoCard
-                    
-                    // Important notes
-                    importantNotesSection
-                    
-                    Spacer(minLength: 40)
+                VStack(spacing: 28) {
+                    heroSection
+                    featuresSection
+                    freeModeCard
+                    networkNote
+                    Spacer(minLength: 30)
                 }
                 .padding(.horizontal, 20)
+                .padding(.top, 10)
             }
-            .background(
-                LinearGradient(
-                    colors: [
-                        AppDesignSystem.Colors.background,
-                        AppDesignSystem.Colors.background.opacity(0.95),
-                        AppDesignSystem.Colors.cardBackground
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .ignoresSafeArea()
-            )
+            .background(footballBackground)
             .navigationTitle("Live Mode")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationBarItems(
-                leading: Button("Cancel") {
-                    presentationMode.wrappedValue.dismiss()
-                },
-                trailing: Button("Get Started") {
-                    onGetStarted()
-                    presentationMode.wrappedValue.dismiss()
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        presentationMode.wrappedValue.dismiss()
+                    }
+                    .foregroundColor(AppDesignSystem.Colors.grassGreen)
                 }
-                .font(.system(size: 16, weight: .bold))
-                .foregroundColor(AppDesignSystem.Colors.primary)
-            )
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Get Started") {
+                        onGetStarted()
+                        presentationMode.wrappedValue.dismiss()
+                    }
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(AppDesignSystem.Colors.grassGreen)
+                }
+            }
         }
         .onAppear {
-            withAnimation(AppDesignSystem.Animations.standard.delay(0.5)) {
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.8).delay(0.3)) {
                 animateFeatures = true
             }
         }
     }
     
-    // MARK: - Hero Section with Free Testing
+    // MARK: - Background
     
-    private var heroSectionWithFreeTesting: some View {
-        VStack(spacing: 24) {
+    private var footballBackground: some View {
+        ZStack {
+            Color(colorScheme == .dark ? UIColor(red: 0.05, green: 0.08, blue: 0.06, alpha: 1) : UIColor(red: 0.96, green: 0.98, blue: 0.96, alpha: 1))
             
-            // App icon with enhanced glow
+            VStack {
+                LinearGradient(
+                    colors: [
+                        AppDesignSystem.Colors.grassGreen.opacity(colorScheme == .dark ? 0.2 : 0.1),
+                        Color.clear
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 200)
+                Spacer()
+            }
+        }
+        .ignoresSafeArea()
+    }
+    
+    // MARK: - Hero Section
+    
+    private var heroSection: some View {
+        VStack(spacing: 20) {
+            // Icon with glow
             ZStack {
                 Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [
-                                AppDesignSystem.Colors.primary.opacity(0.4),
-                                AppDesignSystem.Colors.primary.opacity(0.1),
-                                Color.clear
-                            ],
-                            center: .center,
-                            startRadius: 40,
-                            endRadius: 100
-                        )
+                    .fill(AppDesignSystem.Colors.grassGreen.opacity(0.15))
+                    .frame(width: 120, height: 120)
+                    .scaleEffect(animateFeatures ? 1.05 : 0.95)
+                    .animation(
+                        Animation.easeInOut(duration: 2.0).repeatForever(autoreverses: true),
+                        value: animateFeatures
                     )
-                    .frame(width: 200, height: 200)
-                    .scaleEffect(animateFeatures ? 1.1 : 1.0)
                 
                 ZStack {
                     Circle()
                         .fill(
                             LinearGradient(
-                                colors: [
-                                    AppDesignSystem.Colors.primary,
-                                    AppDesignSystem.Colors.info
-                                ],
+                                colors: [AppDesignSystem.Colors.grassGreen, AppDesignSystem.Colors.grassGreen.opacity(0.8)],
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
                         )
-                        .frame(width: 120, height: 120)
-                
+                        .frame(width: 80, height: 80)
+                    
                     Image(systemName: "globe")
-                        .font(.system(size: 50, weight: .medium))
+                        .font(.system(size: 36, weight: .medium))
                         .foregroundColor(.white)
                 }
-                .shadow(
-                    color: AppDesignSystem.Colors.primary.opacity(0.3),
-                    radius: 12,
-                    x: 0,
-                    y: 6
-                )
+                .shadow(color: AppDesignSystem.Colors.grassGreen.opacity(0.3), radius: 12, x: 0, y: 6)
             }
             
-            VStack(spacing: 12) {
+            VStack(spacing: 8) {
                 Text("About Live Mode")
-                    .font(.system(size: 32, weight: .bold, design: .rounded))
+                    .font(.system(size: 26, weight: .bold, design: .rounded))
                     .foregroundColor(AppDesignSystem.Colors.primaryText)
                 
-                Text("Live Mode connects your game to real football matches happening now. Here's how it works:")
-                    .font(.system(size: 16, weight: .medium, design: .rounded))
+                Text("Connect your game to real football matches")
+                    .font(.system(size: 15))
                     .foregroundColor(AppDesignSystem.Colors.secondaryText)
                     .multilineTextAlignment(.center)
             }
         }
+        .padding(.top, 10)
     }
-    
     
     // MARK: - Features Section
     
-    private var liveModeFeaturesSection: some View {
-        VStack(spacing: 16) {
-            ForEach(Array(liveFeatures.enumerated()), id: \.offset) { index, feature in
-                EnhancedLiveModeFeature(
-                    feature: feature,
+    private var featuresSection: some View {
+        VStack(spacing: 10) {
+            ForEach(Array(features.enumerated()), id: \.offset) { index, feature in
+                LiveFeatureRow(
+                    icon: feature.icon,
+                    title: feature.title,
+                    description: feature.description,
+                    color: feature.color,
                     index: index,
                     isAnimated: animateFeatures
                 )
@@ -148,151 +143,146 @@ struct LiveModeInfoView: View {
         }
     }
     
-    // MARK: - Regular Free Mode Info Card
+    // MARK: - Free Mode Card
     
-    private var freeModeInfoCard: some View {
-        VStack(spacing: 16) {
+    private var freeModeCard: some View {
+        VStack(spacing: 14) {
             HStack {
                 Image(systemName: "info.circle.fill")
-                    .font(.system(size: 24))
-                    .foregroundColor(AppDesignSystem.Colors.primary)
+                    .font(.system(size: 20))
+                    .foregroundColor(AppDesignSystem.Colors.grassGreen)
                 
-                Text("Free Mode Limitations")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                Text("Free Mode")
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
                     .foregroundColor(AppDesignSystem.Colors.primaryText)
                 
                 Spacer()
             }
             
-            VStack(alignment: .leading, spacing: 8) {
-                Text("You can follow 1 live match per day in free mode.")
-                    .font(.system(size: 14, weight: .medium, design: .rounded))
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Follow 1 live match per day for free.")
+                    .font(.system(size: 13))
                     .foregroundColor(AppDesignSystem.Colors.secondaryText)
                 
                 HStack {
-                    Text("Remaining matches today:")
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    Text("Remaining today:")
+                        .font(.system(size: 13, weight: .medium))
                         .foregroundColor(AppDesignSystem.Colors.primaryText)
                     
                     Spacer()
                     
                     Text("\(remainingFreeMatches)")
                         .font(.system(size: 18, weight: .bold, design: .rounded))
-                        .foregroundColor(remainingFreeMatches > 0 ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.error)
+                        .foregroundColor(remainingFreeMatches > 0 ? AppDesignSystem.Colors.grassGreen : AppDesignSystem.Colors.error)
                 }
                 
-                Text("Watch ads for extra matches or upgrade to premium for unlimited access.")
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                Text("Watch ads for extra matches or upgrade to premium.")
+                    .font(.system(size: 11))
                     .foregroundColor(AppDesignSystem.Colors.secondaryText)
             }
-        }
-        .enhancedCard()
-        .overlay(
-            RoundedRectangle(cornerRadius: 16)
-                .stroke(AppDesignSystem.Colors.primary.opacity(0.3), lineWidth: 2)
-        )
-    }
-    
-    // MARK: - Important Notes
-    
-    private var importantNotesSection: some View {
-        VStack(spacing: 12) {
-            Text("📶 Network Required")
-                .font(.system(size: 16, weight: .bold, design: .rounded))
-                .foregroundColor(AppDesignSystem.Colors.primaryText)
-            
-            Text("Live Mode requires an internet connection and uses data. Updates may be delayed by 1-2 minutes from the actual match.")
-                .font(.system(size: 14, weight: .medium, design: .rounded))
-                .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                .multilineTextAlignment(.center)
-        }
-        .enhancedCard()
-    }
-    
-    // MARK: - Supporting Data
-    
-    private var liveFeatures: [(icon: String, title: String, description: String, color: Color)] {
-        [
-            ("sportscourt.fill", "Select a Match", "Choose from live or upcoming matches from major leagues.", AppDesignSystem.Colors.primary),
-            ("person.2.fill", "Set Up Participants", "Add the people who will be participating in your game.", AppDesignSystem.Colors.success),
-            ("scalemass.fill", "Configure Bets", "Set your bet amounts for different types of events.", AppDesignSystem.Colors.warning),
-            ("person.crop.circle.badge.checkmark", "Select Players", "Choose football players from the match to include in your game.", AppDesignSystem.Colors.info),
-            ("clock.arrow.circlepath", "Live Updates", "Get real-time notifications when events happen during the match.", AppDesignSystem.Colors.secondary)
-        ]
-    }
-}
-
-// MARK: - Supporting Components
-
-struct FeatureCheckmark: View {
-    let text: String
-    
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 14))
-                .foregroundColor(AppDesignSystem.Colors.success)
-            
-            Text(text)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(AppDesignSystem.Colors.primaryText)
-            
-            Spacer()
-        }
-    }
-}
-
-struct EnhancedLiveModeFeature: View {
-    let feature: (icon: String, title: String, description: String, color: Color)
-    let index: Int
-    let isAnimated: Bool
-    
-    var body: some View {
-        HStack(spacing: 16) {
-            // Feature icon
-            ZStack {
-                Circle()
-                    .fill(feature.color.opacity(0.1))
-                    .frame(width: 50, height: 50)
-                
-                Image(systemName: feature.icon)
-                    .font(.system(size: 24, weight: .medium))
-                    .foregroundColor(feature.color)
-            }
-            .scaleEffect(isAnimated ? 1.0 : 0.8)
-            .opacity(isAnimated ? 1.0 : 0.0)
-            .animation(
-                AppDesignSystem.Animations.standard.delay(Double(index) * 0.1),
-                value: isAnimated
-            )
-            
-            // Feature content
-            VStack(alignment: .leading, spacing: 4) {
-                Text(feature.title)
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundColor(AppDesignSystem.Colors.primaryText)
-                
-                Text(feature.description)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .opacity(isAnimated ? 1.0 : 0.0)
-            .offset(x: isAnimated ? 0 : 20)
-            .animation(
-                AppDesignSystem.Animations.standard.delay(Double(index) * 0.1 + 0.2),
-                value: isAnimated
-            )
-            
-            Spacer()
         }
         .padding(16)
         .background(
             RoundedRectangle(cornerRadius: 12)
                 .fill(AppDesignSystem.Colors.cardBackground)
-                .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(AppDesignSystem.Colors.grassGreen.opacity(0.3), lineWidth: 1.5)
+                )
         )
+    }
+    
+    // MARK: - Network Note
+    
+    private var networkNote: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "wifi")
+                .font(.system(size: 16))
+                .foregroundColor(AppDesignSystem.Colors.secondaryText)
+            
+            Text("Requires internet. Updates may be delayed 1-2 minutes.")
+                .font(.system(size: 12))
+                .foregroundColor(AppDesignSystem.Colors.secondaryText)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(AppDesignSystem.Colors.secondaryText.opacity(0.08))
+        )
+    }
+    
+    // MARK: - Features Data
+    
+    private var features: [(icon: String, title: String, description: String, color: Color)] {
+        [
+            ("sportscourt.fill", "Select a Match", "Choose from live or upcoming matches", AppDesignSystem.Colors.grassGreen),
+            ("person.2.fill", "Add Participants", "Set up who's playing in your game", AppDesignSystem.Colors.goalYellow),
+            ("scalemass.fill", "Configure Bets", "Set amounts for different events", AppDesignSystem.Colors.accent),
+            ("person.crop.circle.badge.checkmark", "Pick Players", "Choose players from the match", AppDesignSystem.Colors.info),
+            ("clock.arrow.circlepath", "Live Updates", "Get real-time event notifications", AppDesignSystem.Colors.grassGreen)
+        ]
     }
 }
 
+// MARK: - Live Feature Row
 
+struct LiveFeatureRow: View {
+    let icon: String
+    let title: String
+    let description: String
+    let color: Color
+    let index: Int
+    let isAnimated: Bool
+    
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(color.opacity(0.12))
+                    .frame(width: 40, height: 40)
+                
+                Image(systemName: icon)
+                    .font(.system(size: 18))
+                    .foregroundColor(color)
+            }
+            .scaleEffect(isAnimated ? 1.0 : 0.7)
+            .opacity(isAnimated ? 1.0 : 0.0)
+            .animation(
+                .spring(response: 0.4, dampingFraction: 0.7).delay(Double(index) * 0.08),
+                value: isAnimated
+            )
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                Text(description)
+                    .font(.system(size: 12))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+            }
+            .opacity(isAnimated ? 1.0 : 0.0)
+            .offset(x: isAnimated ? 0 : 15)
+            .animation(
+                .spring(response: 0.4, dampingFraction: 0.8).delay(Double(index) * 0.08 + 0.1),
+                value: isAnimated
+            )
+            
+            Spacer()
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(AppDesignSystem.Colors.cardBackground)
+                .shadow(
+                    color: colorScheme == .dark ? Color.black.opacity(0.15) : Color.black.opacity(0.04),
+                    radius: 3,
+                    x: 0,
+                    y: 2
+                )
+        )
+    }
+}

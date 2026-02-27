@@ -391,30 +391,30 @@ struct HowToPlayView: View {
                 GridItem(.flexible())
             ], spacing: 16) {
                 FeatureCard(
-                    icon: "globe",
-                    title: "Live Mode",
-                    description: "Follow real matches with automatic updates",
+                    title: "globe",
+                    description: "Live Mode",
+                    icon: "Follow real matches with automatic updates",
                     color: AppDesignSystem.Colors.success
                 )
                 
                 FeatureCard(
-                    icon: "gamecontroller.fill",
-                    title: "Manual Mode",
-                    description: "Create custom games with your own players",
+                    title: "gamecontroller.fill",
+                    description: "Manual Mode",
+                    icon: "Create custom games with your own players",
                     color: AppDesignSystem.Colors.info
                 )
                 
                 FeatureCard(
-                    icon: "chart.line.uptrend.xyaxis",
-                    title: "Live Stats",
-                    description: "Track performance and winnings in real-time",
+                    title: "chart.line.uptrend.xyaxis",
+                    description: "Live Stats",
+                    icon: "Track performance and winnings in real-time",
                     color: AppDesignSystem.Colors.accent
                 )
                 
                 FeatureCard(
-                    icon: "person.3.fill",
-                    title: "Multiplayer",
-                    description: "Play with friends and family members",
+                    title: "person.3.fill",
+                    description: "Multiplayer",
+                    icon: "Play with friends and family members",
                     color: AppDesignSystem.Colors.warning
                 )
             }
@@ -647,54 +647,7 @@ struct EnhancedTutorialCard: View {
 
 // MARK: - Feature Card
 
-struct FeatureCard: View {
-    let icon: String
-    let title: String
-    let description: String
-    let color: Color
-    
-    var body: some View {
-        VStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(color.opacity(0.2))
-                    .frame(width: 50, height: 50)
-                
-                Image(systemName: icon)
-                    .font(.system(size: 22, weight: .medium))
-                    .foregroundColor(color)
-            }
-            
-            VStack(spacing: 6) {
-                Text(title)
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundColor(AppDesignSystem.Colors.primaryText)
-                
-                Text(description)
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                    .multilineTextAlignment(.center)
-                    .lineLimit(3)
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(AppDesignSystem.Colors.cardBackground)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(color.opacity(0.2), lineWidth: 1)
-                )
-        )
-        .shadow(
-            color: Color.black.opacity(0.05),
-            radius: 4,
-            x: 0,
-            y: 2
-        )
-    }
-}
+
 
 // MARK: - Floating Tutorial Elements
 

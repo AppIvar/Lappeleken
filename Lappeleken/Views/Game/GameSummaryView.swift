@@ -1,8 +1,8 @@
 //
-//  Enhanced GameSummaryView.swift
+//  GameSummaryView.swift
 //  Lucky Football Slip
 //
-//  Enhanced with vibrant design patterns
+//  End game results - Football themed
 //
 
 import SwiftUI
@@ -10,83 +10,55 @@ import SwiftUI
 struct GameSummaryView: View {
     let gameSession: GameSession
     @Environment(\.presentationMode) var presentationMode
+    @Environment(\.colorScheme) var colorScheme
     @State private var gameName: String = ""
     @State private var showingSaveDialog = false
     @State private var showConfetti = false
     @State private var pulseWinner = false
-
-    
-    // Computed properties
-    private var sortedEvents: [GameEvent] {
-        return gameSession.events.sorted(by: { $0.timestamp > $1.timestamp })
-    }
     
     private var sortedParticipants: [Participant] {
-        return gameSession.participants.sorted(by: { $0.balance > $1.balance })
-    }
-    
-    private var hasEvents: Bool {
-        return !gameSession.events.isEmpty
+        gameSession.participants.sorted { $0.balance > $1.balance }
     }
     
     private var winner: Participant? {
-        return sortedParticipants.first { $0.balance > 0 }
+        sortedParticipants.first { $0.balance > 0 }
+    }
+    
+    private var currencySymbol: String {
+        UserDefaults.standard.string(forKey: "currencySymbol") ?? "€"
     }
     
     var body: some View {
         NavigationView {
             ZStack {
-                // Enhanced background with celebration effect
-                backgroundView
+                footballBackground
                 
-                if showConfetti {
-                    ConfettiView()
-                        .ignoresSafeArea()
-                }
+                if showConfetti { ConfettiView().ignoresSafeArea() }
                 
                 ScrollView(showsIndicators: false) {
-                    VStack(spacing: 24) {
-                        // Enhanced header with winner celebration
+                    VStack(spacing: 20) {
                         headerSection
-                        
-                        // Winner spotlight
-                        if let winner = winner {
-                            winnerSpotlightSection(winner)
-                        }
-                        
-                        // Final standings
+                        if let winner = winner { winnerCard(winner) }
                         standingsSection
-                        
-                        // Events summary
-                        if hasEvents {
-                            eventsSection
-                        }
-                        
-                        // Payments section
+                        if !gameSession.events.isEmpty { eventsSection }
                         paymentsSection
-                        
-                        // Action buttons
-                        actionButtonsSection
-                        
+                        actionButtons
                         Spacer(minLength: 40)
                     }
                     .padding(.horizontal, 20)
-                    .padding(.top, 20)
+                    .padding(.top, 16)
                 }
             }
             .navigationTitle("Game Results")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Close") {
-                        presentationMode.wrappedValue.dismiss()
-                    }
-                    .foregroundColor(AppDesignSystem.Colors.primary)
-                    .font(.system(size: 17, weight: .semibold))
+                    Button("Close") { presentationMode.wrappedValue.dismiss() }
+                        .foregroundColor(AppDesignSystem.Colors.grassGreen)
+                        .font(.system(size: 16, weight: .semibold))
                 }
             }
             .onAppear {
-                
                 if winner != nil {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
                         withAnimation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true)) {
@@ -97,678 +69,316 @@ struct GameSummaryView: View {
                         }
                     }
                 }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { showInterstitialIfNeeded() }
             }
-            .sheet(isPresented: $showingSaveDialog) {
-                enhancedSaveGameSheet
-            }
-        }
-        
-        .withMinimalBanner()
-        .onAppear {
-            // Show interstitial after game completion
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                showInterstitialIfNeeded()
-            }
-        }
-    }
-    
-    private func showInterstitialIfNeeded() {
-        guard AppPurchaseManager.shared.currentTier == .free else { return }
-        
-        if AdManager.shared.shouldShowInterstitial(for: .gameComplete) {
-            guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                  let rootViewController = windowScene.windows.first?.rootViewController else {
-                return
-            }
-            
-            AdManager.shared.showInterstitialAd(from: rootViewController) { success in
-                if success {
-                    print("✅ Game completion interstitial shown")
-                }
-            }
+            .sheet(isPresented: $showingSaveDialog) { saveGameSheet }
         }
     }
     
     // MARK: - Background
     
-    private var backgroundView: some View {
-        LinearGradient(
-            colors: [
-                AppDesignSystem.Colors.background,
-                AppDesignSystem.Colors.background.opacity(0.95),
-                AppDesignSystem.Colors.cardBackground
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+    private var footballBackground: some View {
+        ZStack {
+            Color(colorScheme == .dark ? UIColor(red: 0.05, green: 0.08, blue: 0.06, alpha: 1) : UIColor(red: 0.96, green: 0.98, blue: 0.96, alpha: 1))
+            
+            VStack {
+                LinearGradient(
+                    colors: [
+                        AppDesignSystem.Colors.grassGreen.opacity(colorScheme == .dark ? 0.2 : 0.1),
+                        Color.clear
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 200)
+                Spacer()
+            }
+        }
         .ignoresSafeArea()
     }
     
-    // MARK: - Header Section
+    // MARK: - Header
     
     private var headerSection: some View {
         VStack(spacing: 16) {
             ZStack {
                 Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [
-                                AppDesignSystem.Colors.success.opacity(0.2),
-                                AppDesignSystem.Colors.success.opacity(0.1),
-                                Color.clear
-                            ],
-                            center: .center,
-                            startRadius: 20,
-                            endRadius: 60
-                        )
-                    )
-                    .frame(width: 120, height: 120)
+                    .fill(AppDesignSystem.Colors.goalYellow.opacity(0.15))
+                    .frame(width: 90, height: 90)
+                    .scaleEffect(pulseWinner ? 1.1 : 1.0)
                 
                 Image(systemName: winner != nil ? "trophy.fill" : "flag.checkered")
-                    .font(.system(size: 50, weight: .medium))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: winner != nil ? [
-                                AppDesignSystem.Colors.goalYellow,
-                                AppDesignSystem.Colors.success
-                            ] : [
-                                AppDesignSystem.Colors.primary,
-                                AppDesignSystem.Colors.secondary
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .shadow(
-                        color: (winner != nil ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.primary).opacity(0.3),
-                        radius: 12,
-                        x: 0,
-                        y: 6
-                    )
+                    .font(.system(size: 40))
+                    .foregroundColor(AppDesignSystem.Colors.goalYellow)
             }
-            .scaleEffect(pulseWinner ? 1.05 : 1.0)
             
-            VStack(spacing: 8) {
+            VStack(spacing: 6) {
                 Text(winner != nil ? "Game Complete!" : "Game Summary")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [
-                                AppDesignSystem.Colors.primaryText,
-                                AppDesignSystem.Colors.primary
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                
-                if hasEvents {
-                    Text("\(gameSession.events.count) events • \(gameSession.participants.count) participants")
-                        .font(AppDesignSystem.Typography.bodyFont)
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                } else {
-                    Text("Practice game completed")
-                        .font(AppDesignSystem.Typography.bodyFont)
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                }
-            }
-        }
-    }
-    
-    // MARK: - Winner Spotlight
-    
-    private func winnerSpotlightSection(_ winner: Participant) -> some View {
-        VStack(spacing: 16) {
-            Text("🏆 Champion")
-                .font(.system(size: 20, weight: .bold, design: .rounded))
-                .foregroundColor(AppDesignSystem.Colors.goalYellow)
-            
-            VStack(spacing: 12) {
-                Text(winner.name)
-                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .font(.system(size: 26, weight: .bold, design: .rounded))
                     .foregroundColor(AppDesignSystem.Colors.primaryText)
                 
-                Text(formatCurrency(winner.balance))
-                    .font(.system(size: 32, weight: .bold, design: .rounded))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [
-                                AppDesignSystem.Colors.success,
-                                AppDesignSystem.Colors.grassGreen
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                
-                Text("Final winnings")
-                    .font(AppDesignSystem.Typography.bodyFont)
+                Text("\(gameSession.events.count) events • \(gameSession.participants.count) participants")
+                    .font(.system(size: 14))
                     .foregroundColor(AppDesignSystem.Colors.secondaryText)
             }
-            .padding(24)
-            .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(AppDesignSystem.Colors.cardBackground)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16)
-                            .stroke(
-                                LinearGradient(
-                                    colors: [
-                                        AppDesignSystem.Colors.goalYellow,
-                                        AppDesignSystem.Colors.success
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 2
-                            )
-                    )
-            )
-            .shadow(
-                color: AppDesignSystem.Colors.success.opacity(0.2),
-                radius: 12,
-                x: 0,
-                y: 6
-            )
         }
     }
     
-    // MARK: - Standings Section
+    // MARK: - Winner Card
+    
+    private func winnerCard(_ winner: Participant) -> some View {
+        VStack(spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "crown.fill")
+                    .foregroundColor(AppDesignSystem.Colors.goalYellow)
+                Text("WINNER")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(AppDesignSystem.Colors.goalYellow)
+            }
+            
+            Text(winner.name)
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .foregroundColor(AppDesignSystem.Colors.primaryText)
+            
+            Text("+\(currencySymbol)\(String(format: "%.2f", winner.balance))")
+                .font(.system(size: 28, weight: .bold, design: .rounded))
+                .foregroundColor(AppDesignSystem.Colors.grassGreen)
+        }
+        .padding(20)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(AppDesignSystem.Colors.cardBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(AppDesignSystem.Colors.goalYellow.opacity(0.4), lineWidth: 2)
+                )
+                .shadow(color: AppDesignSystem.Colors.goalYellow.opacity(0.2), radius: 12, x: 0, y: 6)
+        )
+    }
+    
+    // MARK: - Standings
     
     private var standingsSection: some View {
-        VStack(spacing: 16) {
-            HStack {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
                 Image(systemName: "list.number")
-                    .font(.system(size: 20))
-                    .foregroundColor(AppDesignSystem.Colors.primary)
-                
+                    .foregroundColor(AppDesignSystem.Colors.grassGreen)
                 Text("Final Standings")
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
                     .foregroundColor(AppDesignSystem.Colors.primaryText)
-                
-                Spacer()
             }
             
-            VStack(spacing: 12) {
+            VStack(spacing: 0) {
                 ForEach(Array(sortedParticipants.enumerated()), id: \.element.id) { index, participant in
-                    participantRow(participant: participant, position: index + 1)
-                        .animation(
-                            AppDesignSystem.Animations.bouncy.delay(Double(index) * 0.1),
-                            value: sortedParticipants.count
-                        )
+                    SummaryStandingRow(participant: participant, position: index + 1, currencySymbol: currencySymbol)
+                    
+                    if index < sortedParticipants.count - 1 {
+                        Divider().padding(.horizontal, 12)
+                    }
                 }
             }
-        }
-        .padding(20)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(AppDesignSystem.Colors.cardBackground)
-                .shadow(
-                    color: Color.black.opacity(0.05),
-                    radius: 8,
-                    x: 0,
-                    y: 4
-                )
-        )
-    }
-    
-    private func participantRow(participant: Participant, position: Int) -> some View {
-        HStack(spacing: 16) {
-            // Position badge
-            ZStack {
-                Circle()
-                    .fill(positionColor(position))
-                    .frame(width: 32, height: 32)
-                
-                Text("\(position)")
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundColor(.white)
-            }
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Text(participant.name)
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundColor(AppDesignSystem.Colors.primaryText)
-                
-                Text("\(participant.selectedPlayers.count + participant.substitutedPlayers.count) players")
-                    .font(AppDesignSystem.Typography.captionFont)
-                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
-            }
-            
-            Spacer()
-            
-            Text(formatCurrency(participant.balance))
-                .font(.system(size: 18, weight: .bold, design: .rounded))
-                .foregroundColor(participant.balance >= 0 ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.error)
-        }
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(
-                    participant.balance > 0 ?
-                    AppDesignSystem.Colors.success.opacity(0.1) :
-                    Color.clear
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(
-                            participant.balance > 0 ?
-                            AppDesignSystem.Colors.success.opacity(0.3) :
-                            Color.gray.opacity(0.2),
-                            lineWidth: 1
-                        )
-                )
-        )
-    }
-    
-    private func positionColor(_ position: Int) -> Color {
-        switch position {
-        case 1: return AppDesignSystem.Colors.goalYellow
-        case 2: return AppDesignSystem.Colors.secondary
-        case 3: return AppDesignSystem.Colors.warning
-        default: return AppDesignSystem.Colors.secondaryText.opacity(0.6)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(AppDesignSystem.Colors.cardBackground)
+            )
         }
     }
     
-    // MARK: - Events Section
+    // MARK: - Events Summary
     
     private var eventsSection: some View {
-        VStack(spacing: 16) {
-            HStack {
-                Image(systemName: "list.bullet.clipboard")
-                    .font(.system(size: 20))
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "clock.arrow.circlepath")
                     .foregroundColor(AppDesignSystem.Colors.accent)
-                
-                Text("Game Events")
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                Text("Event Summary")
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
                     .foregroundColor(AppDesignSystem.Colors.primaryText)
-                
-                Spacer()
-                
-                VibrantStatusBadge("\(sortedEvents.count)", color: AppDesignSystem.Colors.accent)
             }
             
-            if sortedEvents.count > 3 {
-                // Show only recent events with expand option
-                VStack(spacing: 8) {
-                    ForEach(Array(sortedEvents.prefix(3).enumerated()), id: \.element.id) { index, event in
-                        enhancedEventRow(event: event, index: index)
-                    }
-                    
-                    Button("View all \(sortedEvents.count) events") {
-                        // Could expand or navigate to full timeline
-                    }
-                    .font(AppDesignSystem.Typography.bodyFont)
-                    .foregroundColor(AppDesignSystem.Colors.accent)
-                    .padding(.top, 8)
-                }
-            } else {
-                VStack(spacing: 8) {
-                    ForEach(Array(sortedEvents.enumerated()), id: \.element.id) { index, event in
-                        enhancedEventRow(event: event, index: index)
+            let eventCounts = Dictionary(grouping: gameSession.events, by: { $0.eventType }).mapValues { $0.count }
+            
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                ForEach(Bet.EventType.allCases.filter { eventCounts[$0] ?? 0 > 0 }, id: \.self) { eventType in
+                    if let count = eventCounts[eventType] {
+                        SummaryEventBadge(eventType: eventType, count: count)
                     }
                 }
             }
         }
-        .padding(20)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(AppDesignSystem.Colors.cardBackground)
-                .shadow(
-                    color: Color.black.opacity(0.05),
-                    radius: 8,
-                    x: 0,
-                    y: 4
-                )
-        )
     }
     
-    private func enhancedEventRow(event: GameEvent, index: Int) -> some View {
-        HStack(spacing: 12) {
-            // Event icon
-            Circle()
-                .fill(eventColor(event.eventType).opacity(0.2))
-                .frame(width: 36, height: 36)
-                .overlay(
-                    Image(systemName: eventIcon(event.eventType))
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(eventColor(event.eventType))
-                )
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Text(event.player.name)
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundColor(AppDesignSystem.Colors.primaryText)
-                
-                HStack(spacing: 8) {
-                    Text(event.eventType.rawValue)
-                        .font(AppDesignSystem.Typography.captionFont)
-                        .foregroundColor(eventColor(event.eventType))
-                    
-                    Text("•")
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                    
-                    Text(event.player.team.name)
-                        .font(AppDesignSystem.Typography.captionFont)
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                }
-            }
-            
-            Spacer()
-            
-            Text(formatTime(event.timestamp))
-                .font(AppDesignSystem.Typography.captionFont)
-                .foregroundColor(AppDesignSystem.Colors.secondaryText)
-        }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color.gray.opacity(0.05))
-        )
-    }
-    
-    private func eventColor(_ eventType: Bet.EventType) -> Color {
-        switch eventType {
-        case .goal, .penalty: return AppDesignSystem.Colors.success
-        case .assist: return AppDesignSystem.Colors.primary
-        case .yellowCard: return AppDesignSystem.Colors.goalYellow
-        case .redCard: return AppDesignSystem.Colors.error
-        case .ownGoal, .penaltyMissed: return AppDesignSystem.Colors.warning
-        default: return AppDesignSystem.Colors.accent
-        }
-    }
-    
-    private func eventIcon(_ eventType: Bet.EventType) -> String {
-        switch eventType {
-        case .goal: return "soccerball"
-        case .assist: return "arrow.up.forward"
-        case .yellowCard, .redCard: return "square.fill"
-        case .penalty: return "p.circle"
-        case .ownGoal: return "arrow.uturn.backward"
-        default: return "star"
-        }
-    }
-    
-    // MARK: - Payments Section
+    // MARK: - Payments
     
     private var paymentsSection: some View {
-        VStack(spacing: 16) {
-            HStack {
-                Image(systemName: "creditcard")
-                    .font(.system(size: 20))
+        let payments = calculatePayments()
+        
+        return VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.left.arrow.right")
                     .foregroundColor(AppDesignSystem.Colors.info)
-                
-                Text("Payments")
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                Text("Settlements")
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
                     .foregroundColor(AppDesignSystem.Colors.primaryText)
-                
-                Spacer()
             }
             
-            let payments = calculatePayments()
-            
             if payments.isEmpty {
-                VStack(spacing: 12) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 40))
-                        .foregroundColor(AppDesignSystem.Colors.success)
-                    
-                    Text("All Even!")
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
-                        .foregroundColor(AppDesignSystem.Colors.primaryText)
-                    
-                    Text("No payments needed between participants")
-                        .font(AppDesignSystem.Typography.bodyFont)
+                HStack {
+                    Spacer()
+                    Text("No settlements needed")
+                        .font(.system(size: 13))
                         .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                        .multilineTextAlignment(.center)
+                    Spacer()
                 }
-                .padding(20)
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .fill(AppDesignSystem.Colors.success.opacity(0.1))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(AppDesignSystem.Colors.success.opacity(0.3), lineWidth: 1)
-                        )
-                )
+                .padding(16)
+                .background(RoundedRectangle(cornerRadius: 10).fill(AppDesignSystem.Colors.cardBackground))
             } else {
-                VStack(spacing: 12) {
-                    ForEach(Array(payments.enumerated()), id: \.element.id) { index, payment in
-                        paymentRow(payment: payment)
-                            .animation(
-                                AppDesignSystem.Animations.bouncy.delay(Double(index) * 0.1),
-                                value: payments.count
-                            )
+                VStack(spacing: 8) {
+                    ForEach(payments) { payment in
+                        SummaryPaymentRow(payment: payment, currencySymbol: currencySymbol)
                     }
                 }
             }
         }
-        .padding(20)
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(AppDesignSystem.Colors.cardBackground)
-                .shadow(
-                    color: Color.black.opacity(0.05),
-                    radius: 8,
-                    x: 0,
-                    y: 4
-                )
-        )
-    }
-    
-    private func paymentRow(payment: Payment) -> some View {
-        HStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(payment.from)
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundColor(AppDesignSystem.Colors.primaryText)
-                
-                Text("Pays")
-                    .font(AppDesignSystem.Typography.captionFont)
-                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
-            }
-            
-            Image(systemName: "arrow.right")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(AppDesignSystem.Colors.info)
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Text(payment.to)
-                    .font(.system(size: 16, weight: .semibold, design: .rounded))
-                    .foregroundColor(AppDesignSystem.Colors.primaryText)
-                
-                Text("Receives")
-                    .font(AppDesignSystem.Typography.captionFont)
-                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
-            }
-            
-            Spacer()
-            
-            Text(formatCurrency(payment.amount))
-                .font(.system(size: 18, weight: .bold, design: .rounded))
-                .foregroundColor(AppDesignSystem.Colors.info)
-        }
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(AppDesignSystem.Colors.info.opacity(0.1))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(AppDesignSystem.Colors.info.opacity(0.3), lineWidth: 1)
-                )
-        )
     }
     
     // MARK: - Action Buttons
     
-    @ObservedObject private var adManager = AdManager.shared
-    
-    private var actionButtonsSection: some View {
-        VStack(spacing: 16) {
-            Button("Save Game") {
-                showingSaveDialog = true
+    private var actionButtons: some View {
+        VStack(spacing: 12) {
+            Button(action: { showingSaveDialog = true }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "square.and.arrow.down")
+                    Text("Save Game")
+                }
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(RoundedRectangle(cornerRadius: 12).fill(AppDesignSystem.Colors.grassGreen))
             }
-            .buttonStyle(EnhancedPrimaryButtonStyle())
             
-            Button("Return to Home") {
-                presentationMode.wrappedValue.dismiss()
+            Button(action: { presentationMode.wrappedValue.dismiss() }) {
+                Text("Return to Home")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(AppDesignSystem.Colors.grassGreen)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(AppDesignSystem.Colors.grassGreen, lineWidth: 1.5)
+                    )
             }
-            .buttonStyle(EnhancedSecondaryButtonStyle())
         }
     }
     
-    // MARK: - Enhanced Save Game Sheet
+    // MARK: - Save Sheet
     
-    private var enhancedSaveGameSheet: some View {
+    private var saveGameSheet: some View {
         NavigationView {
-            VStack(spacing: 24) {
-                VStack(spacing: 16) {
-                    Image(systemName: "square.and.arrow.down")
-                        .font(.system(size: 50))
-                        .foregroundColor(AppDesignSystem.Colors.primary)
+            ZStack {
+                footballBackground
+                
+                VStack(spacing: 24) {
+                    ZStack {
+                        Circle()
+                            .fill(AppDesignSystem.Colors.grassGreen.opacity(0.15))
+                            .frame(width: 64, height: 64)
+                        Image(systemName: "square.and.arrow.down")
+                            .font(.system(size: 28))
+                            .foregroundColor(AppDesignSystem.Colors.grassGreen)
+                    }
                     
                     Text("Save Game Session")
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .font(.system(size: 20, weight: .bold, design: .rounded))
                         .foregroundColor(AppDesignSystem.Colors.primaryText)
                     
-                    Text("Give your game a memorable name")
-                        .font(AppDesignSystem.Typography.bodyFont)
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                        .multilineTextAlignment(.center)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Game Name")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                        
+                        TextField("Enter game name", text: $gameName)
+                            .font(.system(size: 15))
+                            .padding(14)
+                            .background(
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(colorScheme == .dark ? Color.white.opacity(0.05) : Color.black.opacity(0.03))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 10)
+                                            .stroke(AppDesignSystem.Colors.grassGreen.opacity(0.3), lineWidth: 1)
+                                    )
+                            )
+                    }
+                    
+                    Button(action: {
+                        let name = gameName.isEmpty ? "Game \(Date().formatted(date: .abbreviated, time: .shortened))" : gameName
+                        GameHistoryManager.shared.saveGameSession(gameSession, name: name)
+                        showingSaveDialog = false
+                        gameName = ""
+                    }) {
+                        Text("Save Game")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(RoundedRectangle(cornerRadius: 12).fill(AppDesignSystem.Colors.grassGreen))
+                    }
+                    
+                    Spacer()
                 }
-                
-                VStack(spacing: 12) {
-                    Text("Game Name")
-                        .font(.system(size: 16, weight: .semibold, design: .rounded))
-                        .foregroundColor(AppDesignSystem.Colors.primaryText)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    
-                    TextField("Enter game name", text: $gameName)
-                        .font(AppDesignSystem.Typography.bodyFont)
-                        .padding(16)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(AppDesignSystem.Colors.background)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(AppDesignSystem.Colors.primary.opacity(0.3), lineWidth: 1)
-                                )
-                        )
-                        .shadow(
-                            color: Color.black.opacity(0.05),
-                            radius: 4,
-                            x: 0,
-                            y: 2
-                        )
-                }
-                
-                Button("Save Game") {
-                    let finalGameName = gameName.isEmpty ? "Game \(Date().formatted(date: .abbreviated, time: .shortened))" : gameName
-                    
-                    GameHistoryManager.shared.saveGameSession(gameSession, name: finalGameName)
-                    
-                    showingSaveDialog = false
-                    gameName = ""
-                    
-                    print("✅ Game save dialog completed")
-                }
-                .buttonStyle(EnhancedPrimaryButtonStyle())
-                .padding(.top)
-                
-                Spacer()
+                .padding(24)
             }
-            .padding(24)
             .navigationTitle("Save Game")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Cancel") {
-                        showingSaveDialog = false
-                    }
-                    .foregroundColor(AppDesignSystem.Colors.primary)
+                    Button("Cancel") { showingSaveDialog = false }
+                        .foregroundColor(AppDesignSystem.Colors.grassGreen)
                 }
             }
         }
-        .withMinimalBanner()
     }
     
+    // MARK: - Helpers
     
-    // MARK: - Helper Methods (keeping your existing logic)
-    
-
-    
-    private func formatCurrency(_ value: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencySymbol = UserDefaults.standard.string(forKey: "currencySymbol") ?? "€"
-        
-        return formatter.string(from: NSNumber(value: value)) ?? "€0.00"
-    }
-    
-    private func formatTime(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .none
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
+    private func showInterstitialIfNeeded() {
+        guard AppPurchaseManager.shared.currentTier == .free else { return }
+        if AdManager.shared.shouldShowInterstitial(for: .gameComplete) {
+            guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                  let rootViewController = windowScene.windows.first?.rootViewController else { return }
+            AdManager.shared.showInterstitialAd(from: rootViewController) { _ in }
+        }
     }
     
     private func calculatePayments() -> [Payment] {
         var payments: [Payment] = []
+        var debtors = gameSession.participants.filter { $0.balance < 0 }.map { createParticipantCopy($0) }.sorted { abs($0.balance) > abs($1.balance) }
+        var creditors = gameSession.participants.filter { $0.balance > 0 }.map { createParticipantCopy($0) }.sorted { $0.balance > $1.balance }
         
-        var debtors = gameSession.participants.filter { $0.balance < 0 }
-            .map { createParticipantCopy($0) }
-            .sorted(by: { abs($0.balance) > abs($1.balance) })
-        
-        var creditors = gameSession.participants.filter { $0.balance > 0 }
-            .map { createParticipantCopy($0) }
-            .sorted(by: { $0.balance > $1.balance })
-            
         while !debtors.isEmpty && !creditors.isEmpty {
             var debtor = debtors[0]
             var creditor = creditors[0]
+            let amount = min(abs(debtor.balance), creditor.balance)
             
-            let paymentAmount = min(abs(debtor.balance), creditor.balance)
-            
-            if paymentAmount > 0.01 {
-                payments.append(Payment(
-                    from: debtor.name,
-                    to: creditor.name,
-                    amount: paymentAmount
-                ))
-                
-                debtor.balance += paymentAmount
-                creditor.balance -= paymentAmount
-                
+            if amount > 0.01 {
+                payments.append(Payment(from: debtor.name, to: creditor.name, amount: amount))
+                debtor.balance += amount
+                creditor.balance -= amount
                 debtors[0] = debtor
                 creditors[0] = creditor
             }
-            
-            if abs(debtor.balance) < 0.01 {
-                debtors.remove(at: 0)
-            }
-            
-            if creditor.balance < 0.01 {
-                creditors.remove(at: 0)
-            }
+            if abs(debtor.balance) < 0.01 { debtors.remove(at: 0) }
+            if creditor.balance < 0.01 { creditors.remove(at: 0) }
         }
-        
         return payments
     }
     
-    private func createParticipantCopy(_ participant: Participant) -> Participant {
-        return Participant(
-            id: participant.id,
-            name: participant.name,
-            selectedPlayers: participant.selectedPlayers,
-            substitutedPlayers: participant.substitutedPlayers,
-            balance: participant.balance
-        )
+    private func createParticipantCopy(_ p: Participant) -> Participant {
+        Participant(id: p.id, name: p.name, selectedPlayers: p.selectedPlayers, substitutedPlayers: p.substitutedPlayers, balance: p.balance)
     }
-}
-
-// MARK: - Payment Helper Struct
-
-extension GameSummaryView {
+    
     struct Payment: Identifiable {
         let id = UUID()
         let from: String
@@ -777,20 +387,123 @@ extension GameSummaryView {
     }
 }
 
-// MARK: - Enhanced Button Styles
+// MARK: - Supporting Components
 
-struct EnhancedTertiaryButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 16, weight: .medium, design: .rounded))
-            .foregroundColor(AppDesignSystem.Colors.secondaryText)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 12)
-            .background(
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(Color.gray.opacity(0.1))
-            )
-            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
-            .animation(AppDesignSystem.Animations.quick, value: configuration.isPressed)
+struct SummaryStandingRow: View {
+    let participant: Participant
+    let position: Int
+    let currencySymbol: String
+    
+    private var positionColor: Color {
+        switch position {
+        case 1: return AppDesignSystem.Colors.goalYellow
+        case 2: return AppDesignSystem.Colors.secondaryText
+        case 3: return AppDesignSystem.Colors.accent
+        default: return AppDesignSystem.Colors.secondaryText.opacity(0.5)
+        }
+    }
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(positionColor.opacity(position <= 3 ? 0.15 : 0.08))
+                    .frame(width: 28, height: 28)
+                Text("\(position)")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(positionColor)
+            }
+            
+            Text(participant.name)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(AppDesignSystem.Colors.primaryText)
+            
+            Spacer()
+            
+            Text("\(participant.balance >= 0 ? "+" : "")\(currencySymbol)\(String(format: "%.2f", participant.balance))")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(participant.balance >= 0 ? AppDesignSystem.Colors.grassGreen : AppDesignSystem.Colors.error)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+    }
+}
+
+struct SummaryEventBadge: View {
+    let eventType: Bet.EventType
+    let count: Int
+    
+    private var icon: String {
+        switch eventType {
+        case .goal: return "soccerball"
+        case .assist: return "arrow.up.forward"
+        case .yellowCard: return "square.fill"
+        case .redCard: return "square.fill"
+        case .ownGoal: return "arrow.uturn.backward"
+        case .penalty: return "p.circle"
+        case .penaltyMissed: return "p.circle.fill"
+        case .cleanSheet: return "lock.shield"
+        case .custom: return "star"
+        }
+    }
+    
+    private var color: Color {
+        switch eventType {
+        case .goal, .assist: return AppDesignSystem.Colors.grassGreen
+        case .yellowCard: return AppDesignSystem.Colors.goalYellow
+        case .redCard: return AppDesignSystem.Colors.error
+        case .ownGoal, .penaltyMissed: return AppDesignSystem.Colors.warning
+        case .penalty, .cleanSheet: return AppDesignSystem.Colors.info
+        case .custom: return AppDesignSystem.Colors.accent
+        }
+    }
+    
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 14))
+                .foregroundColor(color)
+            
+            Text(eventType.rawValue.capitalized)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(AppDesignSystem.Colors.primaryText)
+            
+            Spacer()
+            
+            Text("\(count)")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(color)
+        }
+        .padding(10)
+        .background(RoundedRectangle(cornerRadius: 8).fill(color.opacity(0.1)))
+    }
+}
+
+struct SummaryPaymentRow: View {
+    let payment: GameSummaryView.Payment
+    let currencySymbol: String
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(payment.from)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(AppDesignSystem.Colors.error)
+            
+            Image(systemName: "arrow.right")
+                .font(.system(size: 12))
+                .foregroundColor(AppDesignSystem.Colors.secondaryText)
+            
+            Text(payment.to)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(AppDesignSystem.Colors.grassGreen)
+            
+            Spacer()
+            
+            Text("\(currencySymbol)\(String(format: "%.2f", payment.amount))")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(AppDesignSystem.Colors.primaryText)
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 8).fill(AppDesignSystem.Colors.cardBackground))
     }
 }

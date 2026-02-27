@@ -2,7 +2,7 @@
 //  SubstitutionView.swift
 //  Lucky Football Slip
 //
-//  Enhanced version with team dropdown and better UX
+//  Player substitution - Football themed
 //
 
 import SwiftUI
@@ -10,47 +10,30 @@ import SwiftUI
 struct SubstitutionView: View {
     @ObservedObject var gameSession: GameSession
     @Environment(\.presentationMode) var presentationMode
+    @Environment(\.colorScheme) var colorScheme
     
     @State private var selectedPlayerOff: Player? = nil
     @State private var newPlayerName: String = ""
     @State private var selectedTeam: Team? = nil
     @State private var newPlayerPosition = Player.Position.midfielder
-
-    // Sheet management
     @State private var activeSheet: ActiveSheet?
     @State private var useExistingPlayer = false
     @State private var selectedExistingPlayer: Player? = nil
-
-    // For creating new teams
     @State private var newTeamName = ""
     @State private var newTeamShortName = ""
 
     enum ActiveSheet: Identifiable {
-        case teamPicker
-        case createTeam
-        case existingPlayerPicker
-        
-        var id: String {
-            switch self {
-            case .teamPicker:
-                return "teamPicker"
-            case .createTeam:
-                return "createTeam"
-            case .existingPlayerPicker:
-                return "existingPlayerPicker"
-            }
-        }
+        case teamPicker, createTeam, existingPlayerPicker
+        var id: String { String(describing: self) }
     }
     
-    // Get all teams that exist in the game (from assigned players)
     private var availableTeams: [Team] {
         let assignedTeams = Set(gameSession.participants.flatMap { $0.selectedPlayers + $0.substitutedPlayers }.map { $0.team })
-        let allAvailableTeams = Set(gameSession.availablePlayers.map { $0.team }) // ADDED: Include all available players
+        let allAvailableTeams = Set(gameSession.availablePlayers.map { $0.team })
         let sampleTeams = Set(SampleData.allTeams)
         return Array(assignedTeams.union(allAvailableTeams).union(sampleTeams)).sorted { $0.name < $1.name }
     }
     
-    // Get available players not currently assigned to any participant
     private var availableUnassignedPlayers: [Player] {
         let assignedPlayerIds = Set(gameSession.participants.flatMap { $0.selectedPlayers + $0.substitutedPlayers }.map { $0.id })
         return gameSession.availablePlayers.filter { !assignedPlayerIds.contains($0.id) }
@@ -58,313 +41,273 @@ struct SubstitutionView: View {
     
     var body: some View {
         NavigationView {
-            Form {
-                // Player to substitute off
-                playerOffSection
+            ZStack {
+                footballBackground
                 
-                // New player selection
-                if selectedPlayerOff != nil {
-                    newPlayerSection
-                    
-                    // Action button
-                    actionSection
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 20) {
+                        headerIcon
+                        playerOffSection
+                        
+                        if selectedPlayerOff != nil {
+                            newPlayerSection
+                            substituteButton
+                        }
+                        
+                        Spacer(minLength: 40)
+                    }
+                    .padding(20)
                 }
             }
-            .navigationTitle("Player Substitution")
+            .navigationTitle("Substitution")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationBarItems(trailing: Button("Cancel") {
-                presentationMode.wrappedValue.dismiss()
-            })
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Cancel") { presentationMode.wrappedValue.dismiss() }
+                        .foregroundColor(AppDesignSystem.Colors.grassGreen)
+                }
+            }
             .sheet(item: $activeSheet) { sheet in
                 switch sheet {
-                case .teamPicker:
-                    teamPickerSheet
-                case .createTeam:
-                    createTeamSheet
-                case .existingPlayerPicker:
-                    existingPlayerPickerSheet
+                case .teamPicker: teamPickerSheet
+                case .createTeam: createTeamSheet
+                case .existingPlayerPicker: existingPlayerPickerSheet
                 }
             }
         }
-        .withMinimalBanner()
+    }
+    
+    // MARK: - Background
+    
+    private var footballBackground: some View {
+        ZStack {
+            Color(colorScheme == .dark ? UIColor(red: 0.05, green: 0.08, blue: 0.06, alpha: 1) : UIColor(red: 0.96, green: 0.98, blue: 0.96, alpha: 1))
+            VStack {
+                LinearGradient(colors: [AppDesignSystem.Colors.warning.opacity(colorScheme == .dark ? 0.15 : 0.08), Color.clear], startPoint: .top, endPoint: .bottom)
+                    .frame(height: 150)
+                Spacer()
+            }
+        }
+        .ignoresSafeArea()
+    }
+    
+    // MARK: - Header
+    
+    private var headerIcon: some View {
+        ZStack {
+            Circle()
+                .fill(AppDesignSystem.Colors.warning.opacity(0.15))
+                .frame(width: 64, height: 64)
+            Image(systemName: "arrow.left.arrow.right")
+                .font(.system(size: 28))
+                .foregroundColor(AppDesignSystem.Colors.warning)
+        }
     }
     
     // MARK: - Player Off Section
     
     private var playerOffSection: some View {
-        Section(header: Text("Select Player to Substitute")) {
-            if gameSession.participants.flatMap({ $0.selectedPlayers }).isEmpty {
-                Text("No players assigned yet")
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.down.circle.fill")
                     .foregroundColor(AppDesignSystem.Colors.error)
-                    .italic()
+                Text("Player Going Off")
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+            }
+            
+            let allPlayers = gameSession.participants.flatMap { $0.selectedPlayers }
+            
+            if allPlayers.isEmpty {
+                emptyStateCard(icon: "person.slash", message: "No players assigned yet")
             } else {
-                ForEach(gameSession.participants) { participant in
-                    if !participant.selectedPlayers.isEmpty {
-                        participantSection(participant: participant)
+                VStack(spacing: 8) {
+                    ForEach(gameSession.participants) { participant in
+                        if !participant.selectedPlayers.isEmpty {
+                            SubParticipantSection(
+                                participant: participant,
+                                selectedPlayerOff: $selectedPlayerOff,
+                                onSelect: { player in
+                                    selectedPlayerOff = player
+                                    selectedTeam = player.team
+                                }
+                            )
+                        }
                     }
                 }
             }
         }
-    }
-    
-    private func participantSection(participant: Participant) -> some View {
-        Section(header:
-            Text(participant.name)
-                .font(.subheadline)
-                .foregroundColor(.primary)
-        ) {
-            ForEach(participant.selectedPlayers) { player in
-                playerOffRow(player: player)
-            }
-        }
-    }
-    
-    private func playerOffRow(player: Player) -> some View {
-        Button(action: {
-            selectedPlayerOff = player
-            // Auto-select the same team for the new player
-            selectedTeam = player.team
-        }) {
-            HStack {
-                // Team color indicator
-                Circle()
-                    .fill(AppDesignSystem.TeamColors.getColor(for: player.team))
-                    .frame(width: 12, height: 12)
-                
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(player.name)
-                        .font(.subheadline)
-                        .foregroundColor(.primary)
-                    
-                    HStack(spacing: 4) {
-                        Text(player.team.shortName)
-                            .font(.caption)
-                            .foregroundColor(AppDesignSystem.TeamColors.getColor(for: player.team))
-                        
-                        Text("•")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        
-                        Text(player.position.rawValue)
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    }
-                }
-                
-                Spacer()
-                
-                if selectedPlayerOff?.id == player.id {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(AppDesignSystem.Colors.success)
-                        .font(.title3)
-                }
-            }
-            .padding(.vertical, 2)
-        }
-        .buttonStyle(PlainButtonStyle())
     }
     
     // MARK: - New Player Section
     
     private var newPlayerSection: some View {
-        Section(header: Text("New Player")) {
-            // Toggle between existing and new player
-            Picker("Player Type", selection: $useExistingPlayer) {
-                Text("Create New Player").tag(false)
-                Text("Use Existing Player").tag(true)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.up.circle.fill")
+                    .foregroundColor(AppDesignSystem.Colors.grassGreen)
+                Text("Player Coming On")
+                    .font(.system(size: 15, weight: .bold, design: .rounded))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+            }
+            
+            // Toggle
+            Picker("", selection: $useExistingPlayer) {
+                Text("New Player").tag(false)
+                Text("Existing").tag(true)
             }
             .pickerStyle(SegmentedPickerStyle())
             .onChange(of: useExistingPlayer) { _ in
-                // Reset selections when switching modes
                 selectedExistingPlayer = nil
                 newPlayerName = ""
             }
             
             if useExistingPlayer {
-                existingPlayerSection
+                existingPlayerContent
             } else {
-                newPlayerCreationSection
+                newPlayerContent
             }
         }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(AppDesignSystem.Colors.cardBackground)
+                .shadow(color: colorScheme == .dark ? Color.black.opacity(0.15) : Color.black.opacity(0.04), radius: 4, x: 0, y: 2)
+        )
     }
     
-    private var existingPlayerSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+    // MARK: - Existing Player Content
+    
+    private var existingPlayerContent: some View {
+        VStack(spacing: 10) {
             if availableUnassignedPlayers.isEmpty {
-                Text("No available unassigned players")
-                    .foregroundColor(.secondary)
-                    .italic()
+                Text("No unassigned players available")
+                    .font(.system(size: 13))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    .padding(.vertical, 8)
             } else {
-                Button(selectedExistingPlayer?.name ?? "Select Existing Player") {
-                    activeSheet = .existingPlayerPicker
-                }
-                .foregroundColor(selectedExistingPlayer == nil ? .blue : .primary)
-                
-                if let player = selectedExistingPlayer {
+                Button(action: { activeSheet = .existingPlayerPicker }) {
                     HStack {
-                        Circle()
-                            .fill(AppDesignSystem.TeamColors.getColor(for: player.team))
-                            .frame(width: 10, height: 10)
-                        
-                        Text("\(player.team.shortName) • \(player.position.rawValue)")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                        if let player = selectedExistingPlayer {
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(AppDesignSystem.TeamColors.getColor(for: player.team))
+                                .frame(width: 4, height: 24)
+                            Text(player.name)
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(AppDesignSystem.Colors.primaryText)
+                            Spacer()
+                            Text(player.team.shortName)
+                                .font(.system(size: 12))
+                                .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                        } else {
+                            Image(systemName: "person.badge.plus")
+                                .foregroundColor(AppDesignSystem.Colors.grassGreen)
+                            Text("Select Player")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(AppDesignSystem.Colors.grassGreen)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 12))
+                                .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                        }
                     }
+                    .padding(12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(colorScheme == .dark ? Color.white.opacity(0.03) : Color.black.opacity(0.02))
+                    )
                 }
+                .buttonStyle(PlainButtonStyle())
             }
         }
     }
     
-    private var newPlayerCreationSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Player name
-            TextField("Player Name", text: $newPlayerName)
-                .autocapitalization(.words)
-                .autocorrectionDisabled()
-            
-            // Team selection
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Team")
-                    .font(.subheadline)
-                    .foregroundColor(.primary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                
-                // Buttons with explicit button styles and no form interference
-                VStack(spacing: 8) {
-                    Button(action: {
-                        print("🔧 Create New button tapped")
-                        activeSheet = .createTeam
-                        print("🔧 activeSheet set to: \(activeSheet?.id ?? "nil")")
-                    }) {
-                        Text("Create New Team")
-                            .font(.caption)
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
-                            .background(Color.green)
-                            .cornerRadius(6)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                    .contentShape(Rectangle())
-                    
-                    if selectedTeam != nil {
-                        Button(action: {
-                            print("🔧 Change button tapped")
-                            activeSheet = .teamPicker
-                            print("🔧 activeSheet set to: \(activeSheet?.id ?? "nil")")
-                        }) {
-                            Text("Change Team")
-                                .font(.caption)
-                                .foregroundColor(.white)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 8)
-                                .background(Color.blue)
-                                .cornerRadius(6)
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                        .contentShape(Rectangle())
-                    }
-                }
-                
-                if let team = selectedTeam {
-                    selectedTeamView(team: team)
-                } else {
-                    Button(action: {
-                        activeSheet = .teamPicker
-                    }) {
-                        Text("Select Existing Team")
-                            .foregroundColor(.blue)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                }
+    // MARK: - New Player Content
+    
+    private var newPlayerContent: some View {
+        VStack(spacing: 12) {
+            // Name
+            HStack {
+                Image(systemName: "person")
+                    .font(.system(size: 14))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                TextField("Player Name", text: $newPlayerName)
+                    .font(.system(size: 14))
             }
+            .padding(12)
+            .background(RoundedRectangle(cornerRadius: 8).fill(colorScheme == .dark ? Color.white.opacity(0.03) : Color.black.opacity(0.02)))
             
-            // Position selection
-            Picker("Position", selection: $newPlayerPosition) {
-                ForEach(Player.Position.allCases, id: \.self) { position in
-                    Text(position.rawValue).tag(position)
+            // Team
+            Button(action: { activeSheet = .teamPicker }) {
+                HStack {
+                    if let team = selectedTeam {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(AppDesignSystem.TeamColors.getColor(for: team))
+                            .frame(width: 4, height: 24)
+                        Text(team.name)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(AppDesignSystem.Colors.primaryText)
+                    } else {
+                        Image(systemName: "flag")
+                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                        Text("Select Team")
+                            .font(.system(size: 14))
+                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    }
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
                 }
+                .padding(12)
+                .background(RoundedRectangle(cornerRadius: 8).fill(colorScheme == .dark ? Color.white.opacity(0.03) : Color.black.opacity(0.02)))
+            }
+            .buttonStyle(PlainButtonStyle())
+            
+            // Position
+            Picker("Position", selection: $newPlayerPosition) {
+                ForEach(Player.Position.allCases, id: \.self) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(SegmentedPickerStyle())
         }
     }
-    private func selectedTeamView(team: Team) -> some View {
-        HStack {
-            Circle()
-                .fill(AppDesignSystem.TeamColors.getColor(for: team))
-                .frame(width: 12, height: 12)
-            
-            Text(team.name)
-                .font(.subheadline)
-            
-            Text("(\(team.shortName))")
-                .font(.caption)
-                .foregroundColor(.secondary)
-            
-            Spacer()
-        }
-        .padding(.vertical, 4)
-    }
     
-    // MARK: - Action Section
+    // MARK: - Substitute Button
     
-    private var actionSection: some View {
-        Section {
-            Button(action: performSubstitution) {
-                HStack {
-                    if useExistingPlayer {
-                        Text("Substitute with \(selectedExistingPlayer?.name ?? "Selected Player")")
-                    } else {
-                        Text("Complete Substitution")
-                    }
-                    
-                    Spacer()
-                    
-                    Image(systemName: "arrow.left.arrow.right")
-                }
-                .font(.headline)
-                .foregroundColor(.white)
-                .padding()
-                .background(
-                    canPerformSubstitution ? AppDesignSystem.Colors.primary : Color.gray
-                )
-                .cornerRadius(8)
+    private var substituteButton: some View {
+        Button(action: performSubstitution) {
+            HStack(spacing: 8) {
+                Image(systemName: "arrow.left.arrow.right")
+                Text("Confirm Substitution")
             }
-            .disabled(!canPerformSubstitution)
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundColor(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(canPerformSubstitution ? AppDesignSystem.Colors.grassGreen : AppDesignSystem.Colors.secondaryText.opacity(0.4))
+            )
         }
-        .listRowBackground(Color.clear)
+        .disabled(!canPerformSubstitution)
     }
     
-    // MARK: - Team Picker Sheet
+    // MARK: - Sheets
     
     private var teamPickerSheet: some View {
         NavigationView {
             List {
+                Button("+ Create New Team") { activeSheet = .createTeam }
+                    .foregroundColor(AppDesignSystem.Colors.grassGreen)
+                
                 ForEach(availableTeams, id: \.id) { team in
-                    Button(action: {
-                        selectedTeam = team
-                        activeSheet = nil
-                    }) {
+                    Button(action: { selectedTeam = team; activeSheet = nil }) {
                         HStack {
-                            Circle()
-                                .fill(AppDesignSystem.TeamColors.getColor(for: team))
-                                .frame(width: 16, height: 16)
-                            
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(team.name)
-                                    .foregroundColor(.primary)
-                                
-                                Text(team.shortName)
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            
+                            RoundedRectangle(cornerRadius: 2).fill(AppDesignSystem.TeamColors.getColor(for: team)).frame(width: 4, height: 20)
+                            Text(team.name).foregroundColor(AppDesignSystem.Colors.primaryText)
                             Spacer()
-                            
                             if selectedTeam?.id == team.id {
-                                Image(systemName: "checkmark")
-                                    .foregroundColor(.blue)
+                                Image(systemName: "checkmark").foregroundColor(AppDesignSystem.Colors.grassGreen)
                             }
                         }
                     }
@@ -373,53 +316,52 @@ struct SubstitutionView: View {
             }
             .navigationTitle("Select Team")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationBarItems(
-                trailing: Button("Cancel") {
-                    activeSheet = nil
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") { activeSheet = nil }.foregroundColor(AppDesignSystem.Colors.grassGreen)
                 }
-            )
+            }
         }
     }
     
-    // MARK: - Existing Player Picker Sheet
+    private var createTeamSheet: some View {
+        NavigationView {
+            Form {
+                Section(header: Text("Team Info")) {
+                    TextField("Team Name", text: $newTeamName)
+                        .onChange(of: newTeamName) { newTeamShortName = generateShortName(from: $0) }
+                    TextField("Short Name", text: $newTeamShortName)
+                }
+                
+                Section {
+                    Button("Create Team") { createNewTeam() }
+                        .disabled(newTeamName.isEmpty || newTeamShortName.isEmpty)
+                }
+            }
+            .navigationTitle("New Team")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") { resetNewTeamForm(); activeSheet = .teamPicker }
+                }
+            }
+        }
+    }
     
     private var existingPlayerPickerSheet: some View {
         NavigationView {
             List {
                 ForEach(availableUnassignedPlayers, id: \.id) { player in
-                    Button(action: {
-                        selectedExistingPlayer = player
-                        activeSheet = nil
-                    }) {
+                    Button(action: { selectedExistingPlayer = player; activeSheet = nil }) {
                         HStack {
-                            Circle()
-                                .fill(AppDesignSystem.TeamColors.getColor(for: player.team))
-                                .frame(width: 16, height: 16)
-                            
+                            RoundedRectangle(cornerRadius: 2).fill(AppDesignSystem.TeamColors.getColor(for: player.team)).frame(width: 4, height: 28)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(player.name)
-                                    .foregroundColor(.primary)
-                                
-                                HStack(spacing: 4) {
-                                    Text(player.team.shortName)
-                                        .font(.caption)
-                                        .foregroundColor(AppDesignSystem.TeamColors.getColor(for: player.team))
-                                    
-                                    Text("•")
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                    
-                                    Text(player.position.rawValue)
-                                        .font(.caption)
-                                        .foregroundColor(.secondary)
-                                }
+                                Text(player.name).font(.system(size: 14, weight: .medium)).foregroundColor(AppDesignSystem.Colors.primaryText)
+                                Text("\(player.team.shortName) • \(player.position.rawValue)").font(.system(size: 11)).foregroundColor(AppDesignSystem.Colors.secondaryText)
                             }
-                            
                             Spacer()
-                            
                             if selectedExistingPlayer?.id == player.id {
-                                Image(systemName: "checkmark")
-                                    .foregroundColor(.blue)
+                                Image(systemName: "checkmark").foregroundColor(AppDesignSystem.Colors.grassGreen)
                             }
                         }
                     }
@@ -428,170 +370,139 @@ struct SubstitutionView: View {
             }
             .navigationTitle("Select Player")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationBarItems(
-                trailing: Button("Cancel") {
-                    activeSheet = nil
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Cancel") { activeSheet = nil }.foregroundColor(AppDesignSystem.Colors.grassGreen)
                 }
-            )
+            }
         }
     }
     
-    // MARK: - Create Team Sheet
-
-    private var createTeamSheet: some View {
-        NavigationView {
-            Form {
-                Section(header: Text("Team Information")) {
-                    TextField("Team Name", text: $newTeamName)
-                        .autocapitalization(.words)
-                        .onChange(of: newTeamName) { newValue in
-                            if newTeamShortName.isEmpty {
-                                newTeamShortName = generateShortName(from: newValue)
-                            }
-                        }
-                    
-                    TextField("Short Name (3-4 letters)", text: $newTeamShortName)
-                        .autocapitalization(.allCharacters)
-                        .onChange(of: newTeamShortName) { newValue in
-                            newTeamShortName = String(newValue.prefix(4).uppercased())
-                        }
-                }
-                
-                Section {
-                    Button("Create Team") {
-                        createNewTeam()
-                    }
-                    .disabled(newTeamName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-                              newTeamShortName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .foregroundColor(.white)
-                    .padding()
-                    .background(
-                        (newTeamName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-                         newTeamShortName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        ? Color.gray
-                        : AppDesignSystem.Colors.primary
-                    )
-                    .cornerRadius(8)
-                }
-                .listRowBackground(Color.clear)
-            }
-            .navigationTitle("Create New Team")
-            .navigationBarTitleDisplayMode(.inline)
-            .navigationBarItems(
-                leading: Button("Cancel") {
-                    resetNewTeamForm()
-                    activeSheet = nil
-                },
-                trailing: Button("Save") {
-                    createNewTeam()
-                }
-                .disabled(newTeamName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
-                          newTeamShortName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            )
-        }
-    }
-
-    // MARK: - Helper Methods for Team Creation
-
-    private func generateShortName(from teamName: String) -> String {
-        let words = teamName.components(separatedBy: .whitespacesAndNewlines)
-            .filter { !$0.isEmpty }
-        
-        if words.count >= 2 {
-            let firstTwo = words.prefix(2).map { String($0.prefix(1).uppercased()) }
-            if words.count > 2 {
-                return (firstTwo + [String(words.last!.prefix(1).uppercased())]).joined()
-            } else {
-                return (firstTwo + [String(words[0].dropFirst().prefix(1).uppercased())]).joined()
-            }
-        } else if !words.isEmpty {
-            return String(words[0].prefix(3).uppercased())
-        }
-        
-        return ""
-    }
-
-    private func createNewTeam() {
-        let cleanTeamName = newTeamName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let cleanShortName = newTeamShortName.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        
-        guard !cleanTeamName.isEmpty && !cleanShortName.isEmpty else { return }
-        
-        // Check if team already exists
-        if availableTeams.contains(where: { $0.name.lowercased() == cleanTeamName.lowercased() }) {
-            return
-        }
-        
-        // Create new team
-        let newTeam = Team(
-            name: cleanTeamName,
-            shortName: cleanShortName,
-            logoName: "team_logo",
-            primaryColor: "#1a73e8"
-        )
-        
-        // Select the new team and close sheet
-        selectedTeam = newTeam
-        resetNewTeamForm()
-        activeSheet = nil
-        
-        print("✅ Created new team: \(newTeam.name) (\(newTeam.shortName))")
-    }
-
-    private func resetNewTeamForm() {
-        newTeamName = ""
-        newTeamShortName = ""
-    }
+    // MARK: - Helpers
     
-    // MARK: - Helper Properties and Methods
+    private func emptyStateCard(icon: String, message: String) -> some View {
+        HStack {
+            Spacer()
+            VStack(spacing: 8) {
+                Image(systemName: icon).font(.system(size: 24)).foregroundColor(AppDesignSystem.Colors.secondaryText.opacity(0.5))
+                Text(message).font(.system(size: 13)).foregroundColor(AppDesignSystem.Colors.secondaryText)
+            }
+            .padding(.vertical, 20)
+            Spacer()
+        }
+        .background(RoundedRectangle(cornerRadius: 10).fill(AppDesignSystem.Colors.cardBackground))
+    }
     
     private var canPerformSubstitution: Bool {
         guard selectedPlayerOff != nil else { return false }
-        
-        if useExistingPlayer {
-            return selectedExistingPlayer != nil
-        } else {
-            return !newPlayerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-                   selectedTeam != nil
-        }
+        return useExistingPlayer ? selectedExistingPlayer != nil : (!newPlayerName.trimmingCharacters(in: .whitespaces).isEmpty && selectedTeam != nil)
     }
     
     private func performSubstitution() {
         guard let playerOff = selectedPlayerOff else { return }
-        
         let playerOn: Player
-        
-        if useExistingPlayer {
-            guard let existingPlayer = selectedExistingPlayer else { return }
-            playerOn = existingPlayer
+        if useExistingPlayer, let existing = selectedExistingPlayer {
+            playerOn = existing
         } else {
-            guard let team = selectedTeam,
-                  !newPlayerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-            
-            // Create new player
-            playerOn = Player(
-                name: newPlayerName.trimmingCharacters(in: .whitespacesAndNewlines),
-                team: team,
-                position: newPlayerPosition
-            )
-            
-            // Add to available players if not already there
+            guard let team = selectedTeam else { return }
+            playerOn = Player(name: newPlayerName.trimmingCharacters(in: .whitespaces), team: team, position: newPlayerPosition)
             if !gameSession.availablePlayers.contains(where: { $0.id == playerOn.id }) {
                 gameSession.availablePlayers.append(playerOn)
             }
         }
-        
-        // Perform the substitution
         gameSession.substitutePlayer(playerOff: playerOff, playerOn: playerOn)
-        
-        // Provide haptic feedback
-        let impactFeedback = UIImpactFeedbackGenerator(style: .medium)
-        impactFeedback.impactOccurred()
-        
-        // Close the view
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         presentationMode.wrappedValue.dismiss()
-        
-        print("✅ Substitution completed: \(playerOff.name) → \(playerOn.name)")
+    }
+    
+    private func generateShortName(from name: String) -> String {
+        let words = name.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+        if words.count >= 2 { return words.prefix(2).map { String($0.prefix(1).uppercased()) }.joined() + String(words[0].dropFirst().prefix(1).uppercased()) }
+        return String(words.first?.prefix(3).uppercased() ?? "")
+    }
+    
+    private func createNewTeam() {
+        let team = Team(name: newTeamName.trimmingCharacters(in: .whitespaces), shortName: newTeamShortName.uppercased(), logoName: "team_logo", primaryColor: "#1a73e8")
+        selectedTeam = team
+        resetNewTeamForm()
+        activeSheet = nil
+    }
+    
+    private func resetNewTeamForm() { newTeamName = ""; newTeamShortName = "" }
+}
+
+// MARK: - Sub Participant Section
+
+struct SubParticipantSection: View {
+    let participant: Participant
+    @Binding var selectedPlayerOff: Player?
+    let onSelect: (Player) -> Void
+    
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(participant.name)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(AppDesignSystem.Colors.grassGreen)
+                .padding(.leading, 4)
+            
+            VStack(spacing: 4) {
+                ForEach(participant.selectedPlayers, id: \.id) { player in
+                    SubPlayerRow(player: player, isSelected: selectedPlayerOff?.id == player.id) {
+                        onSelect(player)
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(AppDesignSystem.Colors.cardBackground)
+                .shadow(color: colorScheme == .dark ? Color.black.opacity(0.15) : Color.black.opacity(0.04), radius: 3, x: 0, y: 2)
+        )
+    }
+}
+
+struct SubPlayerRow: View {
+    let player: Player
+    let isSelected: Bool
+    let onTap: () -> Void
+    
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 10) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(AppDesignSystem.TeamColors.getColor(for: player.team))
+                    .frame(width: 3, height: 28)
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(player.name)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
+                    Text("\(player.team.shortName) • \(player.position.rawValue)")
+                        .font(.system(size: 11))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                }
+                
+                Spacer()
+                
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 18))
+                    .foregroundColor(isSelected ? AppDesignSystem.Colors.grassGreen : AppDesignSystem.Colors.secondaryText.opacity(0.4))
+            }
+            .padding(10)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isSelected ? AppDesignSystem.Colors.grassGreen.opacity(0.08) : colorScheme == .dark ? Color.white.opacity(0.02) : Color.black.opacity(0.02))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(isSelected ? AppDesignSystem.Colors.grassGreen.opacity(0.3) : Color.clear, lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 }

@@ -1,8 +1,9 @@
 //
-//  Streamlined GameView.swift
+//  GameView.swift
 //  Lucky Football Slip
 //
-//  Clean 4-tab interface with integrated stats
+//  Clean 4-tab interface with integrated stats - Football themed
+//  Note: Component structs are in GameViewComponents.swift
 //
 
 import SwiftUI
@@ -22,15 +23,15 @@ struct GameView: View {
     @State private var showingEndGameConfirmation = false
     @State private var shouldEndGameAfterSave = false
     
+    @Environment(\.colorScheme) var colorScheme
+    
     init(gameSession: GameSession, shouldShowSummary: Binding<Bool>) {
         self.gameSession = gameSession
         self._shouldShowSummary = shouldShowSummary
     }
 
-    
     var body: some View {
         VStack(spacing: 0) {
-            
             customNavigationHeader
             
             // Missed events banner
@@ -45,10 +46,10 @@ struct GameView: View {
                 .padding(.top, 8)
             }
             
-            // Your existing TabView content
+            // TabView content
             ZStack {
-                // Clean background
-                backgroundView
+                // Football themed background
+                GameViewBackground()
                 
                 TabView {
                     // Tab 1: Participants with integrated stats
@@ -63,13 +64,13 @@ struct GameView: View {
                             Label("Players", systemImage: "sportscourt.fill")
                         }
                     
-                    // Tab 3: Timeline (existing)
+                    // Tab 3: Timeline
                     TimelineView(gameSession: gameSession)
                         .tabItem {
                             Label("Timeline", systemImage: "clock.arrow.circlepath")
                         }
                     
-                    // Tab 4: Match Score (NEW)
+                    // Tab 4: Match Score
                     MatchScoreView(gameSession: gameSession)
                         .tabItem {
                             Label("Match", systemImage: "soccerball")
@@ -82,13 +83,19 @@ struct GameView: View {
                             Label("Settings", systemImage: "gear")
                         }
                 }
-                .accentColor(AppDesignSystem.Colors.primary)
+                .accentColor(AppDesignSystem.Colors.grassGreen)
             }
         }
         .navigationBarHidden(true)
         
         .sheet(isPresented: $showingEventSheet) {
-            recordEventView
+            RecordEventSheet(
+                gameSession: gameSession,
+                selectedPlayer: $selectedPlayer,
+                selectedEventType: $selectedEventType,
+                selectedCustomEventName: $selectedCustomEventName,
+                isPresented: $showingEventSheet
+            )
         }
         .sheet(isPresented: $showingSubstitutionSheet) {
             SubstitutionView(gameSession: gameSession)
@@ -116,7 +123,7 @@ struct GameView: View {
             }
             Button("Save & End") {
                 showingEndGameConfirmation = false
-                shouldEndGameAfterSave = true // Set flag
+                shouldEndGameAfterSave = true
                 showingSaveGameSheet = true
             }
             Button("Cancel", role: .cancel) { }
@@ -125,31 +132,22 @@ struct GameView: View {
         }
         
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("MissedEventsFound"))) { notification in
-            print("🔔 Received MissedEventsFound notification")
-            print("🔔 Notification userInfo: \(notification.userInfo ?? [:])")
-            
             if let userInfo = notification.userInfo,
                let count = userInfo["eventCount"] as? Int,
                let matchName = userInfo["matchName"] as? String {
-                print("🔔 Parsed: \(count) events for \(matchName)")
                 
                 DispatchQueue.main.async {
                     self.missedEventsInfo = (count, matchName)
                     withAnimation(.easeInOut(duration: 0.5)) {
                         self.showMissedEventsBanner = true
                     }
-                    print("🔔 Banner should now be visible: \(self.showMissedEventsBanner)")
                 }
                 
-                // Auto-hide after 8 seconds (longer for testing)
                 DispatchQueue.main.asyncAfter(deadline: .now() + 8) {
                     withAnimation(.easeInOut(duration: 0.5)) {
                         self.showMissedEventsBanner = false
                     }
-                    print("🔔 Banner auto-hidden after 8 seconds")
                 }
-            } else {
-                print("❌ Failed to parse notification userInfo")
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("StartGame"))) { _ in
@@ -160,81 +158,86 @@ struct GameView: View {
             }
         }
         .onAppear {
-            // Ensure custom events are properly mapped
             gameSession.autoFixCustomEventsOnGameStart()
         }
         .onReceive(gameSession.$events) { events in
-            // This will trigger whenever the events array changes
             if let lastEvent = events.last {
-                // Check if it's a substitution event
                 if lastEvent.eventType == .custom,
                    let customName = lastEvent.customEventName,
                    customName.contains("Substitution") {
                     print("🔄 GameView detected new substitution event: \(customName)")
-                    // The UI will automatically refresh since gameSession is @ObservedObject
                 }
             }
         }
+        .withMinimalBanner()
     }
+    
+    // MARK: - Navigation Header
     
     private var customNavigationHeader: some View {
         VStack(spacing: 0) {
             HStack {
+                // Football icon
+                ZStack {
+                    Circle()
+                        .fill(AppDesignSystem.Colors.grassGreen.opacity(0.15))
+                        .frame(width: 36, height: 36)
+                    
+                    Image(systemName: "sportscourt.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(AppDesignSystem.Colors.grassGreen)
+                }
+                
                 Text("Lucky Football Slip")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
                     .foregroundColor(AppDesignSystem.Colors.primaryText)
                 
                 Spacer()
                 
-                // Optional: Add any header actions here if needed
+                // Live indicator if applicable
+                if gameSession.isLiveMode {
+                    LiveIndicator()
+                }
             }
             .padding(.horizontal, 20)
             .padding(.top, 10)
-            .padding(.bottom, 16)
+            .padding(.bottom, 14)
             .background(
-                AppDesignSystem.Colors.background
-                    .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+                ZStack {
+                    AppDesignSystem.Colors.cardBackground
+                    
+                    // Subtle green tint at top
+                    VStack {
+                        LinearGradient(
+                            colors: [
+                                AppDesignSystem.Colors.grassGreen.opacity(colorScheme == .dark ? 0.08 : 0.04),
+                                Color.clear
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: 30)
+                        Spacer()
+                    }
+                }
             )
             
-            // Divider line
+            // Green accent line
             Rectangle()
-                .fill(AppDesignSystem.Colors.secondaryText.opacity(0.2))
-                .frame(height: 0.5)
+                .fill(AppDesignSystem.Colors.grassGreen.opacity(0.3))
+                .frame(height: 2)
         }
     }
     
-
-    
-    // MARK: - Background
-    
-    private var backgroundView: some View {
-        LinearGradient(
-            colors: [
-                AppDesignSystem.Colors.background,
-                AppDesignSystem.Colors.background.opacity(0.95),
-                AppDesignSystem.Colors.cardBackground
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-        .ignoresSafeArea()
-    }
-    
-    // MARK: - Enhanced Participants View with Stats
+    // MARK: - Participants With Stats View
     
     private var participantsWithStatsView: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 24) {
-                // Game Stats Overview
                 gameStatsOverview
-                
-                // Quick Actions Bar
                 quickActionsBar
-                
-                // Participants Standings
                 participantsStandings
                 
-                // Recent Activity (last 3 events)
                 if !gameSession.events.isEmpty {
                     recentActivity
                 }
@@ -244,9 +247,7 @@ struct GameView: View {
             .padding(.horizontal, 20)
             .padding(.top, 20)
         }
-        .background(AppDesignSystem.Colors.background.ignoresSafeArea())
-        
-        .withMinimalBanner()
+        .background(GameViewBackground())
     }
     
     // MARK: - Game Stats Overview
@@ -260,64 +261,31 @@ struct GameView: View {
                 
                 Spacer()
                 
-                // Live indicator if it's a live game
                 if gameSession.isLiveMode {
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(AppDesignSystem.Colors.success)
-                            .frame(width: 8, height: 8)
-                        
-                        Text("LIVE")
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
-                            .foregroundColor(AppDesignSystem.Colors.success)
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(AppDesignSystem.Colors.success.opacity(0.1))
-                    .cornerRadius(8)
+                    LiveIndicator()
                 }
             }
             
-            // Add save and end buttons row
+            // Save and end buttons row
             HStack(spacing: 12) {
-                // Save game button
-                Button(action: {
+                QuickActionButton(
+                    title: "Save Game",
+                    icon: "square.and.arrow.down",
+                    color: AppDesignSystem.Colors.grassGreen,
+                    style: .secondary
+                ) {
                     showingSaveGameSheet = true
-                }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "square.and.arrow.down")
-                            .font(.system(size: 14))
-                        Text("Save Game")
-                            .font(.system(size: 14, weight: .semibold))
-                    }
-                    .foregroundColor(AppDesignSystem.Colors.primary)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(AppDesignSystem.Colors.primary.opacity(0.1))
-                    )
                 }
                 
                 Spacer()
                 
-                // End game button
-                Button(action: {
+                QuickActionButton(
+                    title: "End Game",
+                    icon: "xmark.circle",
+                    color: AppDesignSystem.Colors.error,
+                    style: .secondary
+                ) {
                     showingEndGameConfirmation = true
-                }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "xmark.circle")
-                            .font(.system(size: 14))
-                        Text("End Game")
-                            .font(.system(size: 14, weight: .semibold))
-                    }
-                    .foregroundColor(AppDesignSystem.Colors.error)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: 8)
-                            .fill(AppDesignSystem.Colors.error.opacity(0.1))
-                    )
                 }
             }
             
@@ -331,21 +299,21 @@ struct GameView: View {
                     title: "Total Events",
                     value: "\(gameSession.events.count)",
                     icon: "list.bullet.circle.fill",
-                    color: AppDesignSystem.Colors.primary
+                    color: AppDesignSystem.Colors.grassGreen
                 )
                 
                 GameStatCard(
                     title: "Active Players",
                     value: "\(gameSession.participants.flatMap { $0.selectedPlayers }.count)",
                     icon: "person.3.fill",
-                    color: AppDesignSystem.Colors.success
+                    color: AppDesignSystem.Colors.goalYellow
                 )
                 
                 GameStatCard(
                     title: "Money in Play",
                     value: formatCurrency(totalMoneyInPlay),
                     icon: "dollarsign.circle.fill",
-                    color: AppDesignSystem.Colors.warning
+                    color: AppDesignSystem.Colors.accent
                 )
             }
             
@@ -361,14 +329,6 @@ struct GameView: View {
                 .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 4)
         )
     }
-
-    private func endGameWithoutSaving() {
-        showingEndGameConfirmation = false
-        cleanupGame()
-        
-        // Directly set the binding
-        shouldShowSummary = true
-    }
     
     // MARK: - Event Type Breakdown
     
@@ -378,7 +338,6 @@ struct GameView: View {
                 .font(.system(size: 16, weight: .semibold, design: .rounded))
                 .foregroundColor(AppDesignSystem.Colors.primaryText)
             
-            // Group events by their display name (not just eventType)
             let eventCounts = Dictionary(grouping: gameSession.events) { event in
                 gameSession.getEventDisplayName(for: event)
             }.mapValues { $0.count }
@@ -386,7 +345,7 @@ struct GameView: View {
                     if $0.value != $1.value {
                         return $0.value > $1.value
                     }
-                    return $0.key < $1.key  // Stable sort by name when counts are equal
+                    return $0.key < $1.key
                 }
             
             LazyVGrid(columns: [
@@ -394,28 +353,27 @@ struct GameView: View {
                 GridItem(.flexible())
             ], spacing: 8) {
                 ForEach(eventCounts.prefix(4), id: \.key) { eventName, count in
-                    // Get the first event with this name to determine color/icon
-                    let sampleEvent = gameSession.events.first {
+                    if let sampleEvent = gameSession.events.first(where: {
                         gameSession.getEventDisplayName(for: $0) == eventName
-                    }!
-                    
-                    HStack(spacing: 8) {
-                        Image(systemName: eventIcon(sampleEvent.eventType))
-                            .font(.system(size: 14))
-                            .foregroundColor(eventColor(sampleEvent.eventType))
-                            .frame(width: 20)
-                        
-                        Text(eventName)  // Use the display name instead of rawValue
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundColor(AppDesignSystem.Colors.primaryText)
-                        
-                        Spacer()
-                        
-                        Text("\(count)")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundColor(eventColor(sampleEvent.eventType))
+                    }) {
+                        HStack(spacing: 8) {
+                            Image(systemName: eventIcon(sampleEvent.eventType))
+                                .font(.system(size: 14))
+                                .foregroundColor(eventColor(sampleEvent.eventType))
+                                .frame(width: 20)
+                            
+                            Text(eventName)
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(AppDesignSystem.Colors.primaryText)
+                            
+                            Spacer()
+                            
+                            Text("\(count)")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(eventColor(sampleEvent.eventType))
+                        }
+                        .padding(.vertical, 4)
                     }
-                    .padding(.vertical, 4)
                 }
             }
         }
@@ -425,53 +383,32 @@ struct GameView: View {
     
     private var quickActionsBar: some View {
         HStack(spacing: 12) {
-            Button(action: {
+            QuickActionButton(
+                title: "Record Event",
+                icon: "plus.circle.fill",
+                color: AppDesignSystem.Colors.grassGreen,
+                style: .primary
+            ) {
                 showingEventSheet = true
-            }) {
-                HStack(spacing: 8) {
-                    Image(systemName: "plus.circle.fill")
-                        .font(.system(size: 16))
-                    Text("Record Event")
-                        .font(.system(size: 14, weight: .semibold))
-                }
-                .foregroundColor(.white)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(AppDesignSystem.Colors.primary)
-                .cornerRadius(10)
             }
             
-            Button(action: {
+            QuickActionButton(
+                title: "Substitute",
+                icon: "arrow.left.arrow.right",
+                color: AppDesignSystem.Colors.warning,
+                style: .secondary
+            ) {
                 showingSubstitutionSheet = true
-            }) {
-                HStack(spacing: 8) {
-                    Image(systemName: "arrow.left.arrow.right")
-                        .font(.system(size: 16))
-                    Text("Substitute")
-                        .font(.system(size: 14, weight: .semibold))
-                }
-                .foregroundColor(AppDesignSystem.Colors.warning)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .background(AppDesignSystem.Colors.warning.opacity(0.1))
-                .cornerRadius(10)
             }
             
             if gameSession.canUndoLastEvent {
-                Button(action: {
+                QuickActionButton(
+                    title: "Undo",
+                    icon: "arrow.uturn.backward",
+                    color: AppDesignSystem.Colors.error,
+                    style: .secondary
+                ) {
                     gameSession.undoLastEvent()
-                }) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "arrow.uturn.backward")
-                            .font(.system(size: 16))
-                        Text("Undo")
-                            .font(.system(size: 14, weight: .semibold))
-                    }
-                    .foregroundColor(AppDesignSystem.Colors.error)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .background(AppDesignSystem.Colors.error.opacity(0.1))
-                    .cornerRadius(10)
                 }
             }
         }
@@ -481,59 +418,55 @@ struct GameView: View {
     
     private var participantsStandings: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text("Standings")
-                    .font(.system(size: 20, weight: .bold, design: .rounded))
-                    .foregroundColor(AppDesignSystem.Colors.primaryText)
-                
-                Spacer()
-                
-                Text("\(gameSession.participants.count) players")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
-            }
+            GameSectionHeader("Standings", subtitle: "\(gameSession.participants.count) players")
             
-            // FIX: Use indices to ensure fresh data access on each render
             let sortedParticipants = gameSession.participants.sorted(by: { $0.balance > $1.balance })
             
-            ForEach(Array(sortedParticipants.enumerated()), id: \.element.id) { index, participant in
-                // FIX: Access participant directly from gameSession to get latest balance
-                let freshParticipant = gameSession.participants.first(where: { $0.id == participant.id }) ?? participant
-                
-                EnhancedParticipantStandingRow(
-                    participant: freshParticipant,
-                    position: index + 1,
-                    gameSession: gameSession
-                )
-                // FIX: Force re-render when balance changes by adding it to the view's identity
-                .id("\(participant.id)-\(freshParticipant.balance)")
+            VStack(spacing: 0) {
+                ForEach(Array(sortedParticipants.enumerated()), id: \.element.id) { index, participant in
+                    let freshParticipant = gameSession.participants.first(where: { $0.id == participant.id }) ?? participant
+                    
+                    ParticipantStandingRow(
+                        participant: freshParticipant,
+                        position: index + 1,
+                        currencySymbol: currencySymbol
+                    )
+                    .id("\(participant.id)-\(freshParticipant.balance)")
+                    
+                    if index < sortedParticipants.count - 1 {
+                        Divider()
+                            .padding(.horizontal, 16)
+                    }
+                }
             }
         }
         .padding(20)
         .background(
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: AppDesignSystem.Layout.radiusMedium)
                 .fill(AppDesignSystem.Colors.cardBackground)
-                .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 4)
         )
     }
     
     // MARK: - Recent Activity
     
     private var recentActivity: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Recent Activity")
-                .font(.system(size: 20, weight: .bold, design: .rounded))
-                .foregroundColor(AppDesignSystem.Colors.primaryText)
+        VStack(alignment: .leading, spacing: 12) {
+            GameSectionHeader("Recent Activity")
             
-            ForEach(gameSession.events.suffix(3).reversed(), id: \.id) { event in
-                CompactEventRow(event: event, gameSession: gameSession) // Add gameSession parameter
+            VStack(spacing: 0) {
+                ForEach(gameSession.events.suffix(3).reversed(), id: \.id) { event in
+                    GameEventRow(event: event, gameSession: gameSession)
+                    
+                    if event.id != gameSession.events.last?.id {
+                        Divider()
+                    }
+                }
             }
         }
         .padding(20)
         .background(
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: AppDesignSystem.Layout.radiusMedium)
                 .fill(AppDesignSystem.Colors.cardBackground)
-                .shadow(color: Color.black.opacity(0.05), radius: 8, x: 0, y: 4)
         )
     }
     
@@ -563,325 +496,58 @@ struct GameView: View {
                     Spacer()
                     
                     VStack(spacing: 8) {
-                        Button(action: {
+                        QuickActionButton(
+                            title: "Event",
+                            icon: "plus.circle.fill",
+                            color: AppDesignSystem.Colors.grassGreen,
+                            style: .primary
+                        ) {
                             showingEventSheet = true
-                        }) {
-                            HStack(spacing: 6) {
-                                Image(systemName: "plus.circle.fill")
-                                    .font(.system(size: 16))
-                                Text("Event")
-                                    .font(.system(size: 14, weight: .semibold))
-                            }
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
-                            .background(AppDesignSystem.Colors.primary)
-                            .cornerRadius(8)
                         }
                         
                         if !gameSession.isLiveMode {
-                            Button(action: {
+                            QuickActionButton(
+                                title: "Sub",
+                                icon: "arrow.left.arrow.right",
+                                color: AppDesignSystem.Colors.warning,
+                                style: .secondary
+                            ) {
                                 showingSubstitutionSheet = true
-                            }) {
-                                HStack(spacing: 6) {
-                                    Image(systemName: "arrow.left.arrow.right")
-                                        .font(.system(size: 16))
-                                    Text("Sub")
-                                        .font(.system(size: 14, weight: .semibold))
-                                }
-                                .foregroundColor(AppDesignSystem.Colors.warning)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 8)
-                                .background(AppDesignSystem.Colors.warning.opacity(0.1))
-                                .cornerRadius(8)
                             }
                         }
                     }
                 }
                 .padding(.horizontal, 20)
                 
-                // Enhanced participant sections with substitution support
+                // Enhanced participant sections
                 ForEach(gameSession.participants) { participant in
-                    EnhancedParticipantPlayersSection(
+                    ParticipantPlayersSection(
                         participant: participant,
                         gameSession: gameSession
                     ) { player in
-                        if SubstitutionManager.shared.isPlayerActive(player) {
-                            selectedPlayer = player
-                            showingEventSheet = true
-                        }
+                        selectedPlayer = player
+                        showingEventSheet = true
                     }
+                    .padding(.horizontal, 20)
                 }
                 
                 Spacer(minLength: 100)
             }
             .padding(.top, 20)
         }
-        .background(AppDesignSystem.Colors.background.ignoresSafeArea())
-        .withMinimalBanner()
+        .background(GameViewBackground())
     }
     
     // MARK: - Helper Properties
+    
+    private var currencySymbol: String {
+        UserDefaults.standard.string(forKey: "currencySymbol") ?? "€"
+    }
     
     private var totalMoneyInPlay: Double {
         let totalPositive = gameSession.participants.filter { $0.balance > 0 }.map { $0.balance }.reduce(0, +)
         let totalNegative = abs(gameSession.participants.filter { $0.balance < 0 }.map { $0.balance }.reduce(0, +))
         return max(totalPositive, totalNegative)
-    }
-    
-    // MARK: - Record Event Sheet
-    
-    private var recordEventView: some View {
-        NavigationView {
-            ScrollView {
-                VStack(spacing: 24) {
-                    if gameSession.participants.flatMap({ $0.selectedPlayers + $0.substitutedPlayers }).isEmpty {
-                        // Empty state
-                        VStack(spacing: 16) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .font(.system(size: 60))
-                                .foregroundColor(AppDesignSystem.Colors.warning)
-                            
-                            Text("No Players Available")
-                                .font(.system(size: 20, weight: .semibold, design: .rounded))
-                                .foregroundColor(AppDesignSystem.Colors.primaryText)
-                            
-                            Text("You need to assign players to participants before recording events")
-                                .font(.system(size: 14, weight: .medium, design: .rounded))
-                                .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                                .multilineTextAlignment(.center)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.top, 80)
-                    } else {
-                        // Player selection
-                        VStack(alignment: .leading, spacing: 16) {
-                            Text("Select Player")
-                                .font(.system(size: 20, weight: .bold, design: .rounded))
-                                .foregroundColor(AppDesignSystem.Colors.primaryText)
-                            
-                            ForEach(gameSession.participants) { participant in
-                                if !participant.selectedPlayers.isEmpty {
-                                    VStack(alignment: .leading, spacing: 12) {
-                                        Text(participant.name)
-                                            .font(.system(size: 16, weight: .semibold, design: .rounded))
-                                            .foregroundColor(AppDesignSystem.Colors.primary)
-                                        
-                                        LazyVGrid(columns: [GridItem(.flexible())], spacing: 8) {
-                                            ForEach(participant.selectedPlayers) { player in
-                                                PlayerSelectionCard(
-                                                    player: player,
-                                                    isSelected: selectedPlayer?.id == player.id
-                                                ) {
-                                                    selectedPlayer = player
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // Event type selection
-                        if selectedPlayer != nil {
-                            VStack(alignment: .leading, spacing: 16) {
-                                Text("Select Event Type")
-                                    .font(.system(size: 20, weight: .bold, design: .rounded))
-                                    .foregroundColor(AppDesignSystem.Colors.primaryText)
-                                
-                                // Standard events
-                                LazyVGrid(columns: [
-                                    GridItem(.flexible()),
-                                    GridItem(.flexible())
-                                ], spacing: 12) {
-                                    ForEach(Bet.EventType.allCases.filter { $0 != .custom }, id: \.self) { eventType in
-                                        EventTypeSelectionCard(
-                                            eventType: eventType,
-                                            isSelected: selectedEventType == eventType && selectedCustomEventName == nil
-                                        ) {
-                                            selectedEventType = eventType
-                                            selectedCustomEventName = nil // Clear custom selection
-                                        }
-                                    }
-                                }
-                                
-                                // FIXED: Custom events section - always show if there are custom events
-                                let customEvents = gameSession.getCustomEvents()
-                                if !customEvents.isEmpty {
-                                    VStack(alignment: .leading, spacing: 12) {
-                                        Text("Custom Events")
-                                            .font(.system(size: 18, weight: .bold, design: .rounded))
-                                            .foregroundColor(AppDesignSystem.Colors.accent)
-                                            .padding(.top, 16)
-                                        
-                                        LazyVGrid(columns: [GridItem(.flexible())], spacing: 8) {
-                                            ForEach(customEvents, id: \.id) { customEvent in
-                                                CustomEventInlineCard(
-                                                    name: customEvent.name,
-                                                    amount: customEvent.amount,
-                                                    isSelected: selectedCustomEventName == customEvent.name,
-                                                    onTap: {
-                                                        selectedCustomEventName = customEvent.name
-                                                        selectedEventType = .custom
-                                                        print("Selected custom event: \(customEvent.name)")
-                                                    }
-                                                )
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    // Debug section to show why custom events aren't appearing
-                                    VStack(alignment: .leading, spacing: 8) {
-                                        Text("Custom Events")
-                                            .font(.system(size: 18, weight: .bold, design: .rounded))
-                                            .foregroundColor(AppDesignSystem.Colors.accent)
-                                            .padding(.top, 16)
-                                        
-                                        Text("No custom events available")
-                                            .font(.system(size: 14))
-                                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                                        
-                                        Text("Debug: Total bets: \(gameSession.bets.count), Custom bets: \(gameSession.bets.filter { $0.eventType == .custom }.count)")
-                                            .font(.system(size: 10))
-                                            .foregroundColor(.gray)
-                                    }
-                                }
-                            }
-                        }
-                        
-                        // Record button
-                        if let player = selectedPlayer {
-                            let canRecord = (selectedEventType != nil && selectedEventType != .custom) ||
-                                          (selectedEventType == .custom && selectedCustomEventName != nil)
-                            
-                            if canRecord {
-                                Button {
-                                    if selectedEventType == .custom, let customEventName = selectedCustomEventName {
-                                        print("Recording custom event: \(customEventName) for \(player.name)")
-                                        gameSession.recordCustomEvent(player: player, eventName: customEventName)
-                                    } else if let eventType = selectedEventType {
-                                        print("Recording standard event: \(eventType) for \(player.name)")
-                                        gameSession.recordEvent(player: player, eventType: eventType)
-                                    }
-                                    showingEventSheet = false
-                                    selectedPlayer = nil
-                                    selectedEventType = nil
-                                    selectedCustomEventName = nil
-                                } label: {
-                                    HStack {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .font(.system(size: 20))
-                                        
-                                        let eventText = selectedEventType == .custom ?
-                                            (selectedCustomEventName ?? "Custom Event") :
-                                            (selectedEventType?.rawValue ?? "Event")
-                                        
-                                        Text("Record \(eventText) for \(player.name)")
-                                            .font(.system(size: 16, weight: .bold, design: .rounded))
-                                    }
-                                    .foregroundColor(.white)
-                                    .padding(.vertical, 16)
-                                    .frame(maxWidth: .infinity)
-                                    .background(AppDesignSystem.Colors.success)
-                                    .cornerRadius(12)
-                                }
-                            }
-                        }
-                    }
-                }
-                .padding(24)
-            }
-            .navigationTitle("Record Event")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Close") {
-                        showingEventSheet = false
-                        selectedPlayer = nil
-                        selectedEventType = nil
-                        selectedCustomEventName = nil
-                    }
-                }
-            }
-            .onAppear {
-                print("🎯 Record Event Sheet opened")
-                print("🎯 Available custom events: \(gameSession.getCustomEvents().count)")
-                for event in gameSession.getCustomEvents() {
-                    print("🎯 Custom event: \(event.name) - \(event.amount)")
-                }
-            }
-        }
-    }
-    
-    struct CustomEventInlineCard: View {
-        let name: String
-        let amount: Double
-        let isSelected: Bool
-        let onTap: () -> Void
-        
-        private var currencySymbol: String {
-            UserDefaults.standard.string(forKey: "currencySymbol") ?? "€"
-        }
-        
-        private var isNegative: Bool {
-            amount < 0
-        }
-        
-        var body: some View {
-            Button(action: onTap) {
-                HStack(spacing: 12) {
-                    // Custom event icon
-                    Circle()
-                        .fill(isSelected ? AppDesignSystem.Colors.accent : AppDesignSystem.Colors.accent.opacity(0.2))
-                        .frame(width: 32, height: 32)
-                        .overlay(
-                            Image(systemName: "star.fill")
-                                .font(.system(size: 16))
-                                .foregroundColor(isSelected ? .white : AppDesignSystem.Colors.accent)
-                        )
-                    
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(name)
-                            .font(.system(size: 14, weight: .semibold, design: .rounded))
-                            .foregroundColor(AppDesignSystem.Colors.primaryText)
-                            .lineLimit(1)
-                        
-                        HStack(spacing: 6) {
-                            // Type indicator
-                            Image(systemName: isNegative ? "minus.circle.fill" : "plus.circle.fill")
-                                .font(.system(size: 10))
-                                .foregroundColor(isNegative ? AppDesignSystem.Colors.error : AppDesignSystem.Colors.success)
-                            
-                            Text("\(currencySymbol)\(String(format: "%.2f", abs(amount)))")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                        }
-                    }
-                    
-                    Spacer()
-                    
-                    if isSelected {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 16))
-                            .foregroundColor(AppDesignSystem.Colors.success)
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(isSelected ? AppDesignSystem.Colors.success.opacity(0.1) : AppDesignSystem.Colors.cardBackground)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 10)
-                                .stroke(
-                                    isSelected ? AppDesignSystem.Colors.accent : AppDesignSystem.Colors.accent.opacity(0.3),
-                                    lineWidth: isSelected ? 2 : 1
-                                )
-                        )
-                )
-            }
-            .buttonStyle(PlainButtonStyle())
-        }
     }
     
     // MARK: - Helper Functions
@@ -902,13 +568,13 @@ struct GameView: View {
     
     private func eventColor(_ eventType: Bet.EventType) -> Color {
         switch eventType {
-        case .goal, .assist: return AppDesignSystem.Colors.success
-        case .yellowCard: return AppDesignSystem.Colors.warning
+        case .goal, .assist: return AppDesignSystem.Colors.grassGreen
+        case .yellowCard: return AppDesignSystem.Colors.goalYellow
         case .redCard: return AppDesignSystem.Colors.error
         case .ownGoal, .penaltyMissed: return AppDesignSystem.Colors.warning
         case .penalty: return AppDesignSystem.Colors.primary
         case .cleanSheet: return AppDesignSystem.Colors.info
-        case .custom: return AppDesignSystem.Colors.secondary
+        case .custom: return AppDesignSystem.Colors.accent
         }
     }
     
@@ -920,9 +586,15 @@ struct GameView: View {
     }
     
     private func cleanupGame() {
-        // NEW: Cleanup event-driven monitoring when game ends
         if gameSession.isLiveMode {
             gameSession.cleanupEventDrivenMode()
+        }
+    }
+    
+    private func endGameWithoutSaving() {
+        cleanupGame()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            shouldShowSummary = true
         }
     }
 }
@@ -969,27 +641,15 @@ struct MissedEventsBanner: View {
             .padding(16)
             .background(
                 RoundedRectangle(cornerRadius: 12)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                AppDesignSystem.Colors.info,
-                                AppDesignSystem.Colors.info.opacity(0.8)
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
+                    .fill(AppDesignSystem.Colors.grassGreen)
             )
             .shadow(color: Color.black.opacity(0.2), radius: 8, x: 0, y: 4)
             .transition(.move(edge: .top).combined(with: .opacity))
-            .onAppear {
-                print("🎨 MissedEventsBanner appeared on screen")
-            }
         }
     }
 }
 
-// MARK: - Supporting Components
+// MARK: - Game Stat Card
 
 struct GameStatCard: View {
     let title: String
@@ -1019,403 +679,9 @@ struct GameStatCard: View {
     }
 }
 
-struct EnhancedParticipantStandingRow: View {
-    let participant: Participant
-    let position: Int
-    let gameSession: GameSession
-    
-    private var positionColor: Color {
-        switch position {
-        case 1: return AppDesignSystem.Colors.warning
-        case 2: return AppDesignSystem.Colors.secondaryText
-        case 3: return AppDesignSystem.Colors.warning.opacity(0.7)
-        default: return AppDesignSystem.Colors.secondaryText.opacity(0.6)
-        }
-    }
-    
-    var body: some View {
-        HStack(spacing: 16) {
-            // Position indicator
-            ZStack {
-                Circle()
-                    .fill(position <= 3 ? positionColor.opacity(0.2) : Color.clear)
-                    .frame(width: 32, height: 32)
-                
-                Text("\(position)")
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .foregroundColor(positionColor)
-            }
-            
-            // Participant info
-            HStack(spacing: 12) {
-                // Avatar
-                ZStack {
-                    Circle()
-                        .fill(AppDesignSystem.Colors.primary.opacity(0.8))
-                        .frame(width: 36, height: 36)
-                    
-                    if let firstLetter = participant.name.first {
-                        Text(String(firstLetter).uppercased())
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(.white)
-                    }
-                }
-                
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(participant.name)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(AppDesignSystem.Colors.primaryText)
-                    
-                    Text("\(participant.selectedPlayers.count) players")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                }
-            }
-            
-            Spacer()
-            
-            // Balance
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(formatCurrency(participant.balance))
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(participant.balance >= 0 ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.error)
-                
-                Text(participant.balance >= 0 ? "Winning" : "Losing")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(participant.balance >= 0 ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.error)
-            }
-        }
-        .padding(.vertical, 8)
-    }
-    
-    private func formatCurrency(_ value: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencySymbol = UserDefaults.standard.string(forKey: "currencySymbol") ?? "€"
-        return formatter.string(from: NSNumber(value: value)) ?? "€0.00"
-    }
-}
-
-struct CompactEventRow: View {
-    let event: GameEvent
-    @ObservedObject var gameSession: GameSession
-    
-    private let timeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .none
-        formatter.timeStyle = .short
-        return formatter
-    }()
-    
-    var body: some View {
-        HStack(spacing: 12) {
-            // Event icon
-            Circle()
-                .fill(eventColor.opacity(0.2))
-                .frame(width: 28, height: 28)
-                .overlay(
-                    Image(systemName: eventIcon)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(eventColor)
-                )
-            
-            VStack(alignment: .leading, spacing: 2) {
-                HStack {
-                    Text(event.player.name)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(AppDesignSystem.Colors.primaryText)
-                    
-                    Spacer()
-                    
-                    // Add minute display
-                    if let minute = event.minute {
-                        Text("\(minute)'")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(eventColor)
-                            )
-                    }
-                }
-                
-                HStack {
-                    Text(gameSession.getEventDisplayName(for: event))
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                    
-                    Spacer()
-                    
-                    Text(timeFormatter.string(from: event.timestamp))
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                }
-            }
-        }
-        .padding(.vertical, 4)
-    }
-    
-    private var eventColor: Color {
-        switch event.eventType {
-        case .goal, .assist: return AppDesignSystem.Colors.success
-        case .yellowCard: return AppDesignSystem.Colors.warning
-        case .redCard: return AppDesignSystem.Colors.error
-        case .ownGoal, .penaltyMissed: return AppDesignSystem.Colors.warning
-        case .penalty: return AppDesignSystem.Colors.primary
-        case .cleanSheet: return AppDesignSystem.Colors.info
-        case .custom: return AppDesignSystem.Colors.secondary
-        }
-    }
-    
-    private var eventIcon: String {
-        switch event.eventType {
-        case .goal: return "soccerball"
-        case .assist: return "arrow.up.forward"
-        case .yellowCard: return "square.fill"
-        case .redCard: return "square.fill"
-        case .ownGoal: return "arrow.uturn.backward"
-        case .penalty: return "p.circle"
-        case .penaltyMissed: return "p.circle.fill"
-        case .cleanSheet: return "lock.shield"
-        case .custom: return "star"
-        }
-    }
-}
-
-struct EnhancedParticipantPlayersSection: View {
-    let participant: Participant
-    @ObservedObject var gameSession: GameSession
-    let onPlayerTap: (Player) -> Void
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            // Participant header with substitution status
-            HStack(spacing: 12) {
-                ZStack {
-                    Circle()
-                        .fill(AppDesignSystem.Colors.primary.opacity(0.8))
-                        .frame(width: 36, height: 36)
-                    
-                    if let firstLetter = participant.name.first {
-                        Text(String(firstLetter).uppercased())
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(.white)
-                    }
-                }
-                
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(participant.name)
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(AppDesignSystem.Colors.primaryText)
-                    
-                    Text(participant.getSubstitutionSummaryForUI())
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                }
-                
-                Spacer()
-                
-                Text(formatCurrency(participant.balance))
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(participant.balance >= 0 ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.error)
-            }
-            
-            // Active players section
-            if !participant.activePlayersForUI.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Active Players (\(participant.activePlayerCount))")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(AppDesignSystem.Colors.success)
-                    
-                    LazyVGrid(columns: [GridItem(.flexible())], spacing: 8) {
-                        ForEach(participant.activePlayersForUI) { player in
-                            EnhancedPlayerRow(player: player, isActive: true) {
-                                onPlayerTap(player)
-                            }
-                        }
-                    }
-                }
-            }
-            
-            // Substituted players section
-            if !participant.substitutedPlayers.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Substituted Players (\(participant.substitutedPlayers.count))")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(AppDesignSystem.Colors.warning)
-                    
-                    LazyVGrid(columns: [GridItem(.flexible())], spacing: 8) {
-                        ForEach(participant.substitutedPlayers) { player in
-                            EnhancedPlayerRow(player: player, isActive: false) {
-                                // Could show player details or prevent event recording
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        .padding(16)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(AppDesignSystem.Colors.cardBackground)
-                .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
-        )
-    }
-    
-    private func formatCurrency(_ value: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencySymbol = UserDefaults.standard.string(forKey: "currencySymbol") ?? "€"
-        return formatter.string(from: NSNumber(value: value)) ?? "€0.00"
-    }
-}
-
-struct CompactPlayerRow: View {
-    let player: Player
-    let isActive: Bool
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                // Team color indicator
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(AppDesignSystem.TeamColors.getColor(for: player.team))
-                    .frame(width: 4, height: 28)
-                
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(player.name)
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(isActive ? AppDesignSystem.Colors.primaryText : AppDesignSystem.Colors.secondaryText)
-                    
-                    Text("\(player.team.shortName) • \(player.position.rawValue)")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                }
-                
-                Spacer()
-                
-                if !isActive {
-                    Image(systemName: "arrow.left.arrow.right")
-                        .font(.system(size: 12))
-                        .foregroundColor(AppDesignSystem.Colors.warning)
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(isActive ? AppDesignSystem.Colors.cardBackground : AppDesignSystem.Colors.secondaryText.opacity(0.1))
-            .cornerRadius(8)
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-}
-
-struct PlayerSelectionCard: View {
-    let player: Player
-    let isSelected: Bool
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                // Team color indicator
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(AppDesignSystem.TeamColors.getColor(for: player.team))
-                    .frame(width: 4, height: 40)
-                
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(player.name)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(AppDesignSystem.Colors.primaryText)
-                    
-                    Text("\(player.team.shortName) • \(player.position.rawValue)")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                }
-                
-                Spacer()
-                
-                if isSelected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 20))
-                        .foregroundColor(AppDesignSystem.Colors.success)
-                }
-            }
-            .padding(12)
-            .background(
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(isSelected ? AppDesignSystem.Colors.accent.opacity(0.1) : AppDesignSystem.Colors.cardBackground)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(
-                                isSelected ? AppDesignSystem.Colors.success : Color.gray.opacity(0.3),
-                                lineWidth: isSelected ? 2 : 1
-                            )
-                    )
-            )
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-}
-
-struct EventTypeSelectionCard: View {
-    let eventType: Bet.EventType
-    let isSelected: Bool
-    let action: () -> Void
-    
-    private var eventColor: Color {
-        switch eventType {
-        case .goal, .assist: return AppDesignSystem.Colors.success
-        case .yellowCard: return AppDesignSystem.Colors.warning
-        case .redCard: return AppDesignSystem.Colors.error
-        case .ownGoal, .penaltyMissed: return AppDesignSystem.Colors.warning
-        case .penalty: return AppDesignSystem.Colors.primary
-        case .cleanSheet: return AppDesignSystem.Colors.info
-        case .custom: return AppDesignSystem.Colors.secondary
-        }
-    }
-    
-    private var eventIcon: String {
-        switch eventType {
-        case .goal: return "soccerball"
-        case .assist: return "arrow.up.forward"
-        case .yellowCard: return "square.fill"
-        case .redCard: return "square.fill"
-        case .ownGoal: return "arrow.uturn.backward"
-        case .penalty: return "p.circle"
-        case .penaltyMissed: return "p.circle.fill"
-        case .cleanSheet: return "lock.shield"
-        case .custom: return "star"
-        }
-    }
-    
-    var body: some View {
-        Button(action: action) {
-            VStack(spacing: 8) {
-                Image(systemName: eventIcon)
-                    .font(.system(size: 24))
-                    .foregroundColor(isSelected ? .white : eventColor)
-                
-                Text(eventType.rawValue)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(isSelected ? .white : AppDesignSystem.Colors.primaryText)
-                    .multilineTextAlignment(.center)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(isSelected ? eventColor : eventColor.opacity(0.1))
-            )
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-}
+// MARK: - View Extensions
 
 extension View {
-    /// Show substitution status badge
     func withSubstitutionBadge(player: Player) -> some View {
         self.overlay(
             Group {
@@ -1450,17 +716,14 @@ extension View {
 }
 
 extension Participant {
-    /// Get only active players (not substituted off) for UI display
     var activePlayersForUI: [Player] {
         return selectedPlayers.filter { SubstitutionManager.shared.isPlayerActive($0) }
     }
     
-    /// Get count of active players for UI display
     var activePlayerCount: Int {
         return activePlayersForUI.count
     }
     
-    /// Get formatted substitution summary for this participant
     func getSubstitutionSummaryForUI() -> String {
         if substitutedPlayers.isEmpty {
             return "No substitutions"
@@ -1470,106 +733,3 @@ extension Participant {
     }
 }
 
-struct EnhancedPlayerRow: View {
-    let player: Player
-    let isActive: Bool
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                // Team color indicator
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(AppDesignSystem.TeamColors.getColor(for: player.team))
-                    .frame(width: 4, height: 32)
-                
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack {
-                        Text(player.name)
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(isActive ? AppDesignSystem.Colors.primaryText : AppDesignSystem.Colors.secondaryText)
-                        
-                        Spacer()
-                        
-                        // Show substitution status
-                        if case .substitutedOff(let timestamp) = player.substitutionStatus {
-                            VStack(alignment: .trailing, spacing: 2) {
-                                Image(systemName: "arrow.down.circle.fill")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.red)
-                                
-                                Text(formatTime(timestamp))
-                                    .font(.system(size: 10))
-                                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                            }
-                        } else if case .substitutedOn(let timestamp) = player.substitutionStatus {
-                            VStack(alignment: .trailing, spacing: 2) {
-                                Image(systemName: "arrow.up.circle.fill")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.green)
-                                
-                                Text(formatTime(timestamp))
-                                    .font(.system(size: 10))
-                                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                            }
-                        }
-                    }
-                    
-                    HStack {
-                        Text("\(player.team.shortName) • \(player.position.rawValue)")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                        
-                        Spacer()
-                        
-                        // Show player stats
-                        if player.goals > 0 || player.assists > 0 {
-                            HStack(spacing: 4) {
-                                if player.goals > 0 {
-                                    HStack(spacing: 2) {
-                                        Image(systemName: "soccerball")
-                                            .font(.system(size: 10))
-                                        Text("\(player.goals)")
-                                            .font(.system(size: 10, weight: .semibold))
-                                    }
-                                    .foregroundColor(AppDesignSystem.Colors.success)
-                                }
-                                
-                                if player.assists > 0 {
-                                    HStack(spacing: 2) {
-                                        Image(systemName: "arrow.up.forward")
-                                            .font(.system(size: 10))
-                                        Text("\(player.assists)")
-                                            .font(.system(size: 10, weight: .semibold))
-                                    }
-                                    .foregroundColor(AppDesignSystem.Colors.info)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(isActive ? AppDesignSystem.Colors.cardBackground : AppDesignSystem.Colors.secondaryText.opacity(0.05))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(
-                                isActive ? AppDesignSystem.Colors.primary.opacity(0.1) : AppDesignSystem.Colors.secondaryText.opacity(0.1),
-                                lineWidth: 1
-                            )
-                    )
-            )
-        }
-        .buttonStyle(PlainButtonStyle())
-        .opacity(isActive ? 1.0 : 0.7)
-    }
-    
-    private func formatTime(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
-    }
-}

@@ -1,14 +1,16 @@
 //
-//  Enhanced TimelineView.swift
+//  TimelineView.swift
 //  Lucky Football Slip
 //
-//  Timeline with editable/deletable events
+//  Event timeline - Football themed
 //
 
 import SwiftUI
 
 struct TimelineView: View {
     @ObservedObject var gameSession: GameSession
+    @Environment(\.colorScheme) var colorScheme
+    
     @State private var selectedEvent: GameEvent?
     @State private var showingEventActions = false
     @State private var showingEditEvent = false
@@ -22,89 +24,31 @@ struct TimelineView: View {
     }()
     
     var body: some View {
-        let _ = {
-            let substitutionEvents = gameSession.events.filter { event in
-                event.eventType == .custom && (event.customEventName?.contains("Substitution") ?? false)
-            }
-            if !substitutionEvents.isEmpty {
-                print("📊 TimelineView - Found \(substitutionEvents.count) substitution events")
-                substitutionEvents.forEach { event in
-                    print("   - \(event.customEventName ?? "Unknown") at minute \(event.minute ?? 0)")
-                }
-            }
-        }()
-        
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                // Header
-                HStack {
-                    Text("Match Timeline")
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
-                        .foregroundColor(AppDesignSystem.Colors.primaryText)
+        ZStack {
+            footballBackground
+            
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    headerSection
                     
-                    Spacer()
+                    if gameSession.events.isEmpty {
+                        emptyStateView
+                    } else {
+                        eventsListView
+                    }
                     
-                    if !gameSession.events.isEmpty {
-                        Text("\(gameSession.events.count) events")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                    }
+                    Spacer(minLength: 100)
                 }
-                .padding(.horizontal, 20)
-                .padding(.bottom, 16)
-                
-                if gameSession.events.isEmpty {
-                    // Empty state
-                    VStack(spacing: 16) {
-                        Image(systemName: "clock.arrow.circlepath")
-                            .font(.system(size: 60))
-                            .foregroundColor(AppDesignSystem.Colors.secondary.opacity(0.6))
-                        
-                        Text("No Events Yet")
-                            .font(.system(size: 20, weight: .semibold, design: .rounded))
-                            .foregroundColor(AppDesignSystem.Colors.primaryText)
-                        
-                        Text("Events will appear here as the game progresses")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                            .multilineTextAlignment(.center)
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 200)
-                    .padding(.horizontal, 20)
-                } else {
-                    let sortedEvents = gameSession.events.sorted(by: { $0.timestamp > $1.timestamp })
-                    
-                    ForEach(Array(sortedEvents.enumerated()), id: \.element.id) { index, event in
-                        EditableTimelineEventRow(
-                            event: event,
-                            gameSession: gameSession,
-                            index: index,
-                            isFirst: index == 0,
-                            onEventTap: { selectedEvent in
-                                self.selectedEvent = selectedEvent
-                                showingEventActions = true
-                            }
-                        )
-                        .padding(.horizontal, 20)
-                    }
-                }
-                
-                Spacer(minLength: 100)
+                .padding(.top, 16)
             }
-            .padding(.top, 20)
         }
-        .background(AppDesignSystem.Colors.background.ignoresSafeArea())
         .actionSheet(isPresented: $showingEventActions) {
             ActionSheet(
                 title: Text("Event Options"),
-                message: Text("What would you like to do with this event?"),
+                message: Text("What would you like to do?"),
                 buttons: [
-                    .default(Text("Edit Event")) {
-                        showingEditEvent = true
-                    },
-                    .destructive(Text("Delete Event")) {
-                        showingDeleteConfirmation = true
-                    },
+                    .default(Text("Edit Event")) { showingEditEvent = true },
+                    .destructive(Text("Delete Event")) { showingDeleteConfirmation = true },
                     .cancel()
                 ]
             )
@@ -112,188 +56,205 @@ struct TimelineView: View {
         .alert("Delete Event", isPresented: $showingDeleteConfirmation) {
             Button("Cancel", role: .cancel) { }
             Button("Delete", role: .destructive) {
-                if let event = selectedEvent {
-                    deleteEvent(event)
-                }
+                if let event = selectedEvent { deleteEvent(event) }
             }
         } message: {
             if let event = selectedEvent {
-                Text("Are you sure you want to delete '\(gameSession.getEventDisplayName(for: event))' for \(event.player.name)? This will reverse all balance changes.")
+                Text("Delete '\(gameSession.getEventDisplayName(for: event))' for \(event.player.name)?")
             }
         }
         .sheet(isPresented: $showingEditEvent) {
             if let event = selectedEvent {
-                EditEventView(
-                    gameSession: gameSession,
+                EditEventView(gameSession: gameSession, event: event) { edited in
+                    updateEvent(original: event, edited: edited)
+                }
+            }
+        }
+    }
+    
+    // MARK: - Background
+    
+    private var footballBackground: some View {
+        ZStack {
+            Color(colorScheme == .dark ? UIColor(red: 0.05, green: 0.08, blue: 0.06, alpha: 1) : UIColor(red: 0.96, green: 0.98, blue: 0.96, alpha: 1))
+            
+            VStack {
+                LinearGradient(
+                    colors: [AppDesignSystem.Colors.grassGreen.opacity(colorScheme == .dark ? 0.08 : 0.04), Color.clear],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 100)
+                Spacer()
+            }
+        }
+        .ignoresSafeArea()
+    }
+    
+    // MARK: - Header
+    
+    private var headerSection: some View {
+        HStack {
+            HStack(spacing: 8) {
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.system(size: 18))
+                    .foregroundColor(AppDesignSystem.Colors.grassGreen)
+                
+                Text("Match Timeline")
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+            }
+            
+            Spacer()
+            
+            if !gameSession.events.isEmpty {
+                Text("\(gameSession.events.count) events")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Capsule().fill(AppDesignSystem.Colors.grassGreen))
+            }
+        }
+        .padding(.horizontal, 20)
+        .padding(.bottom, 16)
+    }
+    
+    // MARK: - Empty State
+    
+    private var emptyStateView: some View {
+        VStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(AppDesignSystem.Colors.secondaryText.opacity(0.1))
+                    .frame(width: 80, height: 80)
+                
+                Image(systemName: "clock.arrow.circlepath")
+                    .font(.system(size: 36))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText.opacity(0.5))
+            }
+            
+            VStack(spacing: 6) {
+                Text("No Events Yet")
+                    .font(.system(size: 18, weight: .semibold, design: .rounded))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                Text("Events will appear here as the game progresses")
+                    .font(.system(size: 13))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 200)
+        .padding(.horizontal, 20)
+    }
+    
+    // MARK: - Events List
+    
+    private var eventsListView: some View {
+        let sortedEvents = gameSession.events.sorted { $0.timestamp > $1.timestamp }
+        
+        return VStack(spacing: 0) {
+            ForEach(Array(sortedEvents.enumerated()), id: \.element.id) { index, event in
+                TimelineEventRow(
                     event: event,
-                    onSave: { editedEvent in
-                        updateEvent(original: event, edited: editedEvent)
+                    gameSession: gameSession,
+                    isFirst: index == 0,
+                    onTap: {
+                        selectedEvent = event
+                        showingEventActions = true
                     }
                 )
             }
         }
-        .withMinimalBanner()
+        .padding(.horizontal, 20)
     }
     
     // MARK: - Event Management
     
     private func deleteEvent(_ event: GameEvent) {
-        // Remove the event and reverse its effects
         if let index = gameSession.events.firstIndex(where: { $0.id == event.id }) {
             gameSession.events.remove(at: index)
-            
-            // Reverse the balance changes
             reverseEventEffects(event)
-            
-            // Update UI
             gameSession.objectWillChange.send()
         }
-        
         selectedEvent = nil
     }
     
     private func updateEvent(original: GameEvent, edited: GameEvent) {
-        // First reverse the original event effects
         reverseEventEffects(original)
-        
-        // Update the event in the array
         if let index = gameSession.events.firstIndex(where: { $0.id == original.id }) {
             gameSession.events[index] = edited
         }
-        
-        // Apply the new event effects using the same logic as GameSession.recordEvent
         applyEventEffects(edited)
-        
-        // Update UI
         gameSession.objectWillChange.send()
         selectedEvent = nil
     }
     
     private func reverseEventEffects(_ event: GameEvent) {
-        // Find the bet for this event type
         guard let bet = gameSession.bets.first(where: { $0.eventType == event.eventType }) else { return }
         
-        // Find participants who have the player (include both active and substituted players)
-        let participantsWithPlayer = gameSession.participants.filter { participant in
-            participant.selectedPlayers.contains { $0.id == event.player.id } ||
-            participant.substitutedPlayers.contains { $0.id == event.player.id }
+        let participantsWithPlayer = gameSession.participants.filter { p in
+            p.selectedPlayers.contains { $0.id == event.player.id } ||
+            p.substitutedPlayers.contains { $0.id == event.player.id }
+        }
+        let participantsWithoutPlayer = gameSession.participants.filter { p in
+            !p.selectedPlayers.contains { $0.id == event.player.id } &&
+            !p.substitutedPlayers.contains { $0.id == event.player.id }
         }
         
-        // Find participants who don't have the player
-        let participantsWithoutPlayer = gameSession.participants.filter { participant in
-            !participant.selectedPlayers.contains { $0.id == event.player.id } &&
-            !participant.substitutedPlayers.contains { $0.id == event.player.id }
-        }
+        guard !participantsWithPlayer.isEmpty && !participantsWithoutPlayer.isEmpty else { return }
         
-        if participantsWithPlayer.isEmpty || participantsWithoutPlayer.isEmpty {
-            return
-        }
-        
-        // Reverse the balance changes - EXACT OPPOSITE of applyEventEffects using GameSession logic
         if bet.amount >= 0 {
-            // REVERSE positive bet: participants WITHOUT player had paid those WITH player
             let totalAmount = Double(participantsWithoutPlayer.count) * bet.amount
             let amountPerWinner = totalAmount / Double(participantsWithPlayer.count)
             
             for i in 0..<gameSession.participants.count {
                 let hasPlayer = gameSession.participants[i].selectedPlayers.contains { $0.id == event.player.id } ||
-                gameSession.participants[i].substitutedPlayers.contains { $0.id == event.player.id }
-                
+                                gameSession.participants[i].substitutedPlayers.contains { $0.id == event.player.id }
                 if hasPlayer {
-                    gameSession.participants[i].balance -= amountPerWinner  // REVERSE: was +=
+                    gameSession.participants[i].balance -= amountPerWinner
                 } else {
-                    gameSession.participants[i].balance += bet.amount        // REVERSE: was -=
+                    gameSession.participants[i].balance += bet.amount
                 }
             }
         } else {
-            // REVERSE negative bet: participants WITH player had paid those WITHOUT player
-            let payAmount = abs(bet.amount)
+            let totalPenalty = Double(participantsWithPlayer.count) * abs(bet.amount)
+            let amountPerOther = totalPenalty / Double(participantsWithoutPlayer.count)
             
             for i in 0..<gameSession.participants.count {
                 let hasPlayer = gameSession.participants[i].selectedPlayers.contains { $0.id == event.player.id } ||
-                gameSession.participants[i].substitutedPlayers.contains { $0.id == event.player.id }
-                
+                                gameSession.participants[i].substitutedPlayers.contains { $0.id == event.player.id }
                 if hasPlayer {
-                    // REVERSE: Player owner had paid payAmount to EACH other participant
-                    gameSession.participants[i].balance += payAmount * Double(participantsWithoutPlayer.count)  // REVERSE: was -=
+                    gameSession.participants[i].balance -= bet.amount
                 } else {
-                    // REVERSE: Each other participant had received payAmount from EACH player owner
-                    gameSession.participants[i].balance -= payAmount * Double(participantsWithPlayer.count)     // REVERSE: was +=
-                }
-            }
-        }
-        
-        // Reverse player stats
-        if let playerIndex = gameSession.participants.firstIndex(where: { participant in
-            participant.selectedPlayers.contains { $0.id == event.player.id } ||
-            participant.substitutedPlayers.contains { $0.id == event.player.id }
-        }) {
-            let participant = gameSession.participants[playerIndex]
-            
-            // Update in selected players
-            if let selectedPlayerIndex = participant.selectedPlayers.firstIndex(where: { $0.id == event.player.id }) {
-                switch event.eventType {
-                case .goal:
-                    gameSession.participants[playerIndex].selectedPlayers[selectedPlayerIndex].goals = max(0, gameSession.participants[playerIndex].selectedPlayers[selectedPlayerIndex].goals - 1)
-                case .assist:
-                    gameSession.participants[playerIndex].selectedPlayers[selectedPlayerIndex].assists = max(0, gameSession.participants[playerIndex].selectedPlayers[selectedPlayerIndex].assists - 1)
-                case .yellowCard:
-                    gameSession.participants[playerIndex].selectedPlayers[selectedPlayerIndex].yellowCards = max(0, gameSession.participants[playerIndex].selectedPlayers[selectedPlayerIndex].yellowCards - 1)
-                case .redCard:
-                    gameSession.participants[playerIndex].selectedPlayers[selectedPlayerIndex].redCards = max(0, gameSession.participants[playerIndex].selectedPlayers[selectedPlayerIndex].redCards - 1)
-                default:
-                    break
-                }
-            }
-            
-            // Update in substituted players
-            if let substitutedPlayerIndex = participant.substitutedPlayers.firstIndex(where: { $0.id == event.player.id }) {
-                switch event.eventType {
-                case .goal:
-                    gameSession.participants[playerIndex].substitutedPlayers[substitutedPlayerIndex].goals = max(0, gameSession.participants[playerIndex].substitutedPlayers[substitutedPlayerIndex].goals - 1)
-                case .assist:
-                    gameSession.participants[playerIndex].substitutedPlayers[substitutedPlayerIndex].assists = max(0, gameSession.participants[playerIndex].substitutedPlayers[substitutedPlayerIndex].assists - 1)
-                case .yellowCard:
-                    gameSession.participants[playerIndex].substitutedPlayers[substitutedPlayerIndex].yellowCards = max(0, gameSession.participants[playerIndex].substitutedPlayers[substitutedPlayerIndex].yellowCards - 1)
-                case .redCard:
-                    gameSession.participants[playerIndex].substitutedPlayers[substitutedPlayerIndex].redCards = max(0, gameSession.participants[playerIndex].substitutedPlayers[substitutedPlayerIndex].redCards - 1)
-                default:
-                    break
+                    gameSession.participants[i].balance -= amountPerOther
                 }
             }
         }
     }
     
     private func applyEventEffects(_ event: GameEvent) {
-        // Find the bet for this event type
         guard let bet = gameSession.bets.first(where: { $0.eventType == event.eventType }) else { return }
         
-        // Find participants who have the player (include both active and substituted players)
-        let participantsWithPlayer = gameSession.participants.filter { participant in
-            participant.selectedPlayers.contains { $0.id == event.player.id } ||
-            participant.substitutedPlayers.contains { $0.id == event.player.id }
+        let participantsWithPlayer = gameSession.participants.filter { p in
+            p.selectedPlayers.contains { $0.id == event.player.id } ||
+            p.substitutedPlayers.contains { $0.id == event.player.id }
+        }
+        let participantsWithoutPlayer = gameSession.participants.filter { p in
+            !p.selectedPlayers.contains { $0.id == event.player.id } &&
+            !p.substitutedPlayers.contains { $0.id == event.player.id }
         }
         
-        // Find participants who don't have the player
-        let participantsWithoutPlayer = gameSession.participants.filter { participant in
-            !participant.selectedPlayers.contains { $0.id == event.player.id } &&
-            !participant.substitutedPlayers.contains { $0.id == event.player.id }
-        }
+        guard !participantsWithPlayer.isEmpty && !participantsWithoutPlayer.isEmpty else { return }
         
-        if participantsWithPlayer.isEmpty || participantsWithoutPlayer.isEmpty {
-            return
-        }
-        
-        // Apply balance changes using EXACT GameSession logic
         if bet.amount >= 0 {
-            // Positive bet: participants WITHOUT player pay those WITH player
             let totalAmount = Double(participantsWithoutPlayer.count) * bet.amount
             let amountPerWinner = totalAmount / Double(participantsWithPlayer.count)
             
             for i in 0..<gameSession.participants.count {
                 let hasPlayer = gameSession.participants[i].selectedPlayers.contains { $0.id == event.player.id } ||
-                gameSession.participants[i].substitutedPlayers.contains { $0.id == event.player.id }
-                
+                                gameSession.participants[i].substitutedPlayers.contains { $0.id == event.player.id }
                 if hasPlayer {
                     gameSession.participants[i].balance += amountPerWinner
                 } else {
@@ -301,206 +262,37 @@ struct TimelineView: View {
                 }
             }
         } else {
-            // Negative bet: participants WITH player pay those WITHOUT player
-            let payAmount = abs(bet.amount)
+            let totalPenalty = Double(participantsWithPlayer.count) * abs(bet.amount)
+            let amountPerOther = totalPenalty / Double(participantsWithoutPlayer.count)
             
             for i in 0..<gameSession.participants.count {
                 let hasPlayer = gameSession.participants[i].selectedPlayers.contains { $0.id == event.player.id } ||
-                gameSession.participants[i].substitutedPlayers.contains { $0.id == event.player.id }
-                
+                                gameSession.participants[i].substitutedPlayers.contains { $0.id == event.player.id }
                 if hasPlayer {
-                    // Player owner pays payAmount to EACH other participant
-                    gameSession.participants[i].balance -= payAmount * Double(participantsWithoutPlayer.count)
+                    gameSession.participants[i].balance += bet.amount
                 } else {
-                    // Each other participant receives payAmount from EACH player owner
-                    gameSession.participants[i].balance += payAmount * Double(participantsWithPlayer.count)
-                }
-            }
-        }
-        
-        // Apply player stats using the same logic as GameSession.recordEvent
-        if let playerIndex = gameSession.participants.firstIndex(where: { participant in
-            participant.selectedPlayers.contains { $0.id == event.player.id } ||
-            participant.substitutedPlayers.contains { $0.id == event.player.id }
-        }) {
-            let participant = gameSession.participants[playerIndex]
-            
-            // Update in selected players
-            if let selectedPlayerIndex = participant.selectedPlayers.firstIndex(where: { $0.id == event.player.id }) {
-                switch event.eventType {
-                case .goal:
-                    gameSession.participants[playerIndex].selectedPlayers[selectedPlayerIndex].goals += 1
-                case .assist:
-                    gameSession.participants[playerIndex].selectedPlayers[selectedPlayerIndex].assists += 1
-                case .yellowCard:
-                    gameSession.participants[playerIndex].selectedPlayers[selectedPlayerIndex].yellowCards += 1
-                case .redCard:
-                    gameSession.participants[playerIndex].selectedPlayers[selectedPlayerIndex].redCards += 1
-                default:
-                    break
-                }
-            }
-            
-            // Update in substituted players
-            if let substitutedPlayerIndex = participant.substitutedPlayers.firstIndex(where: { $0.id == event.player.id }) {
-                switch event.eventType {
-                case .goal:
-                    gameSession.participants[playerIndex].substitutedPlayers[substitutedPlayerIndex].goals += 1
-                case .assist:
-                    gameSession.participants[playerIndex].substitutedPlayers[substitutedPlayerIndex].assists += 1
-                case .yellowCard:
-                    gameSession.participants[playerIndex].substitutedPlayers[substitutedPlayerIndex].yellowCards += 1
-                case .redCard:
-                    gameSession.participants[playerIndex].substitutedPlayers[substitutedPlayerIndex].redCards += 1
-                default:
-                    break
+                    gameSession.participants[i].balance += amountPerOther
                 }
             }
         }
     }
 }
 
-// MARK: - Editable Timeline Event Row
+// MARK: - Timeline Event Row
 
-struct EditableTimelineEventRow: View {
+struct TimelineEventRow: View {
     let event: GameEvent
-    @ObservedObject var gameSession: GameSession
-    let index: Int
+    let gameSession: GameSession
     let isFirst: Bool
-    let onEventTap: (GameEvent) -> Void
+    let onTap: () -> Void
     
-    private let timeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .none
-        formatter.timeStyle = .short
-        return formatter
-    }()
+    @Environment(\.colorScheme) var colorScheme
     
-    var body: some View {
-        Button(action: {
-            // Don't allow editing substitution events
-            if event.eventType == .custom && event.customEventName?.contains("Substitution") == true {
-                // Could show an info alert about substitutions being automatic
-                return
-            }
-            onEventTap(event)
-        }) {
-            HStack(spacing: 16) {
-                // Timeline indicator
-                VStack {
-                    if !isFirst {
-                        Rectangle()
-                            .fill(AppDesignSystem.Colors.primary.opacity(0.3))
-                            .frame(width: 2, height: 20)
-                    }
-                    
-                    Circle()
-                        .fill(eventColor(for: event.eventType))
-                        .frame(width: 12, height: 12)
-                        .overlay(
-                            Circle()
-                                .stroke(AppDesignSystem.Colors.primary, lineWidth: 2)
-                        )
-                    
-                    Rectangle()
-                        .fill(AppDesignSystem.Colors.primary.opacity(0.3))
-                        .frame(width: 2, height: 30)
-                }
-                
-                // Event content
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        // Event icon and type
-                        HStack(spacing: 8) {
-                            Image(systemName: getEventDisplayIcon(for: event))
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundColor(getEventDisplayColor(for: event))
-                            
-                            // ENHANCED: Better display for substitution events
-                            Text(getEnhancedEventDisplayName(for: event))
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundColor(AppDesignSystem.Colors.primaryText)
-                        }
-                        
-                        Spacer()
-                        
-                        // Time and edit indicator
-                        HStack(spacing: 8) {
-                            // Show minute if available (from API), otherwise show timestamp
-                            if let minute = event.minute {
-                                Text("\(minute)'")
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundColor(AppDesignSystem.Colors.primary)
-                            } else {
-                                Text(timeFormatter.string(from: event.timestamp))
-                                    .font(.system(size: 12, weight: .medium))
-                                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                            }
-                            
-                            Image(systemName: "pencil.circle.fill")
-                                .font(.system(size: 16))
-                                .foregroundColor(AppDesignSystem.Colors.secondary.opacity(0.6))
-                        }
-                    }
-                    
-                    // Enhanced player info for substitutions
-                    if event.eventType == .custom && event.customEventName?.contains("Substitution") == true {
-                        substitutionPlayerInfo(for: event)
-                    } else {
-                        standardPlayerInfo(for: event)
-                    }
-                    
-                    // Impact indicator (only for non-substitution events)
-                    if !(event.eventType == .custom && event.customEventName?.contains("Substitution") == true),
-                       let bet = gameSession.bets.first(where: { $0.eventType == event.eventType }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: bet.amount > 0 ? "arrow.up.circle.fill" : "arrow.down.circle.fill")
-                                .font(.system(size: 12))
-                                .foregroundColor(bet.amount > 0 ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.error)
-                            
-                            Text(formatCurrency(abs(bet.amount)))
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(bet.amount > 0 ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.error)
-                        }
-                    }
-                }
-
-                .padding(.vertical, 12)
-            }
-        }
-        .buttonStyle(PlainButtonStyle())
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(AppDesignSystem.Colors.cardBackground)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(eventColor(for: event.eventType).opacity(0.2), lineWidth: 1)
-                )
-        )
-        .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
-        .padding(.bottom, 8)
-    }
-    
-    private func eventColor(for eventType: Bet.EventType) -> Color {
+    private var eventIcon: String {
         if event.eventType == .custom && event.customEventName?.contains("Substitution") == true {
-            return AppDesignSystem.Colors.warning
+            return "arrow.left.arrow.right"
         }
-        
         switch event.eventType {
-        case .goal, .assist: return AppDesignSystem.Colors.success
-        case .yellowCard: return AppDesignSystem.Colors.warning
-        case .redCard: return AppDesignSystem.Colors.error
-        case .ownGoal, .penaltyMissed: return AppDesignSystem.Colors.warning
-        case .penalty: return AppDesignSystem.Colors.primary
-        case .cleanSheet: return AppDesignSystem.Colors.info
-        case .custom: return AppDesignSystem.Colors.secondary
-        }
-    }
-    
-    private func eventIcon(for eventType: Bet.EventType) -> String {
-        switch eventType {
         case .goal: return "soccerball"
         case .assist: return "arrow.up.forward"
         case .yellowCard: return "square.fill"
@@ -509,173 +301,125 @@ struct EditableTimelineEventRow: View {
         case .penalty: return "p.circle"
         case .penaltyMissed: return "p.circle.fill"
         case .cleanSheet: return "lock.shield"
-        case .custom: return "star"
+        case .custom: return "star.fill"
         }
     }
     
-    private func participantForPlayer(_ player: Player) -> Participant? {
-        return gameSession.participants.first { participant in
-            participant.selectedPlayers.contains { $0.id == player.id } ||
-            participant.substitutedPlayers.contains { $0.id == player.id }
-        }
-    }
-    
-    private func formatCurrency(_ value: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencySymbol = UserDefaults.standard.string(forKey: "currencySymbol") ?? "€"
-        return formatter.string(from: NSNumber(value: value)) ?? "€0.00"
-    }
-    
-    private func getEnhancedEventDisplayName(for event: GameEvent) -> String {
-        if event.eventType == .custom && event.customEventName?.contains("Substitution") == true {
-            // Extract player names from substitution event
-            if let customName = event.customEventName {
-                return customName
-            }
-        }
-        return gameSession.getEventDisplayName(for: event)
-    }
-
-    private func substitutionPlayerInfo(for event: GameEvent) -> some View {
-        HStack(spacing: 12) {
-            // Team color indicator
-            RoundedRectangle(cornerRadius: 2)
-                .fill(AppDesignSystem.TeamColors.getColor(for: event.player.team))
-                .frame(width: 4, height: 20)
-            
-            VStack(alignment: .leading, spacing: 2) {
-                // Parse substitution info
-                if let customName = event.customEventName {
-                    let components = customName.components(separatedBy: " → ")
-                    if components.count == 2 {
-                        HStack {
-                            // Player off
-                            HStack(spacing: 4) {
-                                Text(components[0].replacingOccurrences(of: "Substitution: ", with: ""))
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundColor(AppDesignSystem.Colors.error)
-                                
-                                Image(systemName: "arrow.down")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(AppDesignSystem.Colors.error)
-                            }
-                            
-                            Image(systemName: "arrow.right")
-                                .font(.system(size: 12))
-                                .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                            
-                            // Player on
-                            HStack(spacing: 4) {
-                                Image(systemName: "arrow.up")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(AppDesignSystem.Colors.success)
-                                
-                                Text(components[1])
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundColor(AppDesignSystem.Colors.success)
-                            }
-                        }
-                    } else {
-                        Text(customName)
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(AppDesignSystem.Colors.primaryText)
-                    }
-                }
-                
-                Text("\(event.player.team.shortName) • Substitution")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
-            }
-            
-            Spacer()
-            
-            // Show substitution source (Live vs Manual)
-            if gameSession.isLiveMode {
-                HStack(spacing: 4) {
-                    Circle()
-                        .fill(AppDesignSystem.Colors.success)
-                        .frame(width: 6, height: 6)
-                    
-                    Text("LIVE")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(AppDesignSystem.Colors.success)
-                }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(AppDesignSystem.Colors.success.opacity(0.1))
-                .cornerRadius(4)
-            } else {
-                Text("Manual")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(AppDesignSystem.Colors.primary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(AppDesignSystem.Colors.primary.opacity(0.1))
-                    .cornerRadius(4)
-            }
-        }
-    }
-
-    private func standardPlayerInfo(for event: GameEvent) -> some View {
-        HStack(spacing: 12) {
-            // Team color indicator
-            RoundedRectangle(cornerRadius: 2)
-                .fill(AppDesignSystem.TeamColors.getColor(for: event.player.team))
-                .frame(width: 4, height: 20)
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Text(event.player.name)
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(AppDesignSystem.Colors.primaryText)
-                
-                // Enhanced description with minute info
-                if let minute = event.minute {
-                    Text("Minute \(minute)")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                } else {
-                    Text("Manual entry")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                        .italic()
-                }
-            }
-            
-            Spacer()
-            
-            // Participant who owns this player
-            if let participant = participantForPlayer(event.player) {
-                Text(participant.name)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(AppDesignSystem.Colors.primary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(AppDesignSystem.Colors.primary.opacity(0.1))
-                    .cornerRadius(6)
-            }
-        }
-    }
-
-    
-    private func getEventDisplayIcon(for event: GameEvent) -> String {
-        // Check if it's a substitution event
-        if event.eventType == .custom && event.customEventName?.contains("Substitution") == true {
-            return "arrow.left.arrow.right"
-        }
-        
-        // Return standard event icon using the function
-        return eventIcon(for: event.eventType)
-    }
-    
-    private func getEventDisplayColor(for event: GameEvent) -> Color {
-        // Check if it's a substitution event
+    private var eventColor: Color {
         if event.eventType == .custom && event.customEventName?.contains("Substitution") == true {
             return AppDesignSystem.Colors.warning
         }
-        
-        // Return standard event color using the function
-        return eventColor(for: event.eventType)
+        switch event.eventType {
+        case .goal: return AppDesignSystem.Colors.grassGreen
+        case .assist: return AppDesignSystem.Colors.info
+        case .yellowCard: return AppDesignSystem.Colors.goalYellow
+        case .redCard: return AppDesignSystem.Colors.error
+        case .ownGoal: return AppDesignSystem.Colors.warning
+        case .penalty: return AppDesignSystem.Colors.grassGreen
+        case .penaltyMissed: return AppDesignSystem.Colors.error
+        case .cleanSheet: return AppDesignSystem.Colors.info
+        case .custom: return AppDesignSystem.Colors.accent
+        }
+    }
+    
+    private var participant: Participant? {
+        gameSession.participants.first { p in
+            p.selectedPlayers.contains { $0.id == event.player.id } ||
+            p.substitutedPlayers.contains { $0.id == event.player.id }
+        }
+    }
+    
+    var body: some View {
+        Button(action: onTap) {
+            HStack(alignment: .top, spacing: 12) {
+                // Timeline line and icon
+                VStack(spacing: 0) {
+                    ZStack {
+                        Circle()
+                            .fill(eventColor.opacity(0.15))
+                            .frame(width: 36, height: 36)
+                        
+                        Image(systemName: eventIcon)
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(eventColor)
+                    }
+                    
+                    if !isFirst {
+                        Rectangle()
+                            .fill(AppDesignSystem.Colors.secondaryText.opacity(0.2))
+                            .frame(width: 2)
+                            .frame(maxHeight: .infinity)
+                    }
+                }
+                .frame(width: 36)
+                
+                // Event content
+                VStack(alignment: .leading, spacing: 8) {
+                    // Event type header
+                    HStack {
+                        Text(gameSession.getEventDisplayName(for: event))
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(eventColor)
+                        
+                        Spacer()
+                        
+                        if let minute = event.minute {
+                            Text("\(minute)'")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Capsule().fill(eventColor))
+                        }
+                    }
+                    
+                    // Player info
+                    HStack(spacing: 10) {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(AppDesignSystem.TeamColors.getColor(for: event.player.team))
+                            .frame(width: 3, height: 24)
+                        
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(event.player.name)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(AppDesignSystem.Colors.primaryText)
+                            
+                            Text(event.player.team.shortName)
+                                .font(.system(size: 11))
+                                .foregroundColor(AppDesignSystem.TeamColors.getColor(for: event.player.team))
+                        }
+                        
+                        Spacer()
+                        
+                        if let participant = participant {
+                            Text(participant.name)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(AppDesignSystem.Colors.grassGreen)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 4)
+                                .background(
+                                    Capsule().fill(AppDesignSystem.Colors.grassGreen.opacity(0.12))
+                                )
+                        }
+                    }
+                    
+                    // Timestamp
+                    let formatter = DateFormatter()
+                    let _ = formatter.timeStyle = .short
+                    Text(formatter.string(from: event.timestamp))
+                        .font(.system(size: 11))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                }
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(AppDesignSystem.Colors.cardBackground)
+                        .shadow(color: colorScheme == .dark ? Color.black.opacity(0.15) : Color.black.opacity(0.04), radius: 3, x: 0, y: 2)
+                )
+            }
+            .padding(.bottom, 12)
+        }
+        .buttonStyle(PlainButtonStyle())
     }
 }
 
@@ -686,9 +430,11 @@ struct EditEventView: View {
     let event: GameEvent
     let onSave: (GameEvent) -> Void
     
+    @Environment(\.presentationMode) var presentationMode
+    @Environment(\.colorScheme) var colorScheme
+    
     @State private var selectedEventType: Bet.EventType
     @State private var selectedPlayer: Player
-    @Environment(\.presentationMode) var presentationMode
     
     init(gameSession: GameSession, event: GameEvent, onSave: @escaping (GameEvent) -> Void) {
         self.gameSession = gameSession
@@ -698,124 +444,200 @@ struct EditEventView: View {
         self._selectedPlayer = State(initialValue: event.player)
     }
     
-    // MARK: - Player Selection Section
-    private var playerSelectionSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Player")
-                .font(.system(size: 20, weight: .bold))
-                .foregroundColor(AppDesignSystem.Colors.primaryText)
-            
-            participantPlayersList
-        }
-    }
-    
-    private var participantPlayersList: some View {
-        ForEach(gameSession.participants) { participant in
-            if !participant.selectedPlayers.isEmpty {
-                participantPlayersGroup(participant)
-            }
-        }
-    }
-    
-    private func participantPlayersGroup(_ participant: Participant) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(participant.name)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(AppDesignSystem.Colors.primary)
-            
-            playerGridForParticipant(participant)
-        }
-    }
-    
-    private func playerGridForParticipant(_ participant: Participant) -> some View {
-        LazyVGrid(columns: [GridItem(.flexible())], spacing: 8) {
-            ForEach(participant.selectedPlayers) { player in
-                PlayerSelectionCard(
-                    player: player,
-                    isSelected: selectedPlayer.id == player.id
-                ) {
-                    selectedPlayer = player
-                }
-            }
-        }
-    }
-    
-    // MARK: - Event Type Selection Section
-    private var eventTypeSelectionSection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Event Type")
-                .font(.system(size: 20, weight: .bold))
-                .foregroundColor(AppDesignSystem.Colors.primaryText)
-            
-            eventTypeGrid
-        }
-    }
-    
-    private var eventTypeGrid: some View {
-        LazyVGrid(columns: [
-            GridItem(.flexible()),
-            GridItem(.flexible())
-        ], spacing: 12) {
-            ForEach(Bet.EventType.allCases, id: \.self) { eventType in
-                EventTypeSelectionCard(
-                    eventType: eventType,
-                    isSelected: selectedEventType == eventType
-                ) {
-                    selectedEventType = eventType
-                }
-            }
-        }
-    }
-    
-    // MARK: - Save Button Section
-    private var saveButtonSection: some View {
-        Button("Save Changes") {
-            saveEditedEvent()
-        }
-        .font(.system(size: 16, weight: .bold))
-        .foregroundColor(.white)
-        .padding(.vertical, 16)
-        .frame(maxWidth: .infinity)
-        .background(AppDesignSystem.Colors.primary)
-        .cornerRadius(12)
-        .disabled(isButtonDisabled)
-    }
-    
-    private var isButtonDisabled: Bool {
-        selectedPlayer.id == event.player.id && selectedEventType == event.eventType
-    }
-    
-    private func saveEditedEvent() {
-        let editedEvent = GameEvent(
-            player: selectedPlayer,
-            eventType: selectedEventType,
-            timestamp: event.timestamp // Keep same timestamp
-        )
-        
-        onSave(editedEvent)
-        presentationMode.wrappedValue.dismiss()
-    }
-    
-    // MARK: - Updated Main Body
     var body: some View {
         NavigationView {
-            ScrollView {
-                VStack(spacing: 24) {
-                    playerSelectionSection
-                    eventTypeSelectionSection
-                    saveButtonSection
+            ZStack {
+                Color(colorScheme == .dark ? UIColor(red: 0.05, green: 0.08, blue: 0.06, alpha: 1) : UIColor(red: 0.96, green: 0.98, blue: 0.96, alpha: 1))
+                    .ignoresSafeArea()
+                
+                ScrollView {
+                    VStack(spacing: 24) {
+                        playerSelectionSection
+                        eventTypeSelectionSection
+                        saveButton
+                    }
+                    .padding(20)
                 }
-                .padding(24)
             }
             .navigationTitle("Edit Event")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Cancel") {
-                        presentationMode.wrappedValue.dismiss()
+                    Button("Cancel") { presentationMode.wrappedValue.dismiss() }
+                        .foregroundColor(AppDesignSystem.Colors.grassGreen)
+                }
+            }
+        }
+    }
+    
+    private var playerSelectionSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Player")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundColor(AppDesignSystem.Colors.primaryText)
+            
+            ForEach(gameSession.participants) { participant in
+                if !participant.selectedPlayers.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text(participant.name)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(AppDesignSystem.Colors.grassGreen)
+                        
+                        ForEach(participant.selectedPlayers) { player in
+                            EditPlayerRow(player: player, isSelected: selectedPlayer.id == player.id) {
+                                selectedPlayer = player
+                            }
+                        }
                     }
                 }
             }
         }
     }
+    
+    private var eventTypeSelectionSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Event Type")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundColor(AppDesignSystem.Colors.primaryText)
+            
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                ForEach(Bet.EventType.allCases, id: \.self) { eventType in
+                    EditEventTypeCard(eventType: eventType, isSelected: selectedEventType == eventType) {
+                        selectedEventType = eventType
+                    }
+                }
+            }
+        }
+    }
+    
+    private var saveButton: some View {
+        Button(action: {
+            let edited = GameEvent(player: selectedPlayer, eventType: selectedEventType, timestamp: event.timestamp)
+            onSave(edited)
+            presentationMode.wrappedValue.dismiss()
+        }) {
+            Text("Save Changes")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(hasChanges ? AppDesignSystem.Colors.grassGreen : AppDesignSystem.Colors.secondaryText.opacity(0.3))
+                )
+        }
+        .disabled(!hasChanges)
+    }
+    
+    private var hasChanges: Bool {
+        selectedPlayer.id != event.player.id || selectedEventType != event.eventType
+    }
 }
+
+// MARK: - Edit Player Row
+
+struct EditPlayerRow: View {
+    let player: Player
+    let isSelected: Bool
+    let onTap: () -> Void
+    
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 10) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(AppDesignSystem.TeamColors.getColor(for: player.team))
+                    .frame(width: 3, height: 28)
+                
+                Text(player.name)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                Spacer()
+                
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 18))
+                    .foregroundColor(isSelected ? AppDesignSystem.Colors.grassGreen : AppDesignSystem.Colors.secondaryText.opacity(0.4))
+            }
+            .padding(10)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isSelected ? AppDesignSystem.Colors.grassGreen.opacity(0.08) : colorScheme == .dark ? Color.white.opacity(0.03) : Color.black.opacity(0.02))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(isSelected ? AppDesignSystem.Colors.grassGreen.opacity(0.3) : Color.clear, lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+}
+
+// MARK: - Edit Event Type Card
+
+struct EditEventTypeCard: View {
+    let eventType: Bet.EventType
+    let isSelected: Bool
+    let onTap: () -> Void
+    
+    @Environment(\.colorScheme) var colorScheme
+    
+    private var icon: String {
+        switch eventType {
+        case .goal: return "soccerball"
+        case .assist: return "arrow.up.forward"
+        case .yellowCard: return "square.fill"
+        case .redCard: return "square.fill"
+        case .ownGoal: return "arrow.uturn.backward"
+        case .penalty: return "p.circle"
+        case .penaltyMissed: return "p.circle.fill"
+        case .cleanSheet: return "lock.shield"
+        case .custom: return "star.fill"
+        }
+    }
+    
+    private var color: Color {
+        switch eventType {
+        case .goal, .penalty: return AppDesignSystem.Colors.grassGreen
+        case .assist, .cleanSheet: return AppDesignSystem.Colors.info
+        case .yellowCard: return AppDesignSystem.Colors.goalYellow
+        case .redCard, .penaltyMissed: return AppDesignSystem.Colors.error
+        case .ownGoal: return AppDesignSystem.Colors.warning
+        case .custom: return AppDesignSystem.Colors.accent
+        }
+    }
+    
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 8) {
+                Image(systemName: icon)
+                    .font(.system(size: 14))
+                    .foregroundColor(color)
+                
+                Text(eventType.rawValue.capitalized)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                Spacer()
+                
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(color)
+                }
+            }
+            .padding(10)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isSelected ? color.opacity(0.12) : colorScheme == .dark ? Color.white.opacity(0.03) : Color.black.opacity(0.02))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(isSelected ? color.opacity(0.4) : Color.clear, lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+}
+

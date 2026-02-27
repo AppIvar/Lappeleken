@@ -2,7 +2,7 @@
 //  LiveGameSetupView.swift
 //  Lucky Football Slip
 //
-//  Created by Ivar Hovland on 20/05/2025.
+//  Live game setup wizard - Football themed
 //
 
 import SwiftUI
@@ -11,6 +11,7 @@ import Network
 struct LiveGameSetupView: View {
     @ObservedObject var gameSession: GameSession
     @Environment(\.presentationMode) var presentationMode
+    @Environment(\.colorScheme) var colorScheme
     
     @State private var currentStep = 0
     @State private var participantName = ""
@@ -41,80 +42,62 @@ struct LiveGameSetupView: View {
     @StateObject private var networkMonitor = NetworkMonitor()
     @ObservedObject private var leagueManager = LeagueAccessManager.shared
 
-
     private let steps = ["Matches", "Participants", "Set Bets", "Select Players", "Review"]
     
     var body: some View {
         NavigationView {
-            VStack(spacing: 0) {
-                if !networkMonitor.isConnected {
-                    connectionStatusBar
-                }
+            ZStack {
+                footballBackground
                 
-                if showingRateLimit {
-                    RateLimitWarning()
-                        .padding(.horizontal)
-                        .transition(.slide)
-                }
-                
-                progressIndicator
-                
-                ScrollView {
-                    VStack {
-                        if isLoading {
-                            loadingStateView
-                        } else if let errorMessage = error {
-                            errorStateView(errorMessage)
-                        } else {
-                            stepContentView
-                        }
+                VStack(spacing: 0) {
+                    if !networkMonitor.isConnected {
+                        connectionStatusBar
                     }
-                    .padding()
+                    
+                    if showingRateLimit {
+                        rateLimitWarningBar
+                    }
+                    
+                    progressIndicator
+                    
+                    // Main content
+                    ScrollView(showsIndicators: false) {
+                        VStack(spacing: 16) {
+                            if isLoading {
+                                loadingStateView
+                            } else if let errorMessage = error {
+                                errorStateView(errorMessage)
+                            } else {
+                                stepContentView
+                            }
+                        }
+                        .padding(20)
+                    }
+                    
+                    navigationButtons
                 }
-                
-                navigationButtons
             }
             .navigationTitle("Live Game Setup")
-            .navigationBarTitleDisplayMode(.large)
-            .navigationBarItems(
-                leading: Button("Cancel") {
-                    presentationMode.wrappedValue.dismiss()
-                },
-                trailing: Button("Help") {
-                    showingLiveSetupInfo = true
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") { presentationMode.wrappedValue.dismiss() }
+                        .foregroundColor(AppDesignSystem.Colors.grassGreen)
                 }
-                .foregroundColor(AppDesignSystem.Colors.primary)
-            )
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: { showingLiveSetupInfo = true }) {
+                        Image(systemName: "questionmark.circle")
+                            .foregroundColor(AppDesignSystem.Colors.grassGreen)
+                    }
+                }
+            }
         }
-        .withMinimalBanner()
-        .onAppear {
-            setupInitialState()
-        }
+        .onAppear { setupInitialState() }
         .sheet(isPresented: $showingCustomBetSheet) {
             CustomBetView(gameSession: gameSession)
         }
         .sheet(isPresented: $showingLiveSetupInfo) {
-            LiveModeInfoView(onGetStarted: {
-                // Already in setup, so just dismiss
-            })
-        }
-        .alert("Lineup Not Available", isPresented: $showingLineupChoiceAlert) {
-            Button("Use Full Squad") {
-                if let matchId = pendingMatchId {
-                    loadFullSquadForMatch(matchId)
-                }
-                clearPendingMatch()
-            }
-            
-            Button("Go Back") {
-                clearPendingMatch()
-            }
-            
-            Button("Cancel", role: .cancel) {
-                clearPendingMatch()
-            }
-        } message: {
-            Text("Lineups are not available yet for \(pendingMatchName ?? "this match"). Lineups are usually not available until 1-2 hours before match start.\n\nWould you like to use the full squad instead, or go back and try again later?")
+            LiveModeInfoView(onGetStarted: {})
         }
         .sheet(isPresented: $showingPlayerDrawing) {
             PlayerDrawingView(
@@ -122,271 +105,219 @@ struct LiveGameSetupView: View {
                 selectedPlayers: gameSession.availablePlayers.filter { selectedPlayerIds.contains($0.id) },
                 participants: gameSession.participants,
                 onComplete: { assignments in
-                    // FIXED: Actually apply the assignments to the gameSession
                     for (participant, players) in assignments {
                         if let index = gameSession.participants.firstIndex(where: { $0.id == participant.id }) {
                             gameSession.participants[index].selectedPlayers = players
-                            gameSession.participants[index].balance = 0.0  // Initialize balance
+                            gameSession.participants[index].balance = 0.0
                         }
                     }
-                    
                     playerAssignments = assignments
                     showingPlayerDrawing = false
                     currentStep += 1
                 },
-                onBack: {
-                    showingPlayerDrawing = false
-                }
+                onBack: { showingPlayerDrawing = false }
             )
         }
         .sheet(isPresented: $showingUpgradeSheet) {
             UpgradeView()
         }
-    }
-    
-    // MARK: - Helper Methods
-    
-    private func clearPendingMatch() {
-        pendingMatchId = nil
-        pendingMatchName = nil
-    }
-    
-    private func setupInitialState() {
-        // Clear any existing state when entering live mode setup
-        gameSession.availablePlayers = []
-        gameSession.selectedPlayers = []
-        selectedPlayerIds = Set<UUID>()
-        
-        // Load available matches when the view appears
-        loadMatches()
-        
-        // Initialize bet amounts and negative flags
-        if betAmounts.isEmpty {
-            initializeBetAmounts()
+        .alert("Lineup Not Available", isPresented: $showingLineupChoiceAlert) {
+            Button("Use Full Squad") {
+                if let matchId = pendingMatchId { loadFullSquadForMatch(matchId) }
+                clearPendingMatch()
+            }
+            Button("Go Back") { clearPendingMatch() }
+            Button("Cancel", role: .cancel) { clearPendingMatch() }
+        } message: {
+            Text("Lineups are not available yet for \(pendingMatchName ?? "this match"). Would you like to use the full squad instead?")
         }
     }
     
-    private func initializeBetAmounts() {
-        for eventType in Bet.EventType.allCases {
-            betAmounts[eventType] = 0.0
+    // MARK: - Background
+    
+    private var footballBackground: some View {
+        ZStack {
+            Color(colorScheme == .dark ? UIColor(red: 0.05, green: 0.08, blue: 0.06, alpha: 1) : UIColor(red: 0.96, green: 0.98, blue: 0.96, alpha: 1))
             
-            // Set certain bets as negative by default
-            if eventType == .ownGoal || eventType == .penaltyMissed {
-                betNegativeFlags[eventType] = true
-                betAmounts[eventType] = -0.0
-            } else {
-                betNegativeFlags[eventType] = false
+            VStack {
+                LinearGradient(
+                    colors: [AppDesignSystem.Colors.grassGreen.opacity(colorScheme == .dark ? 0.12 : 0.06), Color.clear],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 200)
+                Spacer()
             }
         }
+        .ignoresSafeArea()
     }
     
-    // MARK: - UI Components
+    // MARK: - Connection Status
     
     private var connectionStatusBar: some View {
-        HStack {
-            LiveConnectionStatus(isConnected: networkMonitor.isConnected)
-            
+        HStack(spacing: 8) {
+            Image(systemName: networkMonitor.isConnected ? "wifi" : "wifi.slash")
+                .font(.system(size: 14))
+            Text(networkMonitor.isConnected ? "Connected" : "No Connection")
+                .font(.system(size: 13, weight: .medium))
             Spacer()
-            
-            if networkMonitor.isConnected && currentStep == 0 {
-                NextUpdateTimer()
-            }
         }
-        .padding()
-        .background(networkMonitor.isConnected ? AppDesignSystem.Colors.success.opacity(0.1) : AppDesignSystem.Colors.error.opacity(0.1))
+        .foregroundColor(networkMonitor.isConnected ? AppDesignSystem.Colors.grassGreen : AppDesignSystem.Colors.error)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(
+            (networkMonitor.isConnected ? AppDesignSystem.Colors.grassGreen : AppDesignSystem.Colors.error).opacity(0.1)
+        )
     }
+    
+    private var rateLimitWarningBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 14))
+            Text("Rate limited - please wait before retrying")
+                .font(.system(size: 13, weight: .medium))
+            Spacer()
+        }
+        .foregroundColor(AppDesignSystem.Colors.warning)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(AppDesignSystem.Colors.warning.opacity(0.1))
+    }
+    
+    // MARK: - Progress Indicator
     
     private var progressIndicator: some View {
-        VStack(spacing: 12) {
-            // Step indicator
-            HStack {
-                ForEach(0..<steps.count, id: \.self) { index in
-                    HStack {
-                        // Step circle
-                        ZStack {
-                            Circle()
-                                .fill(
-                                    index <= currentStep ?
-                                    AppDesignSystem.Colors.primary :
-                                    AppDesignSystem.Colors.secondaryText.opacity(0.3)
-                                )
-                                .frame(width: 32, height: 32)
-                            
-                            if index < currentStep {
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundColor(.white)
-                            } else {
-                                Text("\(index + 1)")
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundColor(
-                                        index == currentStep ? .white : AppDesignSystem.Colors.secondaryText
-                                    )
-                            }
-                        }
+        HStack(spacing: 4) {
+            ForEach(0..<steps.count, id: \.self) { index in
+                VStack(spacing: 4) {
+                    ZStack {
+                        Circle()
+                            .fill(index <= currentStep ? AppDesignSystem.Colors.grassGreen : AppDesignSystem.Colors.secondaryText.opacity(0.3))
+                            .frame(width: 28, height: 28)
                         
-                        // Connecting line
-                        if index < steps.count - 1 {
-                            Rectangle()
-                                .fill(
-                                    index < currentStep ?
-                                    AppDesignSystem.Colors.primary :
-                                    AppDesignSystem.Colors.secondaryText.opacity(0.3)
-                                )
-                                .frame(height: 2)
-                                .frame(maxWidth: .infinity)
+                        if index < currentStep {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(.white)
+                        } else {
+                            Text("\(index + 1)")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(index == currentStep ? .white : AppDesignSystem.Colors.secondaryText)
                         }
                     }
+                    
+                    Text(steps[index])
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(index <= currentStep ? AppDesignSystem.Colors.primaryText : AppDesignSystem.Colors.secondaryText)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity)
+                
+                if index < steps.count - 1 {
+                    Rectangle()
+                        .fill(index < currentStep ? AppDesignSystem.Colors.grassGreen : AppDesignSystem.Colors.secondaryText.opacity(0.3))
+                        .frame(height: 2)
+                        .frame(maxWidth: 20)
                 }
             }
-            
-            // Step title and description
-            Text(currentStep < steps.count ? steps[currentStep] : "Setup")
-                .font(.system(size: 18, weight: .semibold, design: .rounded))
-                .foregroundColor(AppDesignSystem.Colors.primaryText)
-            
-            Text(stepDescription)
-                .font(.system(size: 14))
-                .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                .multilineTextAlignment(.center)
         }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 16)
-                .fill(AppDesignSystem.Colors.cardBackground)
-                .shadow(color: AppDesignSystem.Colors.primary.opacity(0.1), radius: 4, x: 0, y: 2)
-        )
-        .padding(.horizontal)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
     }
     
-    private var stepDescription: String {
-        guard currentStep < steps.count else { return "Setup in progress..." }
-        
-        switch currentStep {
-        case 0: return "Choose live matches to follow"
-        case 1: return "Add people who will participate"
-        case 2: return "Set betting amounts for events"
-        case 3: return "Select players from the match"
-        case 4: return "Review and start your game"
-        default: return "Setup step"
-        }
-    }
+    // MARK: - Loading State
     
     private var loadingStateView: some View {
         VStack(spacing: 20) {
-            ProgressView()
-                .progressViewStyle(CircularProgressViewStyle(tint: AppDesignSystem.Colors.primary))
-                .scaleEffect(1.5)
-            
-            Text("Loading...")
-                .font(.system(size: 18, weight: .medium, design: .rounded))
-                .foregroundColor(AppDesignSystem.Colors.primaryText)
-        }
-        .padding(.top, 100)
-        .frame(maxWidth: .infinity)
-    }
-    
-    private func errorStateView(_ errorMessage: String) -> some View {
-        VStack(spacing: 20) {
-            Image(systemName: "exclamationmark.triangle")
-                .font(.system(size: 60))
-                .foregroundColor(AppDesignSystem.Colors.error)
-            
-            Text("Something went wrong")
-                .font(.system(size: 24, weight: .bold, design: .rounded))
-                .foregroundColor(AppDesignSystem.Colors.primaryText)
-            
-            Text(errorMessage)
-                .font(.system(size: 16))
-                .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
-            
-            Button("Try Again") {
-                error = nil
-                if currentStep == 0 {
-                    loadMatches()
-                }
+            ZStack {
+                Circle()
+                    .fill(AppDesignSystem.Colors.grassGreen.opacity(0.15))
+                    .frame(width: 80, height: 80)
+                
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: AppDesignSystem.Colors.grassGreen))
+                    .scaleEffect(1.3)
             }
-            .font(.system(size: 16, weight: .semibold))
-            .foregroundColor(.white)
-            .padding()
-            .background(AppDesignSystem.Colors.primary)
-            .cornerRadius(12)
+            
+            Text("Loading matches...")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(AppDesignSystem.Colors.primaryText)
+            
+            Text("Fetching live data from football API")
+                .font(.system(size: 13))
+                .foregroundColor(AppDesignSystem.Colors.secondaryText)
         }
+        .frame(maxWidth: .infinity)
         .padding(.top, 60)
     }
     
-    // MARK: - Step Content Views
+    // MARK: - Error State
+    
+    private func errorStateView(_ errorMessage: String) -> some View {
+        VStack(spacing: 20) {
+            ZStack {
+                Circle()
+                    .fill(AppDesignSystem.Colors.error.opacity(0.15))
+                    .frame(width: 80, height: 80)
+                
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 36))
+                    .foregroundColor(AppDesignSystem.Colors.error)
+            }
+            
+            VStack(spacing: 8) {
+                Text("Something went wrong")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                Text(errorMessage)
+                    .font(.system(size: 14))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    .multilineTextAlignment(.center)
+            }
+            
+            Button(action: {
+                error = nil
+                if currentStep == 0 { loadMatches() }
+            }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.clockwise")
+                    Text("Try Again")
+                }
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(.white)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 12)
+                .background(RoundedRectangle(cornerRadius: 10).fill(AppDesignSystem.Colors.grassGreen))
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 40)
+    }
+    
+    // MARK: - Step Content
     
     @ViewBuilder
     private var stepContentView: some View {
         switch currentStep {
-        case 0: matchSelectionView
-        case 1: participantsSetupView
-        case 2: setBetsView
-        case 3: playersSelectionView
-        case 4: reviewView
+        case 0: matchSelectionStep
+        case 1: participantsStep
+        case 2: betsStep
+        case 3: playersStep
+        case 4: reviewStep
         default: EmptyView()
         }
     }
     
-    private var navigationButtons: some View {
-        HStack(spacing: 16) {
-            if currentStep > 0 {
-                Button("Back") {
-                    withAnimation(.easeInOut(duration: 0.3)) {
-                        currentStep -= 1
-                    }
-                }
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundColor(AppDesignSystem.Colors.primary)
-                .frame(maxWidth: .infinity)
-                .padding()
-                .background(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(AppDesignSystem.Colors.primary, lineWidth: 2)
-                )
-            }
-            
-            Button(currentStep < steps.count - 1 ? "Next" : "Start Game") {
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    validateAndProceed()
-                }
-            }
-            .font(.system(size: 16, weight: .semibold))
-            .foregroundColor(.white)
-            .frame(maxWidth: .infinity)
-            .padding()
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                AppDesignSystem.Colors.primary,
-                                AppDesignSystem.Colors.primary.opacity(0.8)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+    // MARK: - Step 0: Match Selection
+    
+    private var matchSelectionStep: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            LiveStepHeader(
+                icon: "sportscourt.fill",
+                title: "Select Matches",
+                subtitle: "Choose which matches to follow in real-time"
             )
-            .disabled(isLoading)
-        }
-        .padding()
-    }
-    
-    // MARK: - Match Selection View
-    
-    private var matchSelectionView: some View {
-        VStack(alignment: .leading, spacing: AppDesignSystem.Layout.standardPadding) {
-            Text("Select Live Matches")
-                .font(AppDesignSystem.Typography.headingFont)
-                .foregroundColor(AppDesignSystem.Colors.primaryText)
-            
-            Text("Choose which match(es) you want to follow in real-time:")
-                .font(AppDesignSystem.Typography.bodyFont)
-                .foregroundColor(AppDesignSystem.Colors.secondaryText)
             
             if gameSession.availableMatches.isEmpty {
                 emptyMatchesView
@@ -395,33 +326,47 @@ struct LiveGameSetupView: View {
             }
             
             if selectedMatchIds.isEmpty {
-                Text("Select at least one match to continue")
-                    .font(AppDesignSystem.Typography.captionFont)
-                    .foregroundColor(AppDesignSystem.Colors.error)
-                    .padding(.top, 4)
-            }
-            
-            if !AppConfig.canSelectMultipleMatches && selectedMatchIds.count > 1 {
-                multipleMatchWarningView
+                HStack(spacing: 6) {
+                    Image(systemName: "info.circle.fill")
+                        .font(.system(size: 12))
+                    Text("Select at least one match to continue")
+                        .font(.system(size: 13))
+                }
+                .foregroundColor(AppDesignSystem.Colors.warning)
             }
         }
     }
     
     private var emptyMatchesView: some View {
         VStack(spacing: 20) {
-            Image(systemName: "sportscourt")
-                .font(.system(size: 60))
-                .foregroundColor(AppDesignSystem.Colors.secondaryText.opacity(0.5))
-            
-            Text("No matches available")
-                .font(AppDesignSystem.Typography.bodyFont)
-                .foregroundColor(AppDesignSystem.Colors.secondaryText)
-            
-            Button("Refresh") {
-                loadMatches()
+            ZStack {
+                Circle()
+                    .fill(AppDesignSystem.Colors.secondaryText.opacity(0.1))
+                    .frame(width: 80, height: 80)
+                
+                Image(systemName: "sportscourt")
+                    .font(.system(size: 36))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText.opacity(0.5))
             }
-            .font(.system(size: 16, weight: .semibold))
-            .foregroundColor(AppDesignSystem.Colors.primary)
+            
+            VStack(spacing: 6) {
+                Text("No Matches Available")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                Text("Check back later for upcoming matches")
+                    .font(.system(size: 13))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+            }
+            
+            Button(action: loadMatches) {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.clockwise")
+                    Text("Refresh")
+                }
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(AppDesignSystem.Colors.grassGreen)
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 40)
@@ -430,771 +375,334 @@ struct LiveGameSetupView: View {
     private var matchesListView: some View {
         VStack(spacing: 12) {
             ForEach(leagueGroups, id: \.league) { leagueGroup in
-                leagueDropdownSection(leagueGroup)
+                LiveLeagueSection(
+                    leagueGroup: leagueGroup,
+                    isExpanded: expandedLeagues.contains(leagueGroup.league),
+                    selectedMatchIds: selectedMatchIds,
+                    onToggleExpand: {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            if expandedLeagues.contains(leagueGroup.league) {
+                                expandedLeagues.remove(leagueGroup.league)
+                            } else {
+                                expandedLeagues.insert(leagueGroup.league)
+                            }
+                        }
+                    },
+                    onSelectMatch: { match in
+                        toggleMatchSelection(match)
+                    }
+                )
             }
+        }
+    }
+    
+    // MARK: - Step 1: Participants
+    
+    private var participantsStep: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            LiveStepHeader(
+                icon: "person.3.fill",
+                title: "Add Participants",
+                subtitle: "Who's playing in this game?"
+            )
+            
+            // Add participant input
+            HStack(spacing: 10) {
+                HStack {
+                    Image(systemName: "person")
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    TextField("Enter name", text: $participantName)
+                        .font(.system(size: 14))
+                        .submitLabel(.done)
+                        .onSubmit { addParticipant() }
+                }
+                .padding(12)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(colorScheme == .dark ? Color.white.opacity(0.05) : Color.black.opacity(0.03))
+                )
+                
+                Button(action: addParticipant) {
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 28))
+                        .foregroundColor(participantName.isEmpty ? AppDesignSystem.Colors.secondaryText.opacity(0.4) : AppDesignSystem.Colors.grassGreen)
+                }
+                .disabled(participantName.isEmpty)
+            }
+            
+            // Participants list
+            if gameSession.participants.isEmpty {
+                Text("Add at least 2 participants to continue")
+                    .font(.system(size: 13))
+                    .foregroundColor(AppDesignSystem.Colors.warning)
+                    .padding(.top, 8)
+            } else {
+                VStack(spacing: 8) {
+                    ForEach(gameSession.participants) { participant in
+                        LiveParticipantRow(participant: participant) {
+                            removeParticipant(participant)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // MARK: - Step 2: Bets
+    
+    private var betsStep: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            LiveStepHeader(
+                icon: "dollarsign.circle.fill",
+                title: "Set Bet Amounts",
+                subtitle: "Configure how much each event is worth"
+            )
+            
+            VStack(spacing: 10) {
+                ForEach(Bet.EventType.allCases, id: \.self) { eventType in
+                    LiveBetRow(
+                        eventType: eventType,
+                        amount: betAmounts[eventType] ?? 0,
+                        isNegative: betNegativeFlags[eventType] ?? false,
+                        onAmountChange: { newAmount in
+                            betAmounts[eventType] = newAmount
+                        },
+                        onToggleNegative: {
+                            betNegativeFlags[eventType] = !(betNegativeFlags[eventType] ?? false)
+                        }
+                    )
+                }
+            }
+            
+            Button(action: { showingCustomBetSheet = true }) {
+                HStack(spacing: 8) {
+                    Image(systemName: "plus.circle")
+                    Text("Add Custom Event")
+                }
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(AppDesignSystem.Colors.grassGreen)
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(AppDesignSystem.Colors.grassGreen.opacity(0.4), lineWidth: 1.5)
+                )
+            }
+        }
+    }
+    
+    // MARK: - Step 3: Players
+    
+    private var playersStep: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            LiveStepHeader(
+                icon: "person.crop.rectangle.stack.fill",
+                title: "Select Players",
+                subtitle: "Choose players to include in the game"
+            )
+            
+            if gameSession.availablePlayers.isEmpty {
+                VStack(spacing: 16) {
+                    ProgressView()
+                        .progressViewStyle(CircularProgressViewStyle(tint: AppDesignSystem.Colors.grassGreen))
+                    Text("Loading players...")
+                        .font(.system(size: 14))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.top, 40)
+            } else {
+                // Quick actions
+                HStack(spacing: 10) {
+                    Button(action: selectAllStartingXI) {
+                        Text("Select Starting XI")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(AppDesignSystem.Colors.grassGreen))
+                    }
+                    
+                    Button(action: deselectAllPlayers) {
+                        Text("Clear All")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(AppDesignSystem.Colors.error)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background(RoundedRectangle(cornerRadius: 8).stroke(AppDesignSystem.Colors.error.opacity(0.5), lineWidth: 1))
+                    }
+                    
+                    Spacer()
+                    
+                    Text("\(selectedPlayerIds.count) selected")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                }
+                
+                // Players by team
+                ForEach(getPlayersByTeam(gameSession.availablePlayers), id: \.team.id) { teamData in
+                    LiveTeamPlayersSection(
+                        team: teamData.team,
+                        players: teamData.players,
+                        selectedIds: selectedPlayerIds,
+                        onTogglePlayer: { player in
+                            togglePlayerSelection(player)
+                        },
+                        onSelectTeam: {
+                            selectTeamPlayers(teamId: teamData.team.id)
+                        }
+                    )
+                }
+            }
+        }
+    }
+    
+    // MARK: - Step 4: Review
+    
+    private var reviewStep: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            LiveStepHeader(
+                icon: "checkmark.circle.fill",
+                title: "Review & Start",
+                subtitle: "Everything looks good? Let's go!"
+            )
+            
+            // Summary cards
+            VStack(spacing: 12) {
+                LiveSummaryCard(
+                    icon: "sportscourt.fill",
+                    title: "Matches",
+                    value: "\(selectedMatchIds.count)",
+                    color: AppDesignSystem.Colors.grassGreen
+                )
+                
+                LiveSummaryCard(
+                    icon: "person.3.fill",
+                    title: "Participants",
+                    value: "\(gameSession.participants.count)",
+                    color: AppDesignSystem.Colors.info
+                )
+                
+                LiveSummaryCard(
+                    icon: "figure.run",
+                    title: "Players",
+                    value: "\(selectedPlayerIds.count)",
+                    color: AppDesignSystem.Colors.goalYellow
+                )
+                
+                let activeBets = betAmounts.filter { $0.value != 0 }.count
+                LiveSummaryCard(
+                    icon: "dollarsign.circle.fill",
+                    title: "Active Bets",
+                    value: "\(activeBets)",
+                    color: AppDesignSystem.Colors.accent
+                )
+            }
+        }
+    }
+    
+    // MARK: - Navigation Buttons
+    
+    private var navigationButtons: some View {
+        VStack(spacing: 0) {
+            Divider()
+            
+            HStack(spacing: 12) {
+                if currentStep > 0 {
+                    Button(action: { withAnimation { currentStep -= 1 } }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "chevron.left")
+                            Text("Back")
+                        }
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(AppDesignSystem.Colors.grassGreen)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(AppDesignSystem.Colors.grassGreen.opacity(0.12))
+                        )
+                    }
+                }
+                
+                let isLastStep = currentStep == steps.count - 1
+                Button(action: {
+                    if canProceed {
+                        if isLastStep {
+                            startGame()
+                        } else {
+                            validateAndProceed()
+                        }
+                    }
+                }) {
+                    HStack(spacing: 6) {
+                        Text(isLastStep ? "Start Game" : "Continue")
+                        Image(systemName: isLastStep ? "play.fill" : "chevron.right")
+                    }
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(canProceed ? AppDesignSystem.Colors.grassGreen : AppDesignSystem.Colors.secondaryText.opacity(0.3))
+                    )
+                }
+                .disabled(!canProceed)
+            }
+            .padding(16)
+            .background(AppDesignSystem.Colors.cardBackground)
+        }
+    }
+    
+    // MARK: - Computed Properties
+    
+    private var canProceed: Bool {
+        switch currentStep {
+        case 0: return !selectedMatchIds.isEmpty
+        case 1: return gameSession.participants.count >= 2
+        case 2: return true
+        case 3: return !selectedPlayerIds.isEmpty
+        case 4: return true
+        default: return false
         }
     }
     
     private var matchesByLeague: [String: [Match]] {
-        Dictionary(grouping: gameSession.availableMatches) { match in
-            match.competition.code
-        }
+        Dictionary(grouping: gameSession.availableMatches) { $0.competition.code }
     }
-
-    private var leagueOrder: [String] {
-        ["TIP", "WC", "CL", "PL", "BL1", "DED", "BSA", "PD", "FL1", "ELC", "PPL", "EC", "SA"]
-    }
-
-    private var sortedLeagueCodes: [String] {
-        matchesByLeague.keys.sorted { league1, league2 in
-            let index1 = leagueOrder.firstIndex(of: league1) ?? leagueOrder.count
-            let index2 = leagueOrder.firstIndex(of: league2) ?? leagueOrder.count
-            return index1 < index2
-        }
-    }
-
+    
     private var leagueGroups: [LeagueGroup] {
-        sortedLeagueCodes.compactMap { leagueCode in
-            guard let leagueMatches = matchesByLeague[leagueCode] else { return nil }
-            return LeagueGroup(
-                league: leagueCode,
-                name: leagueMatches.first?.competition.name ?? leagueCode,
-                matches: leagueMatches
-            )
-        }
-    }
-    
-    private func leagueDropdownSection(_ leagueGroup: LeagueGroup) -> some View {
-        VStack(spacing: 0) {
-            // Clickable header
-            Button(action: {
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    if expandedLeagues.contains(leagueGroup.league) {
-                        expandedLeagues.remove(leagueGroup.league)
-                    } else {
-                        expandedLeagues.insert(leagueGroup.league)
-                    }
-                }
-            }) {
-                leagueDropdownHeader(leagueGroup)
-            }
-            .buttonStyle(PlainButtonStyle())
-            
-            // Expandable content
-            if expandedLeagues.contains(leagueGroup.league) {
-                VStack(spacing: 8) {
-                    ForEach(dateGroups(for: leagueGroup.matches), id: \.date) { dateGroup in
-                        dateSection(dateGroup, showDateHeader: dateGroups(for: leagueGroup.matches).count > 1)
-                    }
-                }
-                .padding(.top, 8)
-                .transition(.asymmetric(
-                    insertion: .opacity.combined(with: .move(edge: .top)),
-                    removal: .opacity.combined(with: .move(edge: .top))
-                ))
-            }
-        }
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(AppDesignSystem.Colors.cardBackground)
-                .shadow(
-                    color: AppDesignSystem.Colors.primary.opacity(0.1),
-                    radius: expandedLeagues.contains(leagueGroup.league) ? 8 : 4,
-                    x: 0,
-                    y: 2
-                )
-        )
-        .padding(.vertical, 4)
-    }
-
-    private func leagueDropdownHeader(_ leagueGroup: LeagueGroup) -> some View {
-        let accessStatus = leagueManager.getAccessStatus(for: leagueGroup.league)
+        let leagueOrder = ["TIP", "WC", "CL", "PL", "BL1", "DED", "BSA", "PD", "FL1", "ELC", "PPL", "EC", "SA"]
         
-        return HStack {
-            // League info
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Text(leagueGroup.name)
-                        .font(AppDesignSystem.Typography.subheadingFont.bold())
-                        .foregroundColor(AppDesignSystem.Colors.primary)
-                    
-                    // Access badge
-                    leagueAccessBadge(for: accessStatus)
-                }
-                
-                Text("\(leagueGroup.matches.count) match\(leagueGroup.matches.count == 1 ? "" : "es")")
-                    .font(AppDesignSystem.Typography.captionFont)
-                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
-            }
-            
-            Spacer()
-            
-            // Selected matches indicator
-            let selectedCount = leagueGroup.matches.filter { match in
-                selectedMatchIds.contains(match.id)
-            }.count
-            
-            if selectedCount > 0 {
-                HStack(spacing: 4) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundColor(AppDesignSystem.Colors.success)
-                        .font(.system(size: 14))
-                    
-                    Text("\(selectedCount)")
-                        .font(AppDesignSystem.Typography.captionFont.bold())
-                        .foregroundColor(AppDesignSystem.Colors.success)
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(
-                    Capsule()
-                        .fill(AppDesignSystem.Colors.success.opacity(0.1))
+        return matchesByLeague.keys
+            .sorted { (leagueOrder.firstIndex(of: $0) ?? 999) < (leagueOrder.firstIndex(of: $1) ?? 999) }
+            .compactMap { code in
+                guard let matches = matchesByLeague[code] else { return nil }
+                return LeagueGroup(
+                    league: code,
+                    name: matches.first?.competition.name ?? code,
+                    matches: matches
                 )
             }
-            
-            // Dropdown arrow
-            Image(systemName: expandedLeagues.contains(leagueGroup.league) ? "chevron.up" : "chevron.down")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                .animation(.easeInOut(duration: 0.2), value: expandedLeagues.contains(leagueGroup.league))
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .contentShape(Rectangle())
     }
     
-    @ViewBuilder
-    private func leagueAccessBadge(for status: LeagueAccessStatus) -> some View {
-        switch status {
-        case .unlocked(let reason):
-            switch reason {
-            case .premium:
-                Label("Premium", systemImage: "crown.fill")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.yellow)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.yellow.opacity(0.2))
-                    .cornerRadius(4)
-            case .leagueSubscription:
-                Label("Subscribed", systemImage: "checkmark.seal.fill")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.green)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.green.opacity(0.2))
-                    .cornerRadius(4)
-            case .freeLeague:
-                Label("Free", systemImage: "gift.fill")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.blue)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.blue.opacity(0.2))
-                    .cornerRadius(4)
-            case .testingMode:
-                Label("Test", systemImage: "hammer.fill")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.purple)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Color.purple.opacity(0.2))
-                    .cornerRadius(4)
-            default:
-                EmptyView()
-            }
-            
-        case .limitedFree(let remaining):
-            Label("\(remaining) free", systemImage: "ticket.fill")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(.orange)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Color.orange.opacity(0.2))
-                .cornerRadius(4)
-            
-        case .locked(_):
-            Label("Locked", systemImage: "lock.fill")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundColor(.red)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(Color.red.opacity(0.2))
-                .cornerRadius(4)
-        }
+    // MARK: - Actions
+    
+    private func setupInitialState() {
+        gameSession.availablePlayers = []
+        gameSession.selectedPlayers = []
+        selectedPlayerIds = Set<UUID>()
+        loadMatches()
+        if betAmounts.isEmpty { initializeBetAmounts() }
     }
     
-    private func dateSection(_ dateGroup: DateGroup, showDateHeader: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if showDateHeader {
-                Text(formatDate(dateGroup.date))
-                    .font(AppDesignSystem.Typography.captionFont.bold())
-                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                    .padding(.leading, 16)
-                    .padding(.top, 4)
-            }
-            
-            ForEach(dateGroup.matches, id: \.id) { match in
-                MatchSelectionCard(
-                    match: match,
-                    isSelected: selectedMatchIds.contains(match.id),
-                    accessStatus: leagueManager.getAccessStatus(for: match.competition.code),
-                    onToggle: {
-                        toggleMatchSelection(match)
-                    }
-                )
-                .padding(.horizontal, 8)
-            }
-        }
-        .padding(.bottom, 8)
-    }
-    
-    // Helper functions for matches
-    private func dateGroups(for matches: [Match]) -> [DateGroup] {
-        let matchesByDate = Dictionary(grouping: matches) { match in
-            Calendar.current.startOfDay(for: match.startTime)
-        }
-        
-        return matchesByDate.keys.sorted().map { date in
-            let sortedMatches = matchesByDate[date]?.sorted { $0.startTime < $1.startTime } ?? []
-            return DateGroup(date: date, matches: sortedMatches)
+    private func initializeBetAmounts() {
+        for eventType in Bet.EventType.allCases {
+            betAmounts[eventType] = 0.0
+            betNegativeFlags[eventType] = (eventType == .ownGoal || eventType == .penaltyMissed)
         }
     }
-
-    private func formatDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        let calendar = Calendar.current
-        
-        if calendar.isDateInToday(date) {
-            return "Today"
-        } else if calendar.isDateInTomorrow(date) {
-            return "Tomorrow"
-        } else if calendar.isDate(date, equalTo: Date(), toGranularity: .weekOfYear) {
-            formatter.dateFormat = "EEEE" // Day of week
-            return formatter.string(from: date)
-        } else {
-            formatter.dateStyle = .medium
-            formatter.timeStyle = .none
-            return formatter.string(from: date)
-        }
-    }
-    
-    private var multipleMatchWarningView: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Image(systemName: "info.circle.fill")
-                    .foregroundColor(AppDesignSystem.Colors.primary)
-                
-                Text("Multiple Match Selection")
-                    .font(AppDesignSystem.Typography.subheadingFont)
-                    .foregroundColor(AppDesignSystem.Colors.primary)
-            }
-            
-            Text("You're in free mode which only allows one match at a time. Upgrade to premium to follow multiple matches simultaneously.")
-                .font(AppDesignSystem.Typography.bodyFont)
-                .foregroundColor(AppDesignSystem.Colors.secondaryText)
-            
-            Button("Upgrade to Premium") {
-                NotificationCenter.default.post(
-                    name: Notification.Name("ShowUpgradePrompt"),
-                    object: nil
-                )
-            }
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundColor(.white)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .background(AppDesignSystem.Colors.primary)
-            .cornerRadius(8)
-        }
-        .padding()
-        .background(AppDesignSystem.Colors.primary.opacity(0.1))
-        .cornerRadius(AppDesignSystem.Layout.cornerRadius)
-        .padding(.top, 20)
-    }
-    
-    // MARK: - Participants Setup View
-    
-    private var participantsSetupView: some View {
-        VStack(alignment: .leading, spacing: AppDesignSystem.Layout.standardPadding) {
-            Text("Add Participants")
-                .font(AppDesignSystem.Typography.headingFont)
-                .foregroundColor(AppDesignSystem.Colors.primaryText)
-            
-            Text("Add the people who will be playing the game:")
-                .font(AppDesignSystem.Typography.bodyFont)
-                .foregroundColor(AppDesignSystem.Colors.secondaryText)
-            
-            // Add participant section with enhanced UI
-            VStack(spacing: 16) {
-                HStack {
-                    TextField("Enter participant name", text: $participantName)
-                        .font(AppDesignSystem.Typography.bodyFont)
-                        .padding()
-                        .background(
-                            RoundedRectangle(cornerRadius: AppDesignSystem.Layout.cornerRadius)
-                                .fill(AppDesignSystem.Colors.cardBackground)
-                                .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
-                        )
-                        .onSubmit {
-                            addParticipant()
-                        }
-                    
-                    Button(action: addParticipant) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.system(size: 18))
-                            Text("Add")
-                                .font(.system(size: 14, weight: .semibold))
-                        }
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
-                        .background(
-                            participantName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?
-                            Color.gray : AppDesignSystem.Colors.primary
-                        )
-                        .cornerRadius(AppDesignSystem.Layout.cornerRadius)
-                    }
-                    .disabled(participantName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-                
-                if gameSession.participants.isEmpty {
-                    HStack {
-                        Image(systemName: "info.circle")
-                            .foregroundColor(AppDesignSystem.Colors.error)
-                        
-                        Text("Add at least one participant to continue")
-                            .font(AppDesignSystem.Typography.captionFont)
-                            .foregroundColor(AppDesignSystem.Colors.error)
-                    }
-                    .padding(.top, 4)
-                }
-            }
-            
-            // Participants list with enhanced cards
-            if !gameSession.participants.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Participants (\(gameSession.participants.count)):")
-                        .font(AppDesignSystem.Typography.subheadingFont)
-                        .foregroundColor(AppDesignSystem.Colors.primaryText)
-                        .padding(.top)
-                    
-                    LazyVGrid(columns: [
-                        GridItem(.flexible()),
-                        GridItem(.flexible())
-                    ], spacing: 12) {
-                        ForEach(gameSession.participants) { participant in
-                            EnhancedParticipantCard(
-                                participant: participant,
-                                onDelete: {
-                                    withAnimation(.spring()) {
-                                        removeParticipant(participant)
-                                    }
-                                }
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    // MARK: - Set Bets View
-    
-    private var setBetsView: some View {
-        VStack(alignment: .leading, spacing: AppDesignSystem.Layout.standardPadding) {
-            HStack {
-                Text("Set Betting Amounts")
-                    .font(AppDesignSystem.Typography.headingFont)
-                
-                Spacer()
-            }
-            
-            Text("Set how much participants will pay for each event type.")
-                .font(AppDesignSystem.Typography.bodyFont)
-                .foregroundColor(AppDesignSystem.Colors.secondaryText)
-            
-            Text("Toggle +/- to change who pays whom.")
-                .font(AppDesignSystem.Typography.bodyFont)
-                .foregroundColor(AppDesignSystem.Colors.primary)
-                .padding(.bottom)
-            
-            // Info about live mode limitations
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    Image(systemName: "info.circle.fill")
-                        .font(.system(size: 16))
-                        .foregroundColor(AppDesignSystem.Colors.info)
-                    
-                    Text("Live Mode Events")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(AppDesignSystem.Colors.info)
-                }
-                
-                Text("In live mode, only standard football events from the API are available. Custom events are not supported as they cannot be automatically detected.")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
-            }
-            .padding(12)
-            .background(AppDesignSystem.Colors.info.opacity(0.1))
-            .cornerRadius(8)
-            .padding(.bottom)
-            
-            // Standard event types only (no custom events in live mode)
-            ForEach(Bet.EventType.allCases.filter { $0 != .custom }, id: \.self) { eventType in
-                BetSettingsRow(
-                    eventType: eventType,
-                    betAmount: Binding(
-                        get: { abs(betAmounts[eventType] ?? 1.0) },
-                        set: { amount in
-                            let isNegative = betNegativeFlags[eventType] ?? false
-                            betAmounts[eventType] = isNegative ? -abs(amount) : abs(amount)
-                        }
-                    ),
-                    isNegative: Binding(
-                        get: { betNegativeFlags[eventType] ?? false },
-                        set: { isNegative in
-                            betNegativeFlags[eventType] = isNegative
-                            if let amount = betAmounts[eventType] {
-                                betAmounts[eventType] = isNegative ? -abs(amount) : abs(amount)
-                            }
-                        }
-                    )
-                )
-            }
-        }
-    }
-    
-    // MARK: - Players Selection View
-    
-    private var playersSelectionView: some View {
-        VStack(alignment: .leading, spacing: AppDesignSystem.Layout.standardPadding) {
-            // Header with select all controls
-            HStack {
-                Text("Select Starting XI Players")
-                    .font(AppDesignSystem.Typography.headingFont)
-                
-                Spacer()
-                
-                // Select All Controls
-                HStack(spacing: 12) {
-                    Button(action: {
-                        selectAllStartingXIPlayers()
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(AppDesignSystem.Colors.success)
-                            Text("Select All")
-                                .font(AppDesignSystem.Typography.captionFont)
-                        }
-                    }
-                    .disabled(getStartingXIPlayers().isEmpty)
-                    
-                    Button(action: {
-                        deselectAllPlayers()
-                    }) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundColor(AppDesignSystem.Colors.error)
-                            Text("Clear All")
-                                .font(AppDesignSystem.Typography.captionFont)
-                        }
-                    }
-                    .disabled(selectedPlayerIds.isEmpty)
-                }
-            }
-            
-            // Live mode explanation
-            Text("Only starting XI players are assigned to participants. Substitutes will automatically replace them if substitutions occur during the match.")
-                .font(AppDesignSystem.Typography.bodyFont)
-                .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 20)
-            
-            // Selection summary
-            if !gameSession.availablePlayers.isEmpty {
-                HStack {
-                    let startingXIPlayers = getStartingXIPlayers()
-                    let substitutePlayers = getSubstitutePlayers()
-                    
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("\(selectedPlayerIds.count) of \(startingXIPlayers.count) starting XI selected")
-                            .font(AppDesignSystem.Typography.captionFont)
-                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                        
-                        if substitutePlayers.count > 0 {
-                            Text("+ \(substitutePlayers.count) substitutes will be added automatically")
-                                .font(AppDesignSystem.Typography.captionFont)
-                                .foregroundColor(AppDesignSystem.Colors.info)
-                        }
-                    }
-                    
-                    Spacer()
-                }
-            }
-            
-            if selectedPlayerIds.isEmpty {
-                Text("Select at least one starting XI player to continue")
-                    .font(AppDesignSystem.Typography.captionFont)
-                    .foregroundColor(AppDesignSystem.Colors.error)
-                    .padding(.top, 4)
-            }
-            
-            // Players list organized by Starting XI and Substitutes
-            if gameSession.availablePlayers.isEmpty {
-                emptyPlayersView
-            } else {
-                organizedPlayersListView
-            }
-        }
-    }
-    
-    private var emptyPlayersView: some View {
-        VStack(spacing: 20) {
-            Image(systemName: "person.3")
-                .font(.system(size: 60))
-                .foregroundColor(AppDesignSystem.Colors.secondaryText.opacity(0.5))
-            
-            Text("No players available")
-                .font(AppDesignSystem.Typography.bodyFont)
-                .foregroundColor(AppDesignSystem.Colors.secondaryText)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.top, 40)
-    }
-    
-    private var organizedPlayersListView: some View {
-        let startingXIPlayers = getStartingXIPlayers()
-        let substitutePlayers = getSubstitutePlayers()
-        
-        return VStack(spacing: 16) {
-            if gameSession.matchLineups.isEmpty {
-                // No lineup data - show all players as selectable
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack {
-                        Image(systemName: "info.circle.fill")
-                            .foregroundColor(AppDesignSystem.Colors.info)
-                        
-                        Text("Full Squad Mode")
-                            .font(AppDesignSystem.Typography.headingFont)
-                            .foregroundColor(AppDesignSystem.Colors.info)
-                    }
-                    
-                    Text("Official lineup not available. Select players from the full squad. All selected players will be treated as starting XI.")
-                        .font(AppDesignSystem.Typography.bodyFont)
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                        .padding(.bottom, 8)
-                    
-                    let allPlayersByTeam = getPlayersByTeam(startingXIPlayers)
-                    ForEach(allPlayersByTeam, id: \.team.id) { teamData in
-                        FullSquadTeamSection(
-                            team: teamData.team,
-                            players: teamData.players,
-                            selectedPlayerIds: $selectedPlayerIds,
-                            onSelectTeam: { selectTeamPlayers(teamId: teamData.team.id) },
-                            onTogglePlayer: { player in togglePlayerSelection(player) }
-                        )
-                    }
-                }
-            } else {
-                // Normal lineup data available
-                if !startingXIPlayers.isEmpty {
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("Starting XI Players")
-                            .font(AppDesignSystem.Typography.headingFont)
-                            .foregroundColor(AppDesignSystem.Colors.primaryText)
-                        
-                        let startingXIByTeam = getPlayersByTeam(startingXIPlayers)
-                        ForEach(startingXIByTeam, id: \.team.id) { teamData in
-                            StartingXITeamSection(
-                                team: teamData.team,
-                                players: teamData.players,
-                                selectedPlayerIds: $selectedPlayerIds,
-                                onSelectTeam: { selectTeamStartingXIPlayers(teamId: teamData.team.id) },
-                                onTogglePlayer: { player in togglePlayerSelection(player) }
-                            )
-                        }
-                    }
-                }
-                
-                if !startingXIPlayers.isEmpty && !substitutePlayers.isEmpty {
-                    Divider().padding(.vertical, 8)
-                }
-                
-                if !substitutePlayers.isEmpty {
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text("Substitutes")
-                            .font(AppDesignSystem.Typography.headingFont)
-                            .foregroundColor(AppDesignSystem.Colors.primaryText)
-                        
-                        Text("These players will automatically replace starting XI players if substitutions occur during the match.")
-                            .font(AppDesignSystem.Typography.bodyFont)
-                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                            .padding(.bottom, 8)
-                        
-                        let substitutesByTeam = getPlayersByTeam(substitutePlayers)
-                        ForEach(substitutesByTeam, id: \.team.id) { teamData in
-                            SubstituteTeamSection(
-                                team: teamData.team,
-                                players: teamData.players
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    // MARK: - Player Drawing View
-    
-    private var playerDrawingView: some View {
-        PlayerDrawingView(
-            gameSession: gameSession,
-            selectedPlayers: gameSession.availablePlayers.filter { selectedPlayerIds.contains($0.id) },
-            participants: gameSession.participants,
-            onComplete: { assignments in
-                playerAssignments = assignments
-                currentStep += 1
-            },
-            onBack: {
-                currentStep -= 1
-            }
-        )
-    }
-    
-    // MARK: - Review View
-    
-    private var reviewView: some View {
-        VStack(alignment: .leading, spacing: AppDesignSystem.Layout.standardPadding) {
-            Text("Review Game Setup")
-                .font(AppDesignSystem.Typography.headingFont)
-                .foregroundColor(AppDesignSystem.Colors.primaryText)
-            
-            Text("Review your game configuration before starting:")
-                .font(AppDesignSystem.Typography.bodyFont)
-                .foregroundColor(AppDesignSystem.Colors.secondaryText)
-            
-            reviewMatchesCard
-            reviewParticipantsCard
-            reviewPlayersCard
-            reviewBetsCard
-            
-            // Final instructions
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Ready to start?")
-                    .font(AppDesignSystem.Typography.subheadingFont)
-                    .foregroundColor(AppDesignSystem.Colors.primaryText)
-                
-                Text("Players will be randomly assigned to participants, and you'll receive live updates during the match.")
-                    .font(AppDesignSystem.Typography.bodyFont)
-                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
-            }
-            .padding()
-            .background(AppDesignSystem.Colors.primary.opacity(0.1))
-            .cornerRadius(AppDesignSystem.Layout.cornerRadius)
-            .padding(.top)
-        }
-    }
-    
-    // MARK: - Review Cards
-    
-    private var reviewMatchesCard: some View {
-        CardView {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Selected Matches")
-                    .font(AppDesignSystem.Typography.subheadingFont)
-                    .foregroundColor(AppDesignSystem.Colors.primaryText)
-                
-                ForEach(gameSession.availableMatches.filter { selectedMatchIds.contains($0.id) }) { match in
-                    HStack {
-                        Text("\(match.homeTeam.name) vs \(match.awayTeam.name)")
-                            .font(AppDesignSystem.Typography.bodyFont)
-                            .foregroundColor(AppDesignSystem.Colors.primaryText)
-                        
-                        Spacer()
-                        
-                        Text(match.competition.name)
-                            .font(AppDesignSystem.Typography.captionFont)
-                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                    }
-                    .padding(.vertical, 4)
-                }
-            }
-        }
-    }
-    
-    private var reviewParticipantsCard: some View {
-        CardView {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Participants (\(gameSession.participants.count))")
-                    .font(AppDesignSystem.Typography.subheadingFont)
-                    .foregroundColor(AppDesignSystem.Colors.primaryText)
-                
-                Text(gameSession.participants.map { $0.name }.joined(separator: ", "))
-                    .font(AppDesignSystem.Typography.bodyFont)
-                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
-            }
-        }
-    }
-    
-    private var reviewPlayersCard: some View {
-        CardView {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Selected Players (\(selectedPlayerIds.count))")
-                    .font(AppDesignSystem.Typography.subheadingFont)
-                    .foregroundColor(AppDesignSystem.Colors.primaryText)
-                
-                let selectedPlayers = gameSession.availablePlayers.filter { selectedPlayerIds.contains($0.id) }
-                let playersByTeam = Dictionary(grouping: selectedPlayers) { $0.team.name }
-                
-                ForEach(playersByTeam.keys.sorted(), id: \.self) { teamName in
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(teamName)
-                            .font(AppDesignSystem.Typography.bodyFont.bold())
-                            .foregroundColor(AppDesignSystem.Colors.primaryText)
-                        
-                        if let players = playersByTeam[teamName] {
-                            Text(players.map { $0.name }.joined(separator: ", "))
-                                .font(AppDesignSystem.Typography.bodyFont)
-                                .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                        }
-                    }
-                    .padding(.top, 4)
-                }
-            }
-        }
-    }
-    
-    private var reviewBetsCard: some View {
-        CardView {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Betting Amounts")
-                    .font(AppDesignSystem.Typography.subheadingFont)
-                    .foregroundColor(AppDesignSystem.Colors.primaryText)
-                
-                ForEach(Bet.EventType.allCases.filter { $0 != .custom }, id: \.self) { eventType in
-                    let amount = betAmounts[eventType] ?? 0.0
-                    let isNegative = amount < 0
-                    let formattedAmount = formatCurrency(abs(amount))
-                    
-                    HStack {
-                        Text(eventType.rawValue)
-                            .font(AppDesignSystem.Typography.bodyFont)
-                            .foregroundColor(AppDesignSystem.Colors.primaryText)
-                        
-                        Spacer()
-                        
-                        Text("\(isNegative ? "-" : "+")\(formattedAmount)")
-                            .font(AppDesignSystem.Typography.bodyFont.bold())
-                            .foregroundColor(isNegative ? AppDesignSystem.Colors.error : AppDesignSystem.Colors.success)
-                    }
-                }
-            }
-        }
-    }
-    
-    // MARK: - Data Loading Methods
     
     private func loadMatches() {
         isLoading = true
@@ -1202,13 +710,14 @@ struct LiveGameSetupView: View {
         
         Task {
             do {
-                // NEW: Use centralized DataManager
                 let matches = try await DataManager.shared.fetchMatches()
-                
                 await MainActor.run {
                     gameSession.availableMatches = matches
                     isLoading = false
-                    print("✅ Loaded \(matches.count) matches via DataManager")
+                    // Auto-expand first league if it has matches
+                    if let firstLeague = leagueGroups.first {
+                        expandedLeagues.insert(firstLeague.league)
+                    }
                 }
             } catch {
                 await MainActor.run {
@@ -1218,356 +727,8 @@ struct LiveGameSetupView: View {
             }
         }
     }
-    
-    private func loadPlayersForSelectedMatches() {
-        isLoading = true
-        error = nil
-        
-        Task {
-            do {
-                let matchIdsToLoad = AppConfig.canSelectMultipleMatches
-                    ? Array(self.selectedMatchIds)
-                    : [self.selectedMatchIds.first!]
-                
-                await MainActor.run {
-                    gameSession.availablePlayers = []
-                    gameSession.matchLineups = [:] // Clear existing lineups
-                }
-                
-                var allPlayers: [Player] = []
-                var lineupFailures: [Match] = []
-                
-                print("🔄 Loading players for \(matchIdsToLoad.count) matches...")
-                
-                for (index, matchId) in matchIdsToLoad.enumerated() {
-                    if let match = gameSession.availableMatches.first(where: { $0.id == matchId }) {
-                        do {
-                            print("📥 Loading lineup for match \(index + 1)/\(matchIdsToLoad.count): \(match.homeTeam.name) vs \(match.awayTeam.name)")
-                            
-                            // NEW: Fetch lineup structure (not just players)
-                            try await gameSession.fetchMatchLineup(for: matchId)
-                            
-                            // Get players from the stored lineup
-                            if let lineup = gameSession.matchLineups[matchId] {
-                                let lineupPlayers = lineup.homeTeam.startingXI + lineup.homeTeam.substitutes +
-                                                   lineup.awayTeam.startingXI + lineup.awayTeam.substitutes
-                                allPlayers.append(contentsOf: lineupPlayers)
-                                print("✅ Got \(lineupPlayers.count) players from lineup")
-                            }
-                            
-                            // Track usage for free users
-                            if AppPurchaseManager.shared.currentTier == .free {
-                                AppConfig.incrementMatchUsage()
-                            }
-                            
-                            // Rate limiting delay
-                            if index < matchIdsToLoad.count - 1 {
-                                print("⏳ Waiting 2 seconds before next match...")
-                                try await Task.sleep(nanoseconds: 2_000_000_000)
-                            }
-                            
-                        } catch LineupError.notAvailableYet {
-                            print("⚠️ Lineup not available yet for match \(matchId)")
-                            lineupFailures.append(match)
-                            
-                        } catch {
-                            print("❌ Error loading lineup for match \(matchId): \(error)")
-                            lineupFailures.append(match)
-                        }
-                    }
-                }
-                
-                await MainActor.run {
-                    isLoading = false
-                    gameSession.availablePlayers = allPlayers
-                    
-                    if !allPlayers.isEmpty {
-                        print("✅ Successfully loaded \(allPlayers.count) total players")
-                        print("📋 Lineups stored for \(gameSession.matchLineups.count) matches")
-                        
-                        if !lineupFailures.isEmpty {
-                            showLineupChoiceAlert(matches: lineupFailures)
-                        } else {
-                            currentStep += 1
-                        }
-                    } else if !lineupFailures.isEmpty {
-                        // All matches failed - show choice for first one
-                        showLineupChoiceAlert(matches: lineupFailures)
-                    } else {
-                        error = "No players found for the selected match(es)."
-                    }
-                    
-                    gameSession.objectWillChange.send()
-                }
-                
-            } catch {
-                await MainActor.run {
-                    isLoading = false
-                    self.error = handleDataError(error)
-                }
-            }
-        }
-    }
-    
-    private func loadSquadFallback(for matchId: String) async throws -> [Player] {
-        print("📦 Attempting squad fallback for match \(matchId)")
-        
-        // NEW: Use DataManager for squad fallback
-        let squadPlayers = try await DataManager.shared.fetchSquad(for: matchId)
-        print("✅ Loaded \(squadPlayers.count) squad players via fallback")
-        return squadPlayers
-    }
-    
-    private func showLineupChoiceAlert(matches: [Match]) {
-        if matches.count == 1 {
-            let match = matches[0]
-            pendingMatchId = match.id
-            pendingMatchName = "\(match.homeTeam.name) vs \(match.awayTeam.name)"
-        } else {
-            let matchNames = matches.map { "\($0.homeTeam.name) vs \($0.awayTeam.name)" }.joined(separator: ", ")
-            pendingMatchName = matchNames
-        }
-        
-        showingLineupChoiceAlert = true
-    }
-    
-    private func loadFullSquadForMatch(_ matchId: String) {
-        isLoading = true
-        
-        Task {
-            do {
-                // NEW: Use DataManager for squad
-                let squadPlayers = try await DataManager.shared.fetchSquad(for: matchId)
-                
-                await MainActor.run {
-                    self.isLoading = false
-                    gameSession.availablePlayers = squadPlayers
-                    
-                    print("✅ Loaded full squad: \(squadPlayers.count) players")
-                    
-                    if self.currentStep < self.steps.count - 1 {
-                        self.currentStep += 1
-                    }
-                    
-                    gameSession.objectWillChange.send()
-                }
-            } catch {
-                await MainActor.run {
-                    self.isLoading = false
-                    self.error = "Error loading squad: \(error.localizedDescription)"
-                }
-            }
-        }
-    }
-    
-    // MARK: - Validation and Navigation
-    
-    private func validateAndProceed() {
-        error = nil
-        
-        switch currentStep {
-        case 0: // Match selection
-            guard !selectedMatchIds.isEmpty else {
-                error = "Please select at least one match to continue."
-                return
-            }
-            
-            gameSession.availablePlayers = []
-            gameSession.selectedPlayers = []
-            selectedPlayerIds = Set<UUID>()
-            
-            loadPlayersForSelectedMatches()
-            return
-            
-        case 1: // Participants
-            let trimmedName = participantName.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmedName.isEmpty {
-                if !gameSession.participants.contains(where: { $0.name == trimmedName }) {
-                    gameSession.addParticipant(trimmedName)
-                    participantName = ""
-                    print("✅ Auto-added participant: \(trimmedName)")
-                }
-            }
-            
-            guard !gameSession.participants.isEmpty else {
-                error = "Please add at least one participant to continue."
-                return
-            }
-            
-        case 2: // Bets
-            break // Always valid
-            
-        case 3: // Player selection
-            guard !selectedPlayerIds.isEmpty else {
-                error = "Please select at least one starting XI player to continue."
-                return
-            }
-            
-            let startingXIPlayers = getStartingXIPlayers()
-            let selectedStartingXI = startingXIPlayers.filter { selectedPlayerIds.contains($0.id) }
-            let substitutePlayers = getSubstitutePlayers()
-            let allPlayersToAdd = selectedStartingXI + substitutePlayers
-            
-            // Remove duplicates
-            var uniquePlayersToAdd: [Player] = []
-            var seenIds: Set<UUID> = []
-
-            for player in allPlayersToAdd {
-                if !seenIds.contains(player.id) {
-                    uniquePlayersToAdd.append(player)
-                    seenIds.insert(player.id)
-                }
-            }
-            
-            for player in uniquePlayersToAdd {
-                if !gameSession.availablePlayers.contains(where: { $0.id == player.id }) {
-                    gameSession.availablePlayers.append(player)
-                }
-            }
-            
-            gameSession.selectedPlayers = selectedStartingXI
-            print("✅ Added \(selectedStartingXI.count) starting XI players and \(substitutePlayers.count) substitutes")
-            
-            // Show drawing sheet
-            showingPlayerDrawing = true
-            return
-
-        case 4: // Review (was step 5)
-            for matchId in selectedMatchIds {
-                if let match = gameSession.availableMatches.first(where: { $0.id == matchId }) {
-                    let leagueCode = match.competition.code
-                    if AppConfig.LeagueConfig.bigLeagues.contains(leagueCode) {
-                        // Only count if not subscribed to this league
-                        if !AppPurchaseManager.shared.hasPremium {
-                            let productID = LeagueAccessManager.leagueToProductID[leagueCode]
-                            if productID == nil || !AppPurchaseManager.shared.hasAccess(to: productID!) {
-                                leagueManager.useFreeMatch(for: leagueCode)
-                            }
-                        }
-                    }
-                }
-            }
-            
-            startGame()
-            return
-            
-        default:
-            print("⚠️ Unhandled step: \(currentStep)")
-            return
-        }
-        
-        let nextStep = currentStep + 1
-        guard nextStep < steps.count else {
-            startGame()
-            return
-        }
-        
-        currentStep = nextStep
-    }
-    
-    // MARK: - Game Management
-    
-    private func startGame() {
-        Task {
-            do {
-                // Add bets to game session
-                gameSession.bets = []
-                for (eventType, amount) in betAmounts {
-                    gameSession.addBet(eventType: eventType, amount: amount)
-                }
-                
-                // Set live mode flag
-                gameSession.isLiveMode = true
-                
-                // Store selected matches
-                let selectedMatches = gameSession.availableMatches.filter { selectedMatchIds.contains($0.id) }
-                gameSession.selectedMatches = selectedMatches
-                
-                // Set the primary selected match
-                if let firstSelectedMatchId = selectedMatchIds.first {
-                    gameSession.selectedMatch = gameSession.availableMatches.first { $0.id == firstSelectedMatchId }
-                }
-                
-                // Apply player assignments
-                applyPlayerAssignments()
-                
-                // NEW: Save game using DataManager
-                let gameName = generateGameName()
-                try await DataManager.shared.saveGame(gameSession, name: gameName)
-                print("✅ Game saved via DataManager")
-                
-                await MainActor.run {
-                    presentationMode.wrappedValue.dismiss()
-                    
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        Task { @MainActor in
-                            gameSession.startRealEventDrivenModeForAllMatches()
-                        }
-                    }
-                    
-                    NotificationCenter.default.post(name: Notification.Name("StartGameWithSelectedMatch"), object: nil)
-                }
-                
-            } catch {
-                print("❌ Error starting live game: \(error)")
-                await MainActor.run {
-                    self.error = "Failed to start game: \(error.localizedDescription)"
-                }
-            }
-        }
-    }
-    
-    private func applyPlayerAssignments() {
-        // Apply the assignments from the drawing
-        for (participant, players) in playerAssignments {
-            if let index = gameSession.participants.firstIndex(where: { $0.id == participant.id }) {
-                gameSession.participants[index].players = players
-            }
-        }
-        
-        print("✅ Applied drawing assignments: \(playerAssignments.count) participants with players")
-    }
-
-    private func generateGameName() -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d, HH:mm"
-        
-        if selectedMatchIds.count == 1,
-           let selectedMatch = gameSession.availableMatches.first(where: { selectedMatchIds.contains($0.id) }) {
-            return "\(selectedMatch.homeTeam.shortName) vs \(selectedMatch.awayTeam.shortName) - \(formatter.string(from: Date()))"
-        } else if selectedMatchIds.count > 1 {
-            return "Multi-Match Game - \(formatter.string(from: Date()))"
-        } else {
-            return "Live Game - \(formatter.string(from: Date()))"
-        }
-    }
-    // MARK: - Helper Methods
     
     private func toggleMatchSelection(_ match: Match) {
-        let leagueCode = match.competition.code
-        
-        // Check league access
-        let accessStatus = leagueManager.getAccessStatus(for: leagueCode)
-        
-        switch accessStatus {
-        case .locked(_):
-            // Show upgrade sheet
-            selectedLeagueForUpgrade = leagueCode
-            showingUpgradeSheet = true
-            return
-            
-        case .limitedFree(let remaining):
-            // Allow selection but warn if this will use a free match
-            if !selectedMatchIds.contains(match.id) && remaining == 1 {
-                // Last free match - could add a warning here
-                print("⚠️ This is your last free \(leagueManager.getLeagueDisplayName(for: leagueCode)) match")
-            }
-            
-        case .unlocked(_):
-            break // No restrictions
-        }
-        
-        // Existing selection logic
         if selectedMatchIds.contains(match.id) {
             selectedMatchIds.remove(match.id)
         } else {
@@ -1577,14 +738,15 @@ struct LiveGameSetupView: View {
                 selectedMatchIds.insert(match.id)
             }
         }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
     
     private func addParticipant() {
         let name = participantName.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !name.isEmpty {
-            gameSession.addParticipant(name)
-            participantName = ""
-        }
+        guard !name.isEmpty else { return }
+        gameSession.addParticipant(name)
+        participantName = ""
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
     
     private func removeParticipant(_ participant: Participant) {
@@ -1593,195 +755,588 @@ struct LiveGameSetupView: View {
         }
     }
     
-    private func getStartingXIPlayers() -> [Player] {
-        if !gameSession.matchLineups.isEmpty {
-            return gameSession.availablePlayers.filter { player in
-                for lineup in gameSession.matchLineups.values {
-                    if lineup.homeTeam.startingXI.contains(where: { $0.id == player.id }) ||
-                       lineup.awayTeam.startingXI.contains(where: { $0.id == player.id }) {
-                        return true
-                    }
-                }
-                return false
-            }
-        } else {
-            print("🔍 No lineup data available, treating all players as selectable")
-            return gameSession.availablePlayers
-        }
-    }
-
-    private func getSubstitutePlayers() -> [Player] {
-        if !gameSession.matchLineups.isEmpty {
-            return gameSession.availablePlayers.filter { player in
-                for lineup in gameSession.matchLineups.values {
-                    if lineup.homeTeam.substitutes.contains(where: { $0.id == player.id }) ||
-                       lineup.awayTeam.substitutes.contains(where: { $0.id == player.id }) {
-                        return true
-                    }
-                }
-                return false
-            }
-        } else {
-            print("🔍 No lineup data available, no substitutes to show")
-            return []
-        }
-    }
-
-    private func selectAllStartingXIPlayers() {
-        let startingXIPlayers = getStartingXIPlayers()
-        selectedPlayerIds = Set(startingXIPlayers.map { $0.id })
-        
-        let impact = UIImpactFeedbackGenerator(style: .medium)
-        impact.impactOccurred()
-        
-        error = nil
-    }
-
-    private func selectTeamStartingXIPlayers(teamId: UUID) {
-        let startingXIPlayers = getStartingXIPlayers()
-        let teamStartingXIPlayerIds = startingXIPlayers
-            .filter { $0.team.id == teamId }
-            .map { $0.id }
-        
-        selectedPlayerIds.formUnion(teamStartingXIPlayerIds)
-        
-        let impact = UIImpactFeedbackGenerator(style: .medium)
-        impact.impactOccurred()
-        
-        error = nil
-    }
-
-    private func deselectAllPlayers() {
-        selectedPlayerIds.removeAll()
-        
-        let impact = UIImpactFeedbackGenerator(style: .light)
-        impact.impactOccurred()
-    }
-
-    private func selectTeamPlayers(teamId: UUID) {
-        let teamPlayerIds = gameSession.availablePlayers
-            .filter { $0.team.id == teamId }
-            .map { $0.id }
-        
-        selectedPlayerIds.formUnion(teamPlayerIds)
-        
-        let impact = UIImpactFeedbackGenerator(style: .medium)
-        impact.impactOccurred()
-        
-        error = nil
-    }
-
     private func togglePlayerSelection(_ player: Player) {
         if selectedPlayerIds.contains(player.id) {
             selectedPlayerIds.remove(player.id)
         } else {
             selectedPlayerIds.insert(player.id)
         }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+    
+    private func selectAllStartingXI() {
+        let startingXI = getStartingXIPlayers()
+        selectedPlayerIds = Set(startingXI.map { $0.id })
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+    
+    private func deselectAllPlayers() {
+        selectedPlayerIds.removeAll()
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+    
+    private func selectTeamPlayers(teamId: UUID) {
+        let teamPlayerIds = gameSession.availablePlayers.filter { $0.team.id == teamId }.map { $0.id }
+        selectedPlayerIds.formUnion(teamPlayerIds)
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+    
+    private func getStartingXIPlayers() -> [Player] {
+        guard !gameSession.matchLineups.isEmpty else { return gameSession.availablePlayers }
         
-        let impact = UIImpactFeedbackGenerator(style: .light)
-        impact.impactOccurred()
-        
-        if !selectedPlayerIds.isEmpty {
-            error = nil
+        return gameSession.availablePlayers.filter { player in
+            gameSession.matchLineups.values.contains { lineup in
+                lineup.homeTeam.startingXI.contains { $0.id == player.id } ||
+                lineup.awayTeam.startingXI.contains { $0.id == player.id }
+            }
         }
     }
     
     private func getPlayersByTeam(_ players: [Player]) -> [TeamPlayersData] {
-        let groupedDict = Dictionary(grouping: players, by: { $0.team })
-        
-        return groupedDict.map { (team, players) in
-            TeamPlayersData(team: team, players: players)
-        }.sorted { $0.team.name < $1.team.name }
+        Dictionary(grouping: players) { $0.team }
+            .map { TeamPlayersData(team: $0.key, players: $0.value) }
+            .sorted { $0.team.name < $1.team.name }
     }
     
-    private func showPlayerUnavailableWarning(matches: [Match]) {
-        guard !isPresentingAlert else { return }
-        
-        isPresentingAlert = true
-        
-        if matches.count == 1 {
-            let match = matches[0]
-            unavailableMatchesMessage = "The official lineup for \(match.homeTeam.name) vs \(match.awayTeam.name) is not available yet..."
-        } else {
-            let matchNames = matches.map { "\($0.homeTeam.name) vs \($0.awayTeam.name)" }.joined(separator: ", ")
-            unavailableMatchesMessage = "The official lineups for \(matchNames) are not available yet..."
+    private func validateAndProceed() {
+        // Auto-add participant if name entered
+        if currentStep == 1 && !participantName.isEmpty {
+            addParticipant()
         }
         
-        temporaryStep = min(currentStep + 1, steps.count - 1)
-        showingPlayerUnavailableAlert = true
-    }
-    
-    private func formatCurrency(_ value: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencySymbol = UserDefaults.standard.string(forKey: "currencySymbol") ?? "€"
+        // Show player drawing after player selection
+        if currentStep == 3 && !selectedPlayerIds.isEmpty {
+            showingPlayerDrawing = true
+            return
+        }
         
-        return formatter.string(from: NSNumber(value: value)) ?? "€0.00"
+        // Load players when moving to player selection step
+        if currentStep == 0 && !selectedMatchIds.isEmpty {
+            loadPlayersForSelectedMatches()
+        }
+        
+        withAnimation { currentStep += 1 }
     }
     
-    // MARK: - Error Handling
+    private func loadPlayersForSelectedMatches() {
+        isLoading = true
+        
+        Task {
+            do {
+                for matchId in selectedMatchIds {
+                    try await gameSession.fetchMatchLineup(for: matchId)
+                    
+                    if let lineup = gameSession.matchLineups[matchId] {
+                        let players = lineup.homeTeam.startingXI + lineup.homeTeam.substitutes +
+                                     lineup.awayTeam.startingXI + lineup.awayTeam.substitutes
+                        await MainActor.run {
+                            gameSession.availablePlayers.append(contentsOf: players)
+                        }
+                    }
+                }
+                
+                await MainActor.run { isLoading = false }
+            } catch {
+                await MainActor.run {
+                    isLoading = false
+                    self.error = "Failed to load players: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+    
+    private func loadFullSquadForMatch(_ matchId: String) {
+        // Implementation for loading full squad
+    }
+    
+    private func clearPendingMatch() {
+        pendingMatchId = nil
+        pendingMatchName = nil
+    }
+    
+    private func startGame() {
+        // Apply bets to game session
+        gameSession.bets = betAmounts.compactMap { eventType, amount in
+            guard amount != 0 else { return nil }
+            let finalAmount = (betNegativeFlags[eventType] ?? false) ? -abs(amount) : abs(amount)
+            return Bet(eventType: eventType, amount: finalAmount)
+        }
+        
+        // Set selected players
+        gameSession.selectedPlayers = gameSession.availablePlayers.filter { selectedPlayerIds.contains($0.id) }
+        
+        // Set live mode
+        gameSession.isLiveMode = true
+        
+        // Store selected matches
+        gameSession.selectedMatches = gameSession.availableMatches.filter { selectedMatchIds.contains($0.id) }
+        if let firstMatch = gameSession.selectedMatches.first {
+            gameSession.selectedMatch = firstMatch
+        }
+        
+        // Notify and dismiss
+        NotificationCenter.default.post(name: Notification.Name("StartGame"), object: nil)
+        presentationMode.wrappedValue.dismiss()
+    }
     
     private func handleDataError(_ error: Error) -> String {
         if let dataError = error as? DataError {
             switch dataError {
-            case .rateLimited(let retryAfter):
+            case .rateLimited:
                 showingRateLimit = true
-                return "Too many requests. Please wait \(Int(retryAfter)) seconds and try again."
+                return "Too many requests. Please wait and try again."
             case .networkUnavailable:
-                return "No internet connection. Please check your network and try again."
-            case .fetchFailed(let resource, let underlying):
-                if let apiError = underlying as? APIError {
-                    return handleAPIError(apiError, resource: resource)
-                }
+                return "No internet connection. Please check your network."
+            case .fetchFailed(let resource, _):
                 return "Failed to load \(resource). Please try again."
-            case .invalidData(let message):
-                return "Invalid data received: \(message)"
             default:
                 return dataError.localizedDescription
             }
-        } else if let apiError = error as? APIError {
-            return handleAPIError(apiError)
-        } else {
-            return "An unexpected error occurred: \(error.localizedDescription)"
         }
+        return error.localizedDescription
     }
+}
 
-    private func handleAPIError(_ apiError: APIError, resource: String = "data") -> String {
-        switch apiError {
-        case .rateLimited:
-            showingRateLimit = true
-            return "Too many requests to the football API. Please wait a moment and try again."
-        case .networkError:
-            return "Network connection issue. Please check your internet and try again."
-        case .serverError(let code, _):
-            if code >= 500 {
-                return "The football data service is temporarily unavailable. Please try again later."
-            } else if code == 429 {
-                showingRateLimit = true
-                return "API rate limit exceeded. Please wait before trying again."
-            } else {
-                return "There was a problem loading \(resource). Please try again."
+
+
+// MARK: - Supporting Components
+
+struct LiveStepHeader: View {
+    let icon: String
+    let title: String
+    let subtitle: String
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(AppDesignSystem.Colors.grassGreen.opacity(0.15))
+                    .frame(width: 44, height: 44)
+                Image(systemName: icon)
+                    .font(.system(size: 20))
+                    .foregroundColor(AppDesignSystem.Colors.grassGreen)
             }
-        case .decodingError:
-            return "Received invalid data from the service. Please try again."
-        case .invalidURL:
-            return "Configuration error. Please restart the app."
-        case .unknown:
-            return "An unexpected error occurred. Please try again."
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                Text(subtitle)
+                    .font(.system(size: 13))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+            }
         }
     }
 }
 
-// MARK: - Supporting Data Structures
+struct LiveParticipantRow: View {
+    let participant: Participant
+    let onRemove: () -> Void
+    
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            Circle()
+                .fill(AppDesignSystem.Colors.grassGreen)
+                .frame(width: 32, height: 32)
+                .overlay(
+                    Text(String(participant.name.prefix(1)).uppercased())
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.white)
+                )
+            
+            Text(participant.name)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(AppDesignSystem.Colors.primaryText)
+            
+            Spacer()
+            
+            Button(action: onRemove) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 20))
+                    .foregroundColor(AppDesignSystem.Colors.error.opacity(0.7))
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(colorScheme == .dark ? Color.white.opacity(0.05) : Color.black.opacity(0.02))
+        )
+    }
+}
+
+struct LiveBetRow: View {
+    let eventType: Bet.EventType
+    let amount: Double
+    let isNegative: Bool
+    let onAmountChange: (Double) -> Void
+    let onToggleNegative: () -> Void
+    
+    @Environment(\.colorScheme) var colorScheme
+    
+    private var icon: String {
+        switch eventType {
+        case .goal: return "soccerball"
+        case .assist: return "arrow.up.forward"
+        case .yellowCard: return "square.fill"
+        case .redCard: return "square.fill"
+        case .ownGoal: return "arrow.uturn.backward"
+        case .penalty: return "p.circle"
+        case .penaltyMissed: return "p.circle.fill"
+        case .cleanSheet: return "lock.shield"
+        case .custom: return "star.fill"
+        }
+    }
+    
+    private var iconColor: Color {
+        switch eventType {
+        case .goal, .penalty: return AppDesignSystem.Colors.grassGreen
+        case .assist, .cleanSheet: return AppDesignSystem.Colors.info
+        case .yellowCard: return AppDesignSystem.Colors.goalYellow
+        case .redCard, .penaltyMissed: return AppDesignSystem.Colors.error
+        case .ownGoal: return AppDesignSystem.Colors.warning
+        case .custom: return AppDesignSystem.Colors.accent
+        }
+    }
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 16))
+                .foregroundColor(iconColor)
+                .frame(width: 24)
+            
+            Text(eventType.rawValue.capitalized)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(AppDesignSystem.Colors.primaryText)
+            
+            Spacer()
+            
+            Button(action: onToggleNegative) {
+                Image(systemName: isNegative ? "minus.circle.fill" : "plus.circle.fill")
+                    .font(.system(size: 18))
+                    .foregroundColor(isNegative ? AppDesignSystem.Colors.error : AppDesignSystem.Colors.grassGreen)
+            }
+            
+            TextField("0", value: .init(
+                get: { amount },
+                set: { onAmountChange($0) }
+            ), format: .number)
+                .font(.system(size: 14, weight: .semibold))
+                .keyboardType(.decimalPad)
+                .multilineTextAlignment(.trailing)
+                .frame(width: 60)
+                .padding(8)
+                .background(RoundedRectangle(cornerRadius: 6).fill(colorScheme == .dark ? Color.white.opacity(0.05) : Color.black.opacity(0.03)))
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(colorScheme == .dark ? Color.white.opacity(0.03) : Color.black.opacity(0.02))
+        )
+    }
+}
+
+struct LiveLeagueSection: View {
+    let leagueGroup: LeagueGroup
+    let isExpanded: Bool
+    let selectedMatchIds: Set<String>
+    let onToggleExpand: () -> Void
+    let onSelectMatch: (Match) -> Void
+    
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Header
+            Button(action: onToggleExpand) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(leagueGroup.name)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(AppDesignSystem.Colors.primaryText)
+                        Text("\(leagueGroup.matches.count) matches")
+                            .font(.system(size: 12))
+                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    }
+                    
+                    Spacer()
+                    
+                    let selectedCount = leagueGroup.matches.filter { selectedMatchIds.contains($0.id) }.count
+                    if selectedCount > 0 {
+                        Text("\(selectedCount)")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(Capsule().fill(AppDesignSystem.Colors.grassGreen))
+                    }
+                    
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                }
+                .padding(14)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(AppDesignSystem.Colors.cardBackground)
+                )
+            }
+            .buttonStyle(PlainButtonStyle())
+            
+            // Matches
+            if isExpanded {
+                VStack(spacing: 8) {
+                    ForEach(leagueGroup.matches, id: \.id) { match in
+                        LiveMatchRow(
+                            match: match,
+                            isSelected: selectedMatchIds.contains(match.id),
+                            onTap: { onSelectMatch(match) }
+                        )
+                    }
+                }
+                .padding(.top, 8)
+            }
+        }
+    }
+}
+
+struct LiveMatchRow: View {
+    let match: Match
+    let isSelected: Bool
+    let onTap: () -> Void
+    
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        Button(action: onTap) {
+            rowContent
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+    
+    private var rowContent: some View {
+        HStack(spacing: 12) {
+            homeTeamLabel
+            statusLabel
+            awayTeamLabel
+            selectionIndicator
+        }
+        .padding(14)
+        .background(rowBackground)
+    }
+    
+    private var homeTeamLabel: some View {
+        Text(match.homeTeam.shortName)
+            .font(.system(size: 14, weight: .bold))
+            .foregroundColor(AppDesignSystem.Colors.primaryText)
+            .frame(maxWidth: .infinity)
+    }
+    
+    private var awayTeamLabel: some View {
+        Text(match.awayTeam.shortName)
+            .font(.system(size: 14, weight: .bold))
+            .foregroundColor(AppDesignSystem.Colors.primaryText)
+            .frame(maxWidth: .infinity)
+    }
+    
+    private var statusLabel: some View {
+        VStack(spacing: 2) {
+            if match.status == .inProgress {
+                Circle()
+                    .fill(AppDesignSystem.Colors.error)
+                    .frame(width: 8, height: 8)
+                Text("LIVE")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(AppDesignSystem.Colors.error)
+            } else {
+                Text(formattedTime)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+            }
+        }
+    }
+    
+    private var selectionIndicator: some View {
+        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+            .font(.system(size: 22))
+            .foregroundColor(isSelected ? AppDesignSystem.Colors.grassGreen : AppDesignSystem.Colors.secondaryText.opacity(0.4))
+    }
+    
+    private var rowBackground: some View {
+        let fillColor = isSelected
+            ? AppDesignSystem.Colors.grassGreen.opacity(0.08)
+            : (colorScheme == .dark ? Color.white.opacity(0.03) : Color.black.opacity(0.02))
+        let strokeColor = isSelected ? AppDesignSystem.Colors.grassGreen.opacity(0.4) : Color.clear
+        
+        return RoundedRectangle(cornerRadius: 10)
+            .fill(fillColor)
+            .overlay(
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(strokeColor, lineWidth: 1.5)
+            )
+    }
+    
+    private var formattedTime: String {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        return formatter.string(from: match.startTime)
+    }
+}
+
+struct LiveTeamPlayersSection: View {
+    let team: Team
+    let players: [Player]
+    let selectedIds: Set<UUID>
+    let onTogglePlayer: (Player) -> Void
+    let onSelectTeam: () -> Void
+    
+    @Environment(\.colorScheme) var colorScheme
+    @State private var isExpanded = true
+    
+    var body: some View {
+        VStack(spacing: 8) {
+            // Team header
+            Button(action: { withAnimation { isExpanded.toggle() } }) {
+                HStack {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(AppDesignSystem.TeamColors.getColor(for: team))
+                        .frame(width: 4, height: 24)
+                    
+                    Text(team.name)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
+                    
+                    let selectedCount = players.filter { selectedIds.contains($0.id) }.count
+                    Text("\(selectedCount)/\(players.count)")
+                        .font(.system(size: 12))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    
+                    Spacer()
+                    
+                    Button(action: onSelectTeam) {
+                        Text("Select All")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(AppDesignSystem.Colors.grassGreen)
+                    }
+                    
+                    Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 12))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                }
+            }
+            .buttonStyle(PlainButtonStyle())
+            
+            // Players
+            if isExpanded {
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
+                    ForEach(players) { player in
+                        LivePlayerChip(
+                            player: player,
+                            isSelected: selectedIds.contains(player.id),
+                            onTap: { onTogglePlayer(player) }
+                        )
+                    }
+                }
+            }
+        }
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(colorScheme == .dark ? Color.white.opacity(0.03) : Color.black.opacity(0.02))
+        )
+    }
+}
+
+struct LivePlayerChip: View {
+    let player: Player
+    let isSelected: Bool
+    let onTap: () -> Void
+    
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 6) {
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(AppDesignSystem.TeamColors.getColor(for: player.team))
+                    .frame(width: 3, height: 20)
+                
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(player.name)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
+                        .lineLimit(1)
+                    Text(player.position.rawValue)
+                        .font(.system(size: 10))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                }
+                
+                Spacer(minLength: 4)
+                
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.system(size: 16))
+                    .foregroundColor(isSelected ? AppDesignSystem.Colors.grassGreen : AppDesignSystem.Colors.secondaryText.opacity(0.4))
+            }
+            .padding(8)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isSelected ? AppDesignSystem.Colors.grassGreen.opacity(0.08) : colorScheme == .dark ? Color.white.opacity(0.03) : Color.black.opacity(0.02))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(isSelected ? AppDesignSystem.Colors.grassGreen.opacity(0.3) : Color.clear, lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+}
+
+struct LiveSummaryCard: View {
+    let icon: String
+    let title: String
+    let value: String
+    let color: Color
+    
+    @Environment(\.colorScheme) var colorScheme
+    
+    var body: some View {
+        HStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(color.opacity(0.15))
+                    .frame(width: 44, height: 44)
+                Image(systemName: icon)
+                    .font(.system(size: 18))
+                    .foregroundColor(color)
+            }
+            
+            Text(title)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundColor(AppDesignSystem.Colors.primaryText)
+            
+            Spacer()
+            
+            Text(value)
+                .font(.system(size: 20, weight: .bold, design: .rounded))
+                .foregroundColor(color)
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(AppDesignSystem.Colors.cardBackground)
+                .shadow(color: colorScheme == .dark ? Color.black.opacity(0.2) : Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+        )
+    }
+}
+
+
+// MARK: - Data Structures
 
 struct LeagueGroup {
     let league: String
     let name: String
-    let matches: [Match]
-}
-
-struct DateGroup {
-    let date: Date
     let matches: [Match]
 }
 
@@ -1790,570 +1345,3 @@ struct TeamPlayersData {
     let players: [Player]
 }
 
-// MARK: - Supporting Components
-
-struct EnhancedParticipantCard: View {
-    let participant: Participant
-    let onDelete: () -> Void
-    
-    @State private var isPressed = false
-    
-    var body: some View {
-        VStack(spacing: 12) {
-            VStack(spacing: 8) {
-                ZStack {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    AppDesignSystem.Colors.primary,
-                                    AppDesignSystem.Colors.primary.opacity(0.7)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 40, height: 40)
-                    
-                    Text(String(participant.name.prefix(1).uppercased()))
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
-                        .foregroundColor(.white)
-                }
-                
-                Text(participant.name)
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .foregroundColor(AppDesignSystem.Colors.primaryText)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.center)
-            }
-            
-            Button(action: {
-                withAnimation(.spring()) {
-                    isPressed = true
-                }
-                
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    withAnimation(.spring()) {
-                        isPressed = false
-                    }
-                    onDelete()
-                }
-            }) {
-                Image(systemName: "trash")
-                    .font(.system(size: 14))
-                    .foregroundColor(AppDesignSystem.Colors.error)
-            }
-        }
-        .padding()
-        .frame(maxWidth: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(AppDesignSystem.Colors.cardBackground)
-                .shadow(color: Color.black.opacity(0.1), radius: 4, x: 0, y: 2)
-        )
-        .scaleEffect(isPressed ? 0.95 : 1.0)
-    }
-}
-
-struct MatchSelectionCard: View {
-    let match: Match
-    let isSelected: Bool
-    let accessStatus: LeagueAccessStatus
-    let onToggle: () -> Void
-    
-    private let dateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .medium
-        formatter.timeStyle = .short
-        return formatter
-    }()
-    
-    private var isLocked: Bool {
-        if case .locked(_) = accessStatus {
-            return true
-        }
-        return false
-    }
-    
-    var body: some View {
-        Button(action: onToggle) {
-            CardView {
-                VStack(spacing: 12) {
-                    HStack {
-                        Text(match.competition.name)
-                            .font(AppDesignSystem.Typography.captionFont)
-                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                        
-                        Spacer()
-                        
-                        matchStatusBadge
-                    }
-                    
-                    HStack(spacing: 20) {
-                        VStack {
-                            Text(match.homeTeam.name)
-                                .font(AppDesignSystem.Typography.bodyFont.bold())
-                                .lineLimit(1)
-                                .multilineTextAlignment(.center)
-                                .foregroundColor(isLocked ? AppDesignSystem.Colors.secondaryText : AppDesignSystem.Colors.primaryText)
-                        }
-                        
-                        Text("vs")
-                            .font(AppDesignSystem.Typography.bodyFont)
-                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                        
-                        VStack {
-                            Text(match.awayTeam.name)
-                                .font(AppDesignSystem.Typography.bodyFont.bold())
-                                .lineLimit(1)
-                                .multilineTextAlignment(.center)
-                                .foregroundColor(isLocked ? AppDesignSystem.Colors.secondaryText : AppDesignSystem.Colors.primaryText)
-                        }
-                    }
-                    .padding(.vertical, 8)
-                    
-                    Text(dateFormatter.string(from: match.startTime))
-                        .font(AppDesignSystem.Typography.captionFont)
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                }
-                .padding(.horizontal, 4)
-            }
-            .opacity(isLocked ? 0.6 : 1.0)
-            .overlay(
-                RoundedRectangle(cornerRadius: AppDesignSystem.Layout.cornerRadius)
-                    .stroke(
-                        isSelected ? AppDesignSystem.Colors.primary : Color.clear,
-                        lineWidth: 2
-                    )
-            )
-            .overlay(
-                HStack {
-                    Spacer()
-                    VStack {
-                        if isLocked {
-                            Image(systemName: "lock.fill")
-                                .foregroundColor(.red)
-                                .font(.title2)
-                                .padding(8)
-                        } else {
-                            Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                                .foregroundColor(
-                                    isSelected ?
-                                    AppDesignSystem.Colors.primary :
-                                        AppDesignSystem.Colors.secondaryText.opacity(0.7)
-                                )
-                                .font(.title2)
-                                .padding(8)
-                        }
-                        Spacer()
-                    }
-                }
-            )
-            // Lock overlay for locked matches
-            .overlay(
-                Group {
-                    if isLocked {
-                        VStack {
-                            Spacer()
-                            Text("Tap to unlock")
-                                .font(.caption)
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(Color.red.opacity(0.8))
-                                .cornerRadius(4)
-                                .padding(.bottom, 8)
-                        }
-                    }
-                }
-            )
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-    
-    private var matchStatusBadge: some View {
-        let (text, color) = matchStatusInfo
-        
-        return Text(text)
-            .font(AppDesignSystem.Typography.captionFont)
-            .foregroundColor(.white)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(color)
-            .cornerRadius(8)
-    }
-    
-    private var matchStatusInfo: (String, Color) {
-        switch match.status {
-        case .upcoming:
-            return ("Upcoming", AppDesignSystem.Colors.primary)
-        case .inProgress:
-            return ("Live", AppDesignSystem.Colors.success)
-        case .halftime:
-            return ("Half-time", AppDesignSystem.Colors.primary)
-        case .completed:
-            return ("Finished", AppDesignSystem.Colors.secondary)
-        case .unknown:
-            return ("Unknown", AppDesignSystem.Colors.error)
-        case .finished:
-            return ("Finished", AppDesignSystem.Colors.accent)
-        case .postponed:
-            return ("Postponed", AppDesignSystem.Colors.error)
-        case .cancelled:
-            return ("Cancelled", AppDesignSystem.Colors.error)
-        case .paused:
-            return ("Paused", AppDesignSystem.Colors.warning)
-        case .suspended:
-            return ("Suspended", AppDesignSystem.Colors.warning)
-        }
-    }
-}
-
-struct FullSquadTeamSection: View {
-    let team: Team
-    let players: [Player]
-    @Binding var selectedPlayerIds: Set<UUID>
-    let onSelectTeam: () -> Void
-    let onTogglePlayer: (Player) -> Void
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Circle()
-                    .fill(AppDesignSystem.TeamColors.getColor(for: team))
-                    .frame(width: 24, height: 24)
-                
-                Text("\(team.name) - Full Squad")
-                    .font(AppDesignSystem.Typography.subheadingFont)
-                    .foregroundColor(AppDesignSystem.TeamColors.getColor(for: team))
-                
-                Text("(\(players.count))")
-                    .font(AppDesignSystem.Typography.captionFont)
-                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                
-                Spacer()
-                
-                Button(action: onSelectTeam) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(AppDesignSystem.Colors.primary)
-                        Text("Select All")
-                            .font(AppDesignSystem.Typography.captionFont)
-                    }
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(AppDesignSystem.Colors.primary.opacity(0.1))
-            .cornerRadius(8)
-            
-            VStack(spacing: 8) {
-                ForEach(players, id: \.id) { player in
-                    FullSquadPlayerCard(
-                        player: player,
-                        isSelected: selectedPlayerIds.contains(player.id),
-                        onToggleSelection: { onTogglePlayer(player) }
-                    )
-                }
-            }
-        }
-    }
-}
-
-struct FullSquadPlayerCard: View {
-    let player: Player
-    let isSelected: Bool
-    let onToggleSelection: () -> Void
-    
-    var body: some View {
-        Button(action: onToggleSelection) {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(player.name)
-                        .font(AppDesignSystem.Typography.bodyFont)
-                        .fontWeight(.medium)
-                        .foregroundColor(AppDesignSystem.Colors.primaryText)
-                        .multilineTextAlignment(.leading)
-                    
-                    HStack {
-                        Text(player.position.rawValue)
-                            .font(AppDesignSystem.Typography.captionFont)
-                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                        
-                        Spacer()
-                        
-                        HStack(spacing: 4) {
-                            Image(systemName: "person.3.fill")
-                                .font(.caption)
-                                .foregroundColor(AppDesignSystem.Colors.primary)
-                            Text("Squad Player")
-                                .font(AppDesignSystem.Typography.captionFont)
-                                .foregroundColor(AppDesignSystem.Colors.primary)
-                        }
-                    }
-                }
-                
-                Spacer()
-                
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundColor(isSelected ? AppDesignSystem.Colors.primary : AppDesignSystem.Colors.secondaryText)
-                    .font(.title3)
-            }
-            .padding()
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(isSelected ? AppDesignSystem.Colors.primary.opacity(0.1) : AppDesignSystem.Colors.cardBackground)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(isSelected ? AppDesignSystem.Colors.primary : AppDesignSystem.Colors.secondaryText.opacity(0.3), lineWidth: 1)
-                    )
-            )
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-}
-
-struct StartingXITeamSection: View {
-    let team: Team
-    let players: [Player]
-    @Binding var selectedPlayerIds: Set<UUID>
-    let onSelectTeam: () -> Void
-    let onTogglePlayer: (Player) -> Void
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Circle()
-                    .fill(AppDesignSystem.TeamColors.getColor(for: team))
-                    .frame(width: 24, height: 24)
-                
-                Text("\(team.name) - Starting XI")
-                    .font(AppDesignSystem.Typography.subheadingFont)
-                    .foregroundColor(AppDesignSystem.TeamColors.getColor(for: team))
-                
-                Text("(\(players.count))")
-                    .font(AppDesignSystem.Typography.captionFont)
-                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                
-                Spacer()
-                
-                Button(action: onSelectTeam) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "checkmark.circle.fill")
-                            .foregroundColor(AppDesignSystem.Colors.success)
-                        Text("Select All")
-                            .font(AppDesignSystem.Typography.captionFont)
-                    }
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(AppDesignSystem.Colors.success.opacity(0.1))
-            .cornerRadius(8)
-            
-            VStack(spacing: 8) {
-                ForEach(players, id: \.id) { player in
-                    StartingXIPlayerCard(
-                        player: player,
-                        isSelected: selectedPlayerIds.contains(player.id),
-                        onToggleSelection: { onTogglePlayer(player) }
-                    )
-                }
-            }
-        }
-    }
-}
-
-struct StartingXIPlayerCard: View {
-    let player: Player
-    let isSelected: Bool
-    let onToggleSelection: () -> Void
-    
-    var body: some View {
-        Button(action: onToggleSelection) {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(player.name)
-                        .font(AppDesignSystem.Typography.bodyFont)
-                        .fontWeight(.medium)
-                        .foregroundColor(AppDesignSystem.Colors.primaryText)
-                        .multilineTextAlignment(.leading)
-                    
-                    HStack {
-                        Text(player.position.rawValue)
-                            .font(AppDesignSystem.Typography.captionFont)
-                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                        
-                        Spacer()
-                        
-                        HStack(spacing: 4) {
-                            Image(systemName: "person.fill")
-                                .font(.caption)
-                                .foregroundColor(AppDesignSystem.Colors.success)
-                            Text("Starting XI")
-                                .font(AppDesignSystem.Typography.captionFont)
-                                .foregroundColor(AppDesignSystem.Colors.success)
-                        }
-                    }
-                }
-                
-                Spacer()
-                
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundColor(isSelected ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.secondaryText)
-                    .font(.title3)
-            }
-            .padding()
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(isSelected ? AppDesignSystem.Colors.success.opacity(0.1) : AppDesignSystem.Colors.cardBackground)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(isSelected ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.secondaryText.opacity(0.3), lineWidth: 1)
-                    )
-            )
-        }
-        .buttonStyle(PlainButtonStyle())
-    }
-}
-
-struct SubstituteTeamSection: View {
-    let team: Team
-    let players: [Player]
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Circle()
-                    .fill(AppDesignSystem.TeamColors.getColor(for: team))
-                    .frame(width: 24, height: 24)
-                
-                Text("\(team.name) - Substitutes")
-                    .font(AppDesignSystem.Typography.subheadingFont)
-                    .foregroundColor(AppDesignSystem.TeamColors.getColor(for: team))
-                
-                Text("(\(players.count))")
-                    .font(AppDesignSystem.Typography.captionFont)
-                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                
-                Spacer()
-                
-                HStack(spacing: 4) {
-                    Image(systemName: "clock.fill")
-                        .foregroundColor(AppDesignSystem.Colors.accent)
-                    Text("Auto-added")
-                        .font(AppDesignSystem.Typography.captionFont)
-                        .foregroundColor(AppDesignSystem.Colors.accent)
-                }
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(AppDesignSystem.Colors.accent.opacity(0.1))
-            .cornerRadius(8)
-            
-            VStack(spacing: 8) {
-                ForEach(players, id: \.id) { player in
-                    SubstitutePlayerCard(player: player)
-                }
-            }
-        }
-    }
-}
-
-struct SubstitutePlayerCard: View {
-    let player: Player
-    
-    var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(player.name)
-                    .font(AppDesignSystem.Typography.bodyFont)
-                    .fontWeight(.medium)
-                    .foregroundColor(AppDesignSystem.Colors.primaryText)
-                    .multilineTextAlignment(.leading)
-                
-                HStack {
-                    Text(player.position.rawValue)
-                        .font(AppDesignSystem.Typography.captionFont)
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                    
-                    Spacer()
-                    
-                    HStack(spacing: 4) {
-                        Image(systemName: "arrow.2.squarepath")
-                            .font(.caption)
-                            .foregroundColor(AppDesignSystem.Colors.accent)
-                        Text("Substitute")
-                            .font(AppDesignSystem.Typography.captionFont)
-                            .foregroundColor(AppDesignSystem.Colors.accent)
-                    }
-                }
-            }
-            
-            Spacer()
-            
-            Image(systemName: "clock.fill")
-                .foregroundColor(AppDesignSystem.Colors.accent)
-                .font(.title3)
-        }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(AppDesignSystem.Colors.accent.opacity(0.05))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(AppDesignSystem.Colors.accent.opacity(0.3), lineWidth: 1)
-                )
-        )
-    }
-}
-
-struct RateLimitWarning: View {
-    var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "clock.fill")
-                .foregroundColor(AppDesignSystem.Colors.warning)
-            Text("Rate limit reached. Updates paused temporarily.")
-                .font(AppDesignSystem.Typography.captionFont)
-                .foregroundColor(AppDesignSystem.Colors.secondaryText)
-        }
-        .padding(8)
-        .background(AppDesignSystem.Colors.warning.opacity(0.1))
-        .cornerRadius(6)
-    }
-}
-
-struct LiveConnectionStatus: View {
-    let isConnected: Bool
-    
-    var body: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(isConnected ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.error)
-                .frame(width: 8, height: 8)
-            
-            Text(isConnected ? "Connected" : "Disconnected")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundColor(isConnected ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.error)
-        }
-    }
-}
-
-struct NextUpdateTimer: View {
-    @State private var timeRemaining: Int = 90
-    
-    var body: some View {
-        Text("Next update in \(timeRemaining)s")
-            .font(.system(size: 11))
-            .foregroundColor(AppDesignSystem.Colors.secondaryText)
-            .onAppear {
-                Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
-                    if timeRemaining > 0 {
-                        timeRemaining -= 1
-                    } else {
-                        timeRemaining = 90 // Reset
-                    }
-                }
-            }
-    }
-}

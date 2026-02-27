@@ -65,7 +65,6 @@ struct SettingsView: View {
         .sheet(isPresented: $showingUpgradeView) {
             UpgradeView()
         }
-        .withMinimalBanner()
     }
     
     // MARK: - Subscription Section
@@ -151,10 +150,10 @@ struct SettingsView: View {
             // Feature badges
             VStack(alignment: .trailing, spacing: 4) {
                 if purchaseManager.isAdFree {
-                    StatusBadge(text: "Ad-Free", color: .green)
+                    StatusBadge( "Ad-Free", color: .green)
                 }
                 if purchaseManager.hasWorldCup2026 {
-                    StatusBadge(text: "WC 2026", color: .blue)
+                    StatusBadge( "WC 2026", color: .blue)
                 }
             }
         }
@@ -191,9 +190,14 @@ struct SettingsView: View {
         SettingsSection(title: "About", icon: "info.circle.fill", color: .blue) {
             VStack(spacing: 8) {
                 SettingsRow(
-                    title: "Version",
-                    value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0"
-                )
+                    "Version",
+                    icon: "number.circle.fill",
+                    iconColor: .blue
+                ) {
+                    Text(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                }
                 
                 SettingsLinkRow(
                     title: "Data by Football-Data.org",
@@ -330,21 +334,6 @@ struct SettingsSection<Content: View>: View {
     }
 }
 
-struct StatusBadge: View {
-    let text: String
-    let color: Color
-    
-    var body: some View {
-        Text(text)
-            .font(.system(size: 10, weight: .semibold))
-            .foregroundColor(color)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(color.opacity(0.15))
-            .cornerRadius(4)
-    }
-}
-
 struct CurrencyRow: View {
     let code: String
     let symbol: String
@@ -381,24 +370,6 @@ struct CurrencyRow: View {
             )
         }
         .buttonStyle(PlainButtonStyle())
-    }
-}
-
-struct SettingsRow: View {
-    let title: String
-    let value: String
-    
-    var body: some View {
-        HStack {
-            Text(title)
-                .foregroundColor(.secondary)
-            Spacer()
-            Text(value)
-                .foregroundColor(.primary)
-        }
-        .padding()
-        .background(Color(UIColor.tertiarySystemBackground))
-        .cornerRadius(10)
     }
 }
 
@@ -449,6 +420,41 @@ extension View {
 
 struct SettingsView_Previews: PreviewProvider {
     static var previews: some View {
-        SettingsView()
+        Group {
+            SettingsView()
+                .preferredColorScheme(.light)
+                .previewDisplayName("Light Mode")
+            
+            SettingsView()
+                .preferredColorScheme(.dark)
+                .previewDisplayName("Dark Mode")
+        }
     }
 }
+#if DEBUG
+struct SettingsSection_Previews: PreviewProvider {
+    static var previews: some View {
+        SettingsSection(title: "Test Section", icon: "gear", color: .blue) {
+            VStack(spacing: 8) {
+                Text("Content goes here")
+                Text("More content")
+            }
+        }
+        .padding()
+        .background(AppDesignSystem.Colors.background)
+    }
+}
+
+struct CurrencyRow_Previews: PreviewProvider {
+    static var previews: some View {
+        VStack(spacing: 8) {
+            CurrencyRow(code: "EUR", symbol: "€", name: "Euro", isSelected: true) { }
+            CurrencyRow(code: "USD", symbol: "$", name: "US Dollar", isSelected: false) { }
+            CurrencyRow(code: "GBP", symbol: "£", name: "British Pound", isSelected: false) { }
+        }
+        .padding()
+        .background(AppDesignSystem.Colors.background)
+    }
+}
+#endif
+

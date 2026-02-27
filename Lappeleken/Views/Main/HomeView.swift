@@ -1,8 +1,8 @@
 //
-//  Enhanced HomeView.swift
+//  HomeView.swift
 //  Lucky Football Slip
 //
-//  Vibrant and engaging landing page
+//  Football pitch themed home - Apple Sports inspired
 //
 
 import SwiftUI
@@ -13,54 +13,23 @@ struct HomeView: View {
     @State private var showingNewGameSheet = false
     @State private var showingLiveInfoSheet = false
     @State private var showingHistoryView = false
-    @State private var pulseApp = false
     
     var body: some View {
         ZStack {
-            // Enhanced animated background
-            backgroundView
+            // Football pitch themed background
+            FootballPitchBackground()
             
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 32) {
-                    Spacer(minLength: 20)
+                VStack(spacing: 28) {
+                    Spacer(minLength: 16)
                     
-                    // Enhanced app branding
+                    // App branding
                     appBrandingSection
                     
-                    // Enhanced mode selection cards
-                    VStack(spacing: 20) {
-                        Text("Choose Your Game Mode")
-                            .font(.system(size: 22, weight: .semibold, design: .rounded))
-                            .foregroundColor(AppDesignSystem.Colors.primaryText)
-                        
-                        VStack(spacing: 16) {
-                            // Manual mode card (unchanged)
-                            EnhancedModeCard(
-                                title: "Manual Mode",
-                                subtitle: "Create custom games with your own players",
-                                icon: "gamecontroller.fill",
-                                color: AppDesignSystem.Colors.secondary,
-                                isSelected: !isLiveMode,
-                                features: ["Custom players", "Offline play", "Unlimited games", "Full control"],
-                                badge: nil
-                            ) {
-                                withAnimation(AppDesignSystem.Animations.bouncy) {
-                                    isLiveMode = false
-                                    UserDefaults.standard.set(false, forKey: "isLiveMode")
-                                    NotificationCenter.default.post(
-                                        name: Notification.Name("AppModeChanged"),
-                                        object: nil
-                                    )
-                                    showingNewGameSheet = true
-                                }
-                            }
-                            
-                            // Updated live mode card
-                            updatedLiveModeCard
-                        }
-                    }
+                    // Mode selection
+                    modeSelectionSection
                     
-                    // Enhanced quick actions
+                    // Quick actions
                     quickActionsSection
                     
                     Spacer(minLength: 40)
@@ -82,123 +51,88 @@ struct HomeView: View {
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("OpenHistoryAfterAd"))) { _ in
             showingHistoryView = true
         }
-        .onAppear {
-            withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
-                pulseApp = true
-            }
-        }
         .withMinimalBanner()
-    }
-    
-    // MARK: - Background
-    
-    private var backgroundView: some View {
-        AppDesignSystem.Colors.background
-            .ignoresSafeArea()
     }
     
     // MARK: - App Branding
     
     private var appBrandingSection: some View {
-        VStack(spacing: 20) {
-            // Enhanced app icon with glow effect
+        VStack(spacing: 16) {
+            // App icon with football styling
             ZStack {
+                // Glow effect
                 Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [
-                                AppDesignSystem.Colors.primary.opacity(0.3),
-                                AppDesignSystem.Colors.primary.opacity(0.1),
-                                Color.clear
-                            ],
-                            center: .center,
-                            startRadius: 30,
-                            endRadius: 80
-                        )
-                    )
-                    .frame(width: 160, height: 160)
-                    .scaleEffect(pulseApp ? 1.05 : 1.0)
+                    .fill(AppDesignSystem.Colors.grassGreen.opacity(0.3))
+                    .frame(width: 120, height: 120)
+                    .blur(radius: 20)
                 
-                Image(systemName: "sportscourt.fill")
-                    .font(.system(size: 70, weight: .medium))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [
-                                AppDesignSystem.Colors.primary,
-                                AppDesignSystem.Colors.secondary
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .shadow(
-                        color: AppDesignSystem.Colors.primary.opacity(0.3),
-                        radius: 20,
-                        x: 0,
-                        y: 10
-                    )
+                // Main icon
+                ZStack {
+                    Circle()
+                        .fill(AppDesignSystem.Colors.grassGreen)
+                        .frame(width: 88, height: 88)
+                    
+                    // Pitch lines on icon
+                    Circle()
+                        .stroke(Color.white.opacity(0.3), lineWidth: 1.5)
+                        .frame(width: 50, height: 50)
+                    
+                    Image(systemName: "sportscourt.fill")
+                        .font(.system(size: 40, weight: .medium))
+                        .foregroundColor(.white)
+                }
+                .shadow(color: AppDesignSystem.Colors.grassGreen.opacity(0.5), radius: 16, x: 0, y: 8)
             }
             
-            VStack(spacing: 8) {
+            VStack(spacing: 6) {
                 Text("Lucky Football Slip")
-                    .font(.system(size: 34, weight: .bold, design: .rounded))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [
-                                AppDesignSystem.Colors.primaryText,
-                                AppDesignSystem.Colors.primary
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
+                    .font(.system(size: 28, weight: .bold, design: .rounded))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
                 
                 Text("The Ultimate Football Betting Game")
-                    .font(.system(size: 18, weight: .medium, design: .rounded))
+                    .font(.system(size: 15, weight: .medium))
                     .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                    .multilineTextAlignment(.center)
             }
         }
     }
     
+    // MARK: - Mode Selection
     
-    // MARK: - Updated Live Mode Card
-    
-    private var updatedLiveModeCard: some View {
-        EnhancedModeCard(
-            title: "Live Mode",
-            subtitle: "Follow real matches with automatic updates",
-            icon: "globe",
-            color: AppDesignSystem.Colors.primary,
-            isSelected: isLiveMode,
-            features: ["Real matches", "Live updates", "Auto events", "Team lineups"],
-            badge: nil
-        ) {
-            withAnimation(AppDesignSystem.Animations.bouncy) {
-                handleLiveModeSelection()
+    private var modeSelectionSection: some View {
+        VStack(spacing: 16) {
+            // Section header
+            HStack {
+                Text("Choose Game Mode")
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                Spacer()
             }
-        }
-    }
-
-    // MARK: - Game Mode Selection
-    
-    private var gameModeSelectionSection: some View {
-        VStack(spacing: 20) {
-            Text("Choose Your Game Mode")
-                .font(.system(size: 22, weight: .semibold, design: .rounded))
-                .foregroundColor(AppDesignSystem.Colors.primaryText)
             
-            VStack(spacing: 16) {
-                EnhancedModeCard(
-                    title: "Manual Mode",
-                    subtitle: "Create custom games with your own players",
-                    icon: "gamecontroller.fill",
-                    color: AppDesignSystem.Colors.secondary,
-                    isSelected: !isLiveMode,
-                    features: ["Custom players", "Offline play", "Unlimited games", "Full control"],
-                    badge: nil
+            VStack(spacing: 12) {
+                // Live Mode Card
+                GameModeCard(
+                    title: "Live Mode",
+                    subtitle: "Real matches with automatic updates",
+                    icon: "antenna.radiowaves.left.and.right",
+                    accentColor: AppDesignSystem.Colors.grassGreen,
+                    features: ["Real lineups", "Live events", "Auto tracking"],
+                    badge: isLiveMode ? "SELECTED" : nil
                 ) {
-                    withAnimation(AppDesignSystem.Animations.bouncy) {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
+                        handleLiveModeSelection()
+                    }
+                }
+                
+                // Manual Mode Card
+                GameModeCard(
+                    title: "Manual Mode",
+                    subtitle: "Custom games with your own players",
+                    icon: "gamecontroller.fill",
+                    accentColor: AppDesignSystem.Colors.goalYellow,
+                    features: ["Custom players", "Offline play", "Full control"],
+                    badge: !isLiveMode ? "SELECTED" : nil
+                ) {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.7)) {
                         isLiveMode = false
                         UserDefaults.standard.set(false, forKey: "isLiveMode")
                         NotificationCenter.default.post(
@@ -206,20 +140,6 @@ struct HomeView: View {
                             object: nil
                         )
                         showingNewGameSheet = true
-                    }
-                }
-                
-                EnhancedModeCard(
-                    title: "Live Mode",
-                    subtitle: "Follow real matches with automatic updates",
-                    icon: "globe",
-                    color: AppDesignSystem.Colors.primary,
-                    isSelected: isLiveMode,
-                    features: ["Real matches", "Live updates", "Auto events", "Team lineups"],
-                    badge: nil
-                ) {
-                    withAnimation(AppDesignSystem.Animations.bouncy) {
-                        handleLiveModeSelection()
                     }
                 }
             }
@@ -230,73 +150,35 @@ struct HomeView: View {
     
     private var quickActionsSection: some View {
         VStack(spacing: 16) {
-            Text("Quick Actions")
-                .font(.system(size: 20, weight: .semibold, design: .rounded))
-                .foregroundColor(AppDesignSystem.Colors.primaryText)
+            HStack {
+                Text("Quick Actions")
+                    .font(.system(size: 20, weight: .bold, design: .rounded))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                Spacer()
+            }
             
-            HStack(spacing: 16) {
+            HStack(spacing: 12) {
                 QuickActionCard(
-                    title: "Game History",
+                    title: "History",
                     icon: "clock.arrow.circlepath",
-                    color: AppDesignSystem.Colors.info
+                    color: AppDesignSystem.Colors.primary
                 ) {
                     openHistoryWithAd()
                 }
                 
-                // Fixed How to Play navigation
                 NavigationLink(destination: HowToPlayView()) {
-                    VStack(spacing: 12) {
-                        ZStack {
-                            Circle()
-                                .fill(
-                                    LinearGradient(
-                                        colors: [AppDesignSystem.Colors.accent, AppDesignSystem.Colors.accent.opacity(0.7)],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
-                                .frame(width: 50, height: 50)
-                            
-                            Image(systemName: "info.circle")
-                                .font(.system(size: 22, weight: .medium))
-                                .foregroundColor(.white)
-                        }
-                        .shadow(
-                            color: AppDesignSystem.Colors.accent.opacity(0.3),
-                            radius: 6,
-                            x: 0,
-                            y: 3
-                        )
-                        
-                        Text("How to Play")
-                            .font(.system(size: 14, weight: .semibold, design: .rounded))
-                            .foregroundColor(AppDesignSystem.Colors.primaryText)
-                            .multilineTextAlignment(.center)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 20)
-                    .padding(.horizontal, 16)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(AppDesignSystem.Colors.cardBackground)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(AppDesignSystem.Colors.accent.opacity(0.2), lineWidth: 1)
-                            )
-                    )
-                    .shadow(
-                        color: Color.black.opacity(0.06),
-                        radius: 4,
-                        x: 0,
-                        y: 2
+                    QuickActionCardContent(
+                        title: "How to Play",
+                        icon: "questionmark.circle",
+                        color: AppDesignSystem.Colors.accent
                     )
                 }
-                .buttonStyle(PlainButtonStyle())
+                .buttonStyle(ScaleButtonStyle())
             }
         }
     }
     
-    // MARK: - Helper Methods (keeping your existing logic)
+    // MARK: - Helper Methods
     
     private func openHistoryWithAd() {
         if AdManager.shared.shouldShowInterstitial(for: .historyView) {
@@ -357,135 +239,172 @@ struct HomeView: View {
     }
 }
 
-// MARK: - Enhanced Mode Card
+// MARK: - Football Pitch Background
 
-struct EnhancedModeCard: View {
+struct FootballPitchBackground: View {
+    @Environment(\.colorScheme) var colorScheme
+    
+    private var isDark: Bool { colorScheme == .dark }
+    
+    var body: some View {
+        ZStack {
+            // Base - slightly tinted green instead of pure gray
+            Color(isDark ? UIColor(red: 0.05, green: 0.09, blue: 0.07, alpha: 1) : UIColor(red: 0.95, green: 0.97, blue: 0.95, alpha: 1))
+            
+            // Strong green gradient from top
+            LinearGradient(
+                colors: [
+                    AppDesignSystem.Colors.grassGreen.opacity(isDark ? 0.25 : 0.12),
+                    AppDesignSystem.Colors.grassGreen.opacity(isDark ? 0.08 : 0.04),
+                    Color.clear
+                ],
+                startPoint: .top,
+                endPoint: .center
+            )
+            
+            // Bottom subtle gold accent
+            VStack {
+                Spacer()
+                LinearGradient(
+                    colors: [
+                        Color.clear,
+                        AppDesignSystem.Colors.goalYellow.opacity(isDark ? 0.06 : 0.03)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 200)
+            }
+            
+            // Pitch line decorations
+            GeometryReader { geo in
+                // Center circle
+                Circle()
+                    .stroke(
+                        AppDesignSystem.Colors.grassGreen.opacity(isDark ? 0.15 : 0.08),
+                        lineWidth: 1.5
+                    )
+                    .frame(width: geo.size.width * 0.5)
+                    .position(x: geo.size.width / 2, y: geo.size.height * 0.12)
+                
+                // Center dot
+                Circle()
+                    .fill(AppDesignSystem.Colors.grassGreen.opacity(isDark ? 0.2 : 0.1))
+                    .frame(width: 8, height: 8)
+                    .position(x: geo.size.width / 2, y: geo.size.height * 0.12)
+                
+                // Halfway line
+                Rectangle()
+                    .fill(AppDesignSystem.Colors.grassGreen.opacity(isDark ? 0.1 : 0.05))
+                    .frame(width: geo.size.width, height: 1.5)
+                    .position(x: geo.size.width / 2, y: geo.size.height * 0.12)
+            }
+        }
+        .ignoresSafeArea()
+    }
+}
+
+// MARK: - Game Mode Card
+
+struct GameModeCard: View {
     let title: String
     let subtitle: String
     let icon: String
-    let color: Color
-    let isSelected: Bool
+    let accentColor: Color
     let features: [String]
-    let badge: (any View)?
+    let badge: String?
     let action: () -> Void
     
-    @State private var isPressed = false
+    @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
-        Button(action: {
-            withAnimation(AppDesignSystem.Animations.quick) {
-                isPressed = true
-            }
-            
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                withAnimation(AppDesignSystem.Animations.quick) {
-                    isPressed = false
-                }
-                action()
-            }
-        }) {
-            VStack(spacing: 20) {
-                HStack(spacing: 16) {
-                    // Enhanced icon with gradient background
-                    ZStack {
-                        Circle()
-                            .fill(
-                                LinearGradient(
-                                    colors: [color, color.opacity(0.7)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .frame(width: 60, height: 60)
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 0) {
+                // Accent top strip
+                Rectangle()
+                    .fill(accentColor)
+                    .frame(height: 4)
+                
+                VStack(alignment: .leading, spacing: 14) {
+                    // Header
+                    HStack(spacing: 12) {
+                        // Icon
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(accentColor.opacity(0.15))
+                                .frame(width: 48, height: 48)
+                            
+                            Image(systemName: icon)
+                                .font(.system(size: 22, weight: .semibold))
+                                .foregroundColor(accentColor)
+                        }
                         
-                        Image(systemName: icon)
-                            .font(.system(size: 28, weight: .medium))
-                            .foregroundColor(.white)
+                        VStack(alignment: .leading, spacing: 2) {
+                            HStack(spacing: 8) {
+                                Text(title)
+                                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                                
+                                if let badge = badge {
+                                    Text(badge)
+                                        .font(.system(size: 9, weight: .bold))
+                                        .foregroundColor(.white)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(Capsule().fill(accentColor))
+                                }
+                            }
+                            
+                            Text(subtitle)
+                                .font(.system(size: 13))
+                                .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                        }
+                        
+                        Spacer()
+                        
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
                     }
+                    
+                    // Features row
+                    HStack(spacing: 6) {
+                        ForEach(features, id: \.self) { feature in
+                            HStack(spacing: 4) {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 9, weight: .bold))
+                                Text(feature)
+                                    .font(.system(size: 11, weight: .medium))
+                            }
+                            .foregroundColor(accentColor)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(
+                                Capsule()
+                                    .fill(accentColor.opacity(0.1))
+                            )
+                        }
+                        Spacer()
+                    }
+                }
+                .padding(16)
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 14)
+                    .fill(AppDesignSystem.Colors.cardBackground)
                     .shadow(
-                        color: color.opacity(0.4),
+                        color: colorScheme == .dark ? Color.black.opacity(0.3) : Color.black.opacity(0.08),
                         radius: 8,
                         x: 0,
                         y: 4
                     )
-                    
-                    VStack(alignment: .leading, spacing: 6) {
-                        HStack {
-                            Text(title)
-                                .font(.system(size: 20, weight: .bold, design: .rounded))
-                                .foregroundColor(AppDesignSystem.Colors.primaryText)
-                            
-                            // Add badge here if provided
-                            if let badge = badge {
-                                AnyView(badge)
-                            }
-                        }
-                        
-                        Text(subtitle)
-                            .font(.system(size: 14, weight: .medium, design: .rounded))
-                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                            .multilineTextAlignment(.leading)
-                    }
-                    
-                    Spacer()
-                    
-                    if isSelected {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 24))
-                            .foregroundColor(AppDesignSystem.Colors.success)
-                    }
-                }
-                
-                // Feature list
-                LazyVGrid(columns: [
-                    GridItem(.flexible()),
-                    GridItem(.flexible())
-                ], spacing: 8) {
-                    ForEach(features, id: \.self) { feature in
-                        HStack(spacing: 6) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 12))
-                                .foregroundColor(color)
-                            
-                            Text(feature)
-                                .font(.system(size: 12, weight: .medium, design: .rounded))
-                                .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                            
-                            Spacer()
-                        }
-                    }
-                }
-            }
-            .padding(24)
-            .background(
-                RoundedRectangle(cornerRadius: 16)
-                    .fill(AppDesignSystem.Colors.cardBackground)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 16)
-                            .stroke(
-                                LinearGradient(
-                                    colors: [
-                                        isSelected ? color : color.opacity(0.3),
-                                        isSelected ? color.opacity(0.7) : color.opacity(0.1)
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: isSelected ? 2 : 1
-                            )
-                    )
             )
-            .shadow(
-                color: isSelected ? color.opacity(0.2) : Color.black.opacity(0.08),
-                radius: isSelected ? 12 : 6,
-                x: 0,
-                y: isSelected ? 6 : 3
-            )
-            .scaleEffect(isPressed ? 0.98 : (isSelected ? 1.02 : 1.0))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
         }
-        .buttonStyle(PlainButtonStyle())
+        .buttonStyle(ScaleButtonStyle())
     }
 }
+
 // MARK: - Quick Action Card
 
 struct QuickActionCard: View {
@@ -494,69 +413,114 @@ struct QuickActionCard: View {
     let color: Color
     let action: () -> Void
     
-    @State private var isPressed = false
+    var body: some View {
+        Button(action: action) {
+            QuickActionCardContent(title: title, icon: icon, color: color)
+        }
+        .buttonStyle(ScaleButtonStyle())
+    }
+}
+
+struct QuickActionCardContent: View {
+    let title: String
+    let icon: String
+    let color: Color
+    
+    @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
-        Button(action: {
-            withAnimation(AppDesignSystem.Animations.quick) {
-                isPressed = true
+        VStack(spacing: 10) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(color.opacity(0.15))
+                    .frame(width: 48, height: 48)
+                
+                Image(systemName: icon)
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundColor(color)
             }
             
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                withAnimation(AppDesignSystem.Animations.quick) {
-                    isPressed = false
-                }
-                action()
-            }
-        }) {
-            VStack(spacing: 12) {
-                ZStack {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [color, color.opacity(0.7)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 50, height: 50)
-                    
-                    Image(systemName: icon)
-                        .font(.system(size: 22, weight: .medium))
-                        .foregroundColor(.white)
-                }
+            Text(title)
+                .font(.system(size: 13, weight: .semibold, design: .rounded))
+                .foregroundColor(AppDesignSystem.Colors.primaryText)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 20)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(AppDesignSystem.Colors.cardBackground)
                 .shadow(
-                    color: color.opacity(0.3),
+                    color: colorScheme == .dark ? Color.black.opacity(0.3) : Color.black.opacity(0.06),
                     radius: 6,
                     x: 0,
                     y: 3
                 )
-                
-                Text(title)
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .foregroundColor(AppDesignSystem.Colors.primaryText)
-                    .multilineTextAlignment(.center)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 20)
-            .padding(.horizontal, 16)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(AppDesignSystem.Colors.cardBackground)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(color.opacity(0.2), lineWidth: 1)
-                    )
-            )
-            .shadow(
-                color: Color.black.opacity(0.06),
-                radius: 4,
-                x: 0,
-                y: 2
-            )
-            .scaleEffect(isPressed ? 0.95 : 1.0)
-        }
-        .buttonStyle(PlainButtonStyle())
+        )
     }
 }
+// MARK: - Previews
+
+#if DEBUG
+struct HomeView_Previews: PreviewProvider {
+    static var previews: some View {
+        let gameSession = GameSession()
+        
+        return Group {
+            NavigationView {
+                HomeView()
+                    .environmentObject(gameSession)
+            }
+            .preferredColorScheme(.light)
+            .previewDisplayName("Light Mode")
+            
+            NavigationView {
+                HomeView()
+                    .environmentObject(gameSession)
+            }
+            .preferredColorScheme(.dark)
+            .previewDisplayName("Dark Mode")
+        }
+    }
+}
+
+struct FootballPitchBackground_Previews: PreviewProvider {
+    static var previews: some View {
+        Group {
+            FootballPitchBackground()
+                .preferredColorScheme(.light)
+                .previewDisplayName("Light Mode")
+            
+            FootballPitchBackground()
+                .preferredColorScheme(.dark)
+                .previewDisplayName("Dark Mode")
+        }
+    }
+}
+
+struct GameModeCard_Previews: PreviewProvider {
+    static var previews: some View {
+        VStack(spacing: 20) {
+            GameModeCard(
+                title: "Live Mode",
+                subtitle: "Real matches with automatic updates",
+                icon: "antenna.radiowaves.left.and.right",
+                accentColor: AppDesignSystem.Colors.grassGreen,
+                features: ["Real lineups", "Live events", "Auto tracking"],
+                badge: "SELECTED"
+            ) { }
+            
+            GameModeCard(
+                title: "Manual Mode",
+                subtitle: "Custom games with your own players",
+                icon: "gamecontroller.fill",
+                accentColor: AppDesignSystem.Colors.goalYellow,
+                features: ["Custom players", "Offline play", "Full control"],
+                badge: nil
+            ) { }
+        }
+        .padding()
+        .background(AppDesignSystem.Colors.background)
+    }
+}
+#endif
 

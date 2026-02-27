@@ -1,8 +1,8 @@
 //
-//  Enhanced AssignPlayersView.swift
+//  AssignPlayersView.swift
 //  Lucky Football Slip
 //
-//  Vibrant and engaging player assignment experience
+//  Player assignment experience - Football themed
 //
 
 import SwiftUI
@@ -10,6 +10,8 @@ import SwiftUI
 struct AssignPlayersView: View {
     @ObservedObject var gameSession: GameSession
     @Environment(\.presentationMode) var presentationMode
+    @Environment(\.colorScheme) var colorScheme
+    
     @State private var assignmentComplete = false
     @State private var showConfetti = false
     @State private var currentParticipantIndex = -1
@@ -19,15 +21,12 @@ struct AssignPlayersView: View {
     var body: some View {
         NavigationView {
             ZStack {
-                // Enhanced animated background
-                backgroundView
+                footballBackground
                 
                 VStack(spacing: 0) {
                     if !assignmentComplete {
-                        // Before assignment - vibrant waiting state
                         preAssignmentView
                     } else {
-                        // After assignment - celebratory reveal
                         postAssignmentView
                     }
                 }
@@ -37,10 +36,8 @@ struct AssignPlayersView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Cancel") {
-                        presentationMode.wrappedValue.dismiss()
-                    }
-                    .foregroundColor(AppDesignSystem.Colors.primary)
+                    Button("Cancel") { presentationMode.wrappedValue.dismiss() }
+                        .foregroundColor(AppDesignSystem.Colors.grassGreen)
                 }
             }
         }
@@ -53,330 +50,227 @@ struct AssignPlayersView: View {
     
     // MARK: - Background
     
-    private var backgroundView: some View {
-        AppDesignSystem.Colors.background
-            .ignoresSafeArea()
+    private var footballBackground: some View {
+        ZStack {
+            Color(colorScheme == .dark ? UIColor(red: 0.05, green: 0.08, blue: 0.06, alpha: 1) : UIColor(red: 0.96, green: 0.98, blue: 0.96, alpha: 1))
+            
+            VStack {
+                LinearGradient(
+                    colors: [AppDesignSystem.Colors.grassGreen.opacity(colorScheme == .dark ? 0.15 : 0.08), Color.clear],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 200)
+                Spacer()
+            }
+        }
+        .ignoresSafeArea()
     }
     
     // MARK: - Pre-Assignment View
     
     private var preAssignmentView: some View {
-        VStack(spacing: 40) {
+        VStack(spacing: 32) {
             Spacer()
             
-            // Enhanced icon with glow effect
+            // Icon with glow
             ZStack {
                 Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [
-                                AppDesignSystem.Colors.primary.opacity(0.3),
-                                AppDesignSystem.Colors.primary.opacity(0.1),
-                                Color.clear
-                            ],
-                            center: .center,
-                            startRadius: 30,
-                            endRadius: 100
-                        )
-                    )
-                    .frame(width: 200, height: 200)
+                    .fill(AppDesignSystem.Colors.grassGreen.opacity(0.15))
+                    .frame(width: 120, height: 120)
+                    .scaleEffect(pulseButton ? 1.1 : 1.0)
                 
                 Image(systemName: "shuffle")
-                    .font(.system(size: 80, weight: .medium))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [
-                                AppDesignSystem.Colors.primary,
-                                AppDesignSystem.Colors.secondary
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .shadow(
-                        color: AppDesignSystem.Colors.primary.opacity(0.3),
-                        radius: 20,
-                        x: 0,
-                        y: 10
-                    )
+                    .font(.system(size: 56, weight: .medium))
+                    .foregroundColor(AppDesignSystem.Colors.grassGreen)
             }
             
-            VStack(spacing: 16) {
-                Text("Ready to Assign Players")
-                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [
-                                AppDesignSystem.Colors.primaryText,
-                                AppDesignSystem.Colors.primary
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .multilineTextAlignment(.center)
+            VStack(spacing: 12) {
+                Text("Ready to Assign")
+                    .font(.system(size: 26, weight: .bold, design: .rounded))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
                 
-                Text("Players will be randomly assigned to participants")
-                    .font(.system(size: 18, weight: .medium, design: .rounded))
+                Text("Players will be randomly distributed")
+                    .font(.system(size: 15))
                     .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 20)
-                
-                // Enhanced stats preview
-                statsPreviewCard
             }
+            
+            // Stats preview
+            statsPreviewCard
             
             Spacer()
             
-            // Enhanced assign button
+            // Assign button
             Button(action: assignPlayers) {
-                HStack(spacing: 12) {
+                HStack(spacing: 10) {
                     Image(systemName: "shuffle.circle.fill")
-                        .font(.system(size: 24))
-                    
+                        .font(.system(size: 20))
                     Text("Assign Players")
-                        .font(.system(size: 20, weight: .bold, design: .rounded))
+                        .font(.system(size: 17, weight: .bold))
                 }
                 .foregroundColor(.white)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 18)
+                .padding(.vertical, 16)
                 .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    AppDesignSystem.Colors.primary,
-                                    AppDesignSystem.Colors.primary.opacity(0.8)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(AppDesignSystem.Colors.grassGreen)
+                        .shadow(color: AppDesignSystem.Colors.grassGreen.opacity(0.3), radius: 10, x: 0, y: 5)
                 )
-                .shadow(
-                    color: AppDesignSystem.Colors.primary.opacity(0.4),
-                    radius: 12,
-                    x: 0,
-                    y: 6
-                )
-                .scaleEffect(pulseButton ? 1.02 : 1.0)
             }
-            .padding(.horizontal, 30)
+            .scaleEffect(pulseButton ? 1.02 : 1.0)
+            .padding(.horizontal, 20)
             
-            Spacer(minLength: 40)
-        }
-    }
-    
-    // MARK: - Post-Assignment View
-    
-    private var postAssignmentView: some View {
-        VStack(spacing: 24) {
-            // Enhanced success header
-            VStack(spacing: 16) {
-                if showConfetti {
-                    ZStack {
-                        Circle()
-                            .fill(
-                                RadialGradient(
-                                    colors: [
-                                        AppDesignSystem.Colors.success.opacity(0.3),
-                                        AppDesignSystem.Colors.success.opacity(0.1),
-                                        Color.clear
-                                    ],
-                                    center: .center,
-                                    startRadius: 20,
-                                    endRadius: 60
-                                )
-                            )
-                            .frame(width: 120, height: 120)
-                        
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 60, weight: .medium))
-                            .foregroundStyle(
-                                LinearGradient(
-                                    colors: [
-                                        AppDesignSystem.Colors.success,
-                                        AppDesignSystem.Colors.grassGreen
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                            .shadow(
-                                color: AppDesignSystem.Colors.success.opacity(0.3),
-                                radius: 15,
-                                x: 0,
-                                y: 8
-                            )
-                    }
-                    .transition(.scale.combined(with: .opacity))
-                }
-                
-                Text("Players Assigned!")
-                    .font(.system(size: 32, weight: .bold, design: .rounded))
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [
-                                AppDesignSystem.Colors.success,
-                                AppDesignSystem.Colors.primary
-                            ],
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-            }
-            
-            // Enhanced participants list
-            ScrollView(showsIndicators: false) {
-                LazyVStack(spacing: 16) {
-                    ForEach(0..<gameSession.participants.count, id: \.self) { index in
-                        AssignmentParticipantCard(
-                            participant: gameSession.participants[index],
-                            isRevealed: index <= currentParticipantIndex,
-                            assignedPlayerIds: assignedPlayerIds
-                        )
-                    }
-                }
-                .padding(.horizontal, 4)
-            }
-            
-            // Enhanced start game button
-            if currentParticipantIndex >= gameSession.participants.count - 1 {
-                Button(action: startGameAction) {
-                    HStack(spacing: 12) {
-                        Image(systemName: "play.circle.fill")
-                            .font(.system(size: 24))
-                        
-                        Text("Start Game")
-                            .font(.system(size: 20, weight: .bold, design: .rounded))
-                    }
-                    .foregroundColor(.white)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 18)
-                    .background(
-                        RoundedRectangle(cornerRadius: 16)
-                            .fill(
-                                LinearGradient(
-                                    colors: [
-                                        AppDesignSystem.Colors.success,
-                                        AppDesignSystem.Colors.grassGreen
-                                    ],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                )
-                            )
-                    )
-                    .shadow(
-                        color: AppDesignSystem.Colors.success.opacity(0.4),
-                        radius: 12,
-                        x: 0,
-                        y: 6
-                    )
-                }
-                .padding(.horizontal, 30)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
+            Spacer(minLength: 30)
         }
     }
     
     // MARK: - Stats Preview Card
     
     private var statsPreviewCard: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 20) {
-                StatPreviewItem(
-                    icon: "person.2.fill",
-                    value: "\(gameSession.participants.count)",
-                    label: "Participants",
-                    color: AppDesignSystem.Colors.primary
-                )
-                
-                StatPreviewItem(
-                    icon: "sportscourt.fill",
-                    value: "\(gameSession.selectedPlayers.count)",
-                    label: "Players",
-                    color: AppDesignSystem.Colors.secondary
-                )
-                
-                if !gameSession.selectedPlayers.isEmpty && !gameSession.participants.isEmpty {
-                    StatPreviewItem(
-                        icon: "divide.circle.fill",
-                        value: "\(gameSession.selectedPlayers.count / gameSession.participants.count)",
-                        label: "Per Person",
-                        color: AppDesignSystem.Colors.accent
-                    )
-                }
-            }
+        HStack(spacing: 0) {
+            AssignStatItem(
+                icon: "person.3.fill",
+                value: "\(gameSession.participants.count)",
+                label: "Participants",
+                color: AppDesignSystem.Colors.grassGreen
+            )
+            
+            Divider()
+                .frame(height: 40)
+                .padding(.horizontal, 8)
+            
+            AssignStatItem(
+                icon: "sportscourt.fill",
+                value: "\(gameSession.selectedPlayers.count)",
+                label: "Players",
+                color: AppDesignSystem.Colors.info
+            )
+            
+            Divider()
+                .frame(height: 40)
+                .padding(.horizontal, 8)
+            
+            let perParticipant = gameSession.participants.isEmpty ? 0 : gameSession.selectedPlayers.count / gameSession.participants.count
+            AssignStatItem(
+                icon: "person.crop.circle.badge.checkmark",
+                value: "~\(perParticipant)",
+                label: "Each",
+                color: AppDesignSystem.Colors.goalYellow
+            )
         }
-        .padding(20)
+        .padding(16)
         .background(
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: 14)
                 .fill(AppDesignSystem.Colors.cardBackground)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(AppDesignSystem.Colors.primary.opacity(0.2), lineWidth: 1)
-                )
-        )
-        .shadow(
-            color: Color.black.opacity(0.08),
-            radius: 8,
-            x: 0,
-            y: 4
+                .shadow(color: colorScheme == .dark ? Color.black.opacity(0.2) : Color.black.opacity(0.05), radius: 6, x: 0, y: 3)
         )
         .padding(.horizontal, 20)
     }
     
-    // MARK: - Helper Methods
+    // MARK: - Post-Assignment View
     
-    private func assignPlayers() {
-        print("AssignPlayersView - Before assignment:")
-        print("Participants: \(gameSession.participants.count)")
-        print("Selected players: \(gameSession.selectedPlayers.count)")
-        
-        guard !gameSession.participants.isEmpty && !gameSession.selectedPlayers.isEmpty else {
-            print("ERROR: Cannot assign players, starting game without assignment")
-            NotificationCenter.default.post(name: Notification.Name("StartGame"), object: nil)
-            presentationMode.wrappedValue.dismiss()
-            return
-        }
-        
-        gameSession.assignPlayersRandomly()
-        
-        withAnimation(AppDesignSystem.Animations.bouncy) {
-            assignmentComplete = true
-            
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                animateNextParticipant()
+    private var postAssignmentView: some View {
+        VStack(spacing: 20) {
+            // Success header
+            if showConfetti {
+                VStack(spacing: 12) {
+                    ZStack {
+                        Circle()
+                            .fill(AppDesignSystem.Colors.grassGreen.opacity(0.15))
+                            .frame(width: 80, height: 80)
+                        
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 44))
+                            .foregroundColor(AppDesignSystem.Colors.grassGreen)
+                    }
+                    
+                    Text("Players Assigned!")
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .foregroundColor(AppDesignSystem.Colors.grassGreen)
+                }
+                .transition(.scale.combined(with: .opacity))
             }
-        }
-    }
-    
-    private func animateNextParticipant() {
-        currentParticipantIndex += 1
-        
-        if currentParticipantIndex < gameSession.participants.count {
-            let participant = gameSession.participants[currentParticipantIndex]
             
-            for (index, player) in participant.selectedPlayers.enumerated() {
-                DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 0.3) {
-                    withAnimation(AppDesignSystem.Animations.bouncy) {
-                        assignedPlayerIds.append(player.id)
+            // Participant cards
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 12) {
+                    ForEach(Array(gameSession.participants.enumerated()), id: \.element.id) { index, participant in
+                        AssignParticipantCard(
+                            participant: participant,
+                            isRevealed: currentParticipantIndex >= index,
+                            assignedPlayerIds: assignedPlayerIds
+                        )
                     }
                 }
             }
             
-            let playerCount = participant.selectedPlayers.count
-            let delay = Double(playerCount) * 0.3 + 0.7
-            
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                animateNextParticipant()
+            // Start Game button
+            Button(action: startGameAction) {
+                HStack(spacing: 10) {
+                    Image(systemName: "play.fill")
+                    Text("Start Game")
+                }
+                .font(.system(size: 17, weight: .bold))
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(
+                    RoundedRectangle(cornerRadius: 14)
+                        .fill(showConfetti ? AppDesignSystem.Colors.grassGreen : AppDesignSystem.Colors.secondaryText.opacity(0.3))
+                )
             }
-        } else {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                withAnimation(AppDesignSystem.Animations.bouncy) {
-                    showConfetti = true
+            .disabled(!showConfetti)
+            .padding(.horizontal, 20)
+        }
+    }
+    
+    // MARK: - Assignment Logic
+    
+    private func assignPlayers() {
+        var shuffledPlayers = gameSession.selectedPlayers.shuffled()
+        let participantCount = gameSession.participants.count
+        
+        guard participantCount > 0 else { return }
+        
+        // Clear existing assignments
+        for i in 0..<gameSession.participants.count {
+            gameSession.participants[i].selectedPlayers = []
+        }
+        
+        // Distribute players round-robin
+        for (index, player) in shuffledPlayers.enumerated() {
+            let participantIndex = index % participantCount
+            gameSession.participants[participantIndex].selectedPlayers.append(player)
+        }
+        
+        assignmentComplete = true
+        revealAssignmentsAnimated()
+    }
+    
+    private func revealAssignmentsAnimated() {
+        for (index, participant) in gameSession.participants.enumerated() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 0.4) {
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.7)) {
+                    currentParticipantIndex = index
+                }
+                
+                for (playerIndex, player) in participant.selectedPlayers.enumerated() {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + Double(playerIndex) * 0.1) {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.6)) {
+                            assignedPlayerIds.append(player.id)
+                        }
+                    }
                 }
             }
+        }
+        
+        // Show confetti after all reveals
+        let totalDelay = Double(gameSession.participants.count) * 0.4 + 0.5
+        DispatchQueue.main.asyncAfter(deadline: .now() + totalDelay) {
+            withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) {
+                showConfetti = true
+            }
+            UINotificationFeedbackGenerator().notificationOccurred(.success)
         }
     }
     
@@ -395,74 +289,78 @@ struct AssignPlayersView: View {
             return
         }
         
-        print("🎯 Showing interstitial ad before starting game")
-        
-        AdManager.shared.showInterstitialAd(from: rootViewController) { success in
-            DispatchQueue.main.async {
-                if success {
-                    print("✅ Interstitial ad shown before game start")
-                    AdManager.shared.trackAdImpression(type: "interstitial_game_start")
-                }
-                self.startGame()
-            }
+        AdManager.shared.showInterstitialAd(from: rootViewController) { _ in
+            DispatchQueue.main.async { self.startGame() }
         }
     }
     
     private func startGame() {
-        // IMPORTANT: Preserve custom events before any transitions
         let existingCustomEvents = gameSession.getCustomEvents()
-        print("🔄 Starting game with \(existingCustomEvents.count) custom events to preserve")
-        
-        // Force update to ensure UI reflects current state
-        gameSession.objectWillChange.send()
-        
-        // Auto-fix custom event mappings before starting
         if !existingCustomEvents.isEmpty {
             gameSession.debugAndFixCustomEventMappings()
         }
         
-        // Post the start game notification
+        gameSession.objectWillChange.send()
         NotificationCenter.default.post(name: Notification.Name("StartGame"), object: nil)
         presentationMode.wrappedValue.dismiss()
     }
 }
 
-// MARK: - Assignment Participant Card
+// MARK: - Assign Stat Item
 
-struct AssignmentParticipantCard: View {
+struct AssignStatItem: View {
+    let icon: String
+    let value: String
+    let label: String
+    let color: Color
+    
+    var body: some View {
+        VStack(spacing: 6) {
+            Image(systemName: icon)
+                .font(.system(size: 18))
+                .foregroundColor(color)
+            
+            Text(value)
+                .font(.system(size: 18, weight: .bold, design: .rounded))
+                .foregroundColor(AppDesignSystem.Colors.primaryText)
+            
+            Text(label)
+                .font(.system(size: 11))
+                .foregroundColor(AppDesignSystem.Colors.secondaryText)
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+// MARK: - Assign Participant Card
+
+struct AssignParticipantCard: View {
     let participant: Participant
     let isRevealed: Bool
     let assignedPlayerIds: [UUID]
     
+    @Environment(\.colorScheme) var colorScheme
+    
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Participant header
+        VStack(alignment: .leading, spacing: 12) {
+            // Header
             HStack {
                 Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                AppDesignSystem.Colors.primary,
-                                AppDesignSystem.Colors.primary.opacity(0.7)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 40, height: 40)
+                    .fill(AppDesignSystem.Colors.grassGreen)
+                    .frame(width: 36, height: 36)
                     .overlay(
                         Text(String(participant.name.prefix(1)).uppercased())
-                            .font(.system(size: 18, weight: .bold, design: .rounded))
+                            .font(.system(size: 15, weight: .bold))
                             .foregroundColor(.white)
                     )
                 
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(participant.name)
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .font(.system(size: 16, weight: .semibold))
                         .foregroundColor(AppDesignSystem.Colors.primaryText)
                     
                     Text("\(participant.selectedPlayers.count) players")
-                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .font(.system(size: 12))
                         .foregroundColor(AppDesignSystem.Colors.secondaryText)
                 }
                 
@@ -470,126 +368,65 @@ struct AssignmentParticipantCard: View {
                 
                 if isRevealed {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 24))
-                        .foregroundColor(AppDesignSystem.Colors.success)
+                        .font(.system(size: 20))
+                        .foregroundColor(AppDesignSystem.Colors.grassGreen)
                 }
             }
             
             // Players list
             if isRevealed {
-                LazyVGrid(columns: [
-                    GridItem(.flexible()),
-                    GridItem(.flexible())
-                ], spacing: 12) {
+                VStack(spacing: 6) {
                     ForEach(participant.selectedPlayers) { player in
-                        AssignmentPlayerChip(
-                            player: player,
-                            isVisible: assignedPlayerIds.contains(player.id)
-                        )
+                        AssignPlayerRow(player: player, isVisible: assignedPlayerIds.contains(player.id))
                     }
                 }
             }
         }
-        .padding(20)
+        .padding(14)
         .background(
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: 12)
                 .fill(AppDesignSystem.Colors.cardBackground)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 16)
-                        .stroke(
-                            isRevealed ?
-                            AppDesignSystem.Colors.primary.opacity(0.3) :
-                            Color.gray.opacity(0.2),
-                            lineWidth: isRevealed ? 2 : 1
-                        )
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(isRevealed ? AppDesignSystem.Colors.grassGreen.opacity(0.3) : Color.clear, lineWidth: 1.5)
                 )
+                .shadow(color: colorScheme == .dark ? Color.black.opacity(0.2) : Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
         )
-        .shadow(
-            color: isRevealed ?
-            AppDesignSystem.Colors.primary.opacity(0.15) :
-            Color.black.opacity(0.05),
-            radius: isRevealed ? 8 : 2,
-            x: 0,
-            y: isRevealed ? 4 : 1
-        )
-        .opacity(isRevealed ? 1.0 : 0.6)
+        .opacity(isRevealed ? 1.0 : 0.5)
         .scaleEffect(isRevealed ? 1.0 : 0.95)
-        .animation(AppDesignSystem.Animations.bouncy, value: isRevealed)
     }
 }
 
-// MARK: - Assignment Player Chip
+// MARK: - Assign Player Row
 
-struct AssignmentPlayerChip: View {
+struct AssignPlayerRow: View {
     let player: Player
     let isVisible: Bool
     
     var body: some View {
-        HStack(spacing: 8) {
-            Circle()
+        HStack(spacing: 10) {
+            RoundedRectangle(cornerRadius: 2)
                 .fill(AppDesignSystem.TeamColors.getColor(for: player.team))
-                .frame(width: 8, height: 8)
+                .frame(width: 3, height: 24)
             
-            VStack(alignment: .leading, spacing: 2) {
-                Text(player.name)
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .foregroundColor(AppDesignSystem.Colors.primaryText)
-                    .lineLimit(1)
-                
-                Text(player.team.shortName)
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
-            }
+            Text(player.name)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(AppDesignSystem.Colors.primaryText)
             
             Spacer()
+            
+            Text(player.team.shortName)
+                .font(.system(size: 11))
+                .foregroundColor(AppDesignSystem.TeamColors.getColor(for: player.team))
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
         .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(AppDesignSystem.TeamColors.getAccentColor(for: player.team))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(AppDesignSystem.TeamColors.getColor(for: player.team).opacity(0.3), lineWidth: 1)
-                )
+            RoundedRectangle(cornerRadius: 6)
+                .fill(AppDesignSystem.TeamColors.getColor(for: player.team).opacity(0.08))
         )
         .opacity(isVisible ? 1.0 : 0.0)
         .scaleEffect(isVisible ? 1.0 : 0.8)
-        .animation(
-            AppDesignSystem.Animations.bouncy.delay(Double.random(in: 0...0.3)),
-            value: isVisible
-        )
+        .animation(.spring(response: 0.4, dampingFraction: 0.6).delay(Double.random(in: 0...0.2)), value: isVisible)
     }
 }
-
-// MARK: - Stat Preview Item
-
-struct StatPreviewItem: View {
-    let icon: String
-    let value: String
-    let label: String
-    let color: Color
-    
-    var body: some View {
-        VStack(spacing: 8) {
-            ZStack {
-                Circle()
-                    .fill(color.opacity(0.2))
-                    .frame(width: 40, height: 40)
-                
-                Image(systemName: icon)
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundColor(color)
-            }
-            
-            Text(value)
-                .font(.system(size: 18, weight: .bold, design: .rounded))
-                .foregroundColor(AppDesignSystem.Colors.primaryText)
-            
-            Text(label)
-                .font(.system(size: 12, weight: .medium, design: .rounded))
-                .foregroundColor(AppDesignSystem.Colors.secondaryText)
-        }
-    }
-}
-

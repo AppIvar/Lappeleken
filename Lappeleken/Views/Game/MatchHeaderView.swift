@@ -2,7 +2,7 @@
 //  MatchHeaderView.swift
 //  Lucky Football Slip
 //
-//  Created by Ivar Hovland on 22/05/2025.
+//  Football themed match header
 //
 
 import SwiftUI
@@ -10,15 +10,16 @@ import SwiftUI
 struct MatchHeaderView: View {
     let match: Match
     @State private var currentTime = Date()
+    @Environment(\.colorScheme) var colorScheme
     
     private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
     
     var body: some View {
-        VStack(spacing: 12) {
-            // Competition and status
+        VStack(spacing: 14) {
+            // Competition and status row
             HStack {
                 Text(match.competition.name)
-                    .font(AppDesignSystem.Typography.captionFont)
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundColor(AppDesignSystem.Colors.secondaryText)
                 
                 Spacer()
@@ -26,111 +27,130 @@ struct MatchHeaderView: View {
                 matchStatusBadge
             }
             
-            // Team names and score
-            HStack(spacing: 20) {
+            // Teams and score
+            HStack(spacing: 16) {
                 // Home team
-                VStack {
-                    Text(match.homeTeam.name)
-                        .font(AppDesignSystem.Typography.headingFont)
-                        .foregroundColor(AppDesignSystem.TeamColors.getColor(for: match.homeTeam))
-                        .lineLimit(2)
-                        .multilineTextAlignment(.center)
-                    
-                    Text(match.homeTeam.shortName)
-                        .font(AppDesignSystem.Typography.captionFont)
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                }
-                .frame(maxWidth: .infinity)
+                teamColumn(team: match.homeTeam, isHome: true)
                 
-                // Score or vs
-                VStack {
-                    if match.status == .inProgress || match.status == .halftime || match.status == .completed {
-                        // Show score (placeholder for now - will be updated with API data)
-                        HStack(spacing: 8) {
-                            Text("0")
-                                .font(.system(size: 32, weight: .bold, design: .rounded))
-                                .foregroundColor(AppDesignSystem.Colors.primaryText)
-                            
-                            Text("-")
-                                .font(.system(size: 24, weight: .medium))
-                                .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                            
-                            Text("0")
-                                .font(.system(size: 32, weight: .bold, design: .rounded))
-                                .foregroundColor(AppDesignSystem.Colors.primaryText)
-                        }
-                    } else {
-                        Text("vs")
-                            .font(AppDesignSystem.Typography.headingFont)
-                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                    }
-                    
-                    // Match time info
-                    Text(matchTimeText)
-                        .font(AppDesignSystem.Typography.captionFont)
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                }
+                // Score / VS
+                scoreSection
                 
                 // Away team
-                VStack {
-                    Text(match.awayTeam.name)
-                        .font(AppDesignSystem.Typography.headingFont)
-                        .foregroundColor(AppDesignSystem.TeamColors.getColor(for: match.awayTeam))
-                        .lineLimit(2)
-                        .multilineTextAlignment(.center)
-                    
-                    Text(match.awayTeam.shortName)
-                        .font(AppDesignSystem.Typography.captionFont)
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                }
-                .frame(maxWidth: .infinity)
+                teamColumn(team: match.awayTeam, isHome: false)
             }
         }
-        .padding()
-        .background(AppDesignSystem.Colors.cardBackground)
-        .cornerRadius(AppDesignSystem.Layout.cornerRadius)
-        .shadow(color: Color.black.opacity(0.1), radius: 2, x: 0, y: 1)
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(AppDesignSystem.Colors.cardBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 14)
+                        .stroke(AppDesignSystem.Colors.grassGreen.opacity(0.15), lineWidth: 1)
+                )
+                .shadow(
+                    color: colorScheme == .dark ? Color.black.opacity(0.2) : Color.black.opacity(0.05),
+                    radius: 6,
+                    x: 0,
+                    y: 3
+                )
+        )
         .padding(.horizontal)
         .onReceive(timer) { _ in
             currentTime = Date()
         }
-        .withMinimalBanner()
     }
+    
+    // MARK: - Team Column
+    
+    private func teamColumn(team: Team, isHome: Bool) -> some View {
+        VStack(spacing: 6) {
+            // Team color indicator
+            Circle()
+                .fill(AppDesignSystem.TeamColors.getColor(for: team))
+                .frame(width: 40, height: 40)
+                .overlay(
+                    Text(team.shortName.prefix(2))
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(.white)
+                )
+            
+            Text(team.name)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(AppDesignSystem.Colors.primaryText)
+                .lineLimit(2)
+                .multilineTextAlignment(.center)
+            
+            Text(team.shortName)
+                .font(.system(size: 11))
+                .foregroundColor(AppDesignSystem.Colors.secondaryText)
+        }
+        .frame(maxWidth: .infinity)
+    }
+    
+    // MARK: - Score Section
+    
+    private var scoreSection: some View {
+        VStack(spacing: 4) {
+            if match.status == .inProgress || match.status == .halftime || match.status == .completed || match.status == .finished {
+                HStack(spacing: 8) {
+                    Text("0")
+                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
+                    
+                    Text("-")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    
+                    Text("0")
+                        .font(.system(size: 28, weight: .bold, design: .rounded))
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
+                }
+            } else {
+                Text("vs")
+                    .font(.system(size: 18, weight: .semibold, design: .rounded))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+            }
+            
+            Text(matchTimeText)
+                .font(.system(size: 11))
+                .foregroundColor(AppDesignSystem.Colors.secondaryText)
+        }
+    }
+    
+    // MARK: - Status Badge
     
     private var matchStatusBadge: some View {
         let (text, color) = matchStatusInfo
         
-        return Text(text)
-            .font(AppDesignSystem.Typography.captionFont)
-            .foregroundColor(.white)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(color)
-            .cornerRadius(8)
+        return HStack(spacing: 4) {
+            if match.status == .inProgress {
+                Circle()
+                    .fill(color)
+                    .frame(width: 6, height: 6)
+            }
+            
+            Text(text)
+                .font(.system(size: 11, weight: .bold))
+        }
+        .foregroundColor(.white)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(
+            Capsule().fill(color)
+        )
     }
     
     private var matchStatusInfo: (String, Color) {
         switch match.status {
-        case .upcoming:
-            return ("Upcoming", AppDesignSystem.Colors.primary)
-        case .inProgress:
-            return ("LIVE", AppDesignSystem.Colors.success)
-        case .halftime:
-            return ("Half-time", AppDesignSystem.Colors.warning)
-        case .completed:
-            return ("Full-time", AppDesignSystem.Colors.secondary)
-        case .unknown:
-            return ("Unknown", AppDesignSystem.Colors.error)
-        case .finished:
-            return ("Finished", AppDesignSystem.Colors.accent)
-        case .postponed:
-            return ("Postponed", AppDesignSystem.Colors.error)
-        case .cancelled:
-            return ("Cancelled", AppDesignSystem.Colors.error)
-        case .paused:
-            return ("Paused", AppDesignSystem.Colors.warning)
-        case .suspended:
-            return ("Suspended", AppDesignSystem.Colors.error)
+        case .upcoming: return ("Upcoming", AppDesignSystem.Colors.info)
+        case .inProgress: return ("LIVE", AppDesignSystem.Colors.grassGreen)
+        case .halftime: return ("HT", AppDesignSystem.Colors.goalYellow)
+        case .completed, .finished: return ("FT", AppDesignSystem.Colors.secondaryText)
+        case .postponed: return ("PPD", AppDesignSystem.Colors.error)
+        case .cancelled: return ("CAN", AppDesignSystem.Colors.error)
+        case .paused: return ("Paused", AppDesignSystem.Colors.goalYellow)
+        case .suspended: return ("SUS", AppDesignSystem.Colors.error)
+        case .unknown: return ("—", AppDesignSystem.Colors.secondaryText)
         }
     }
     
@@ -139,33 +159,17 @@ struct MatchHeaderView: View {
         
         switch match.status {
         case .upcoming:
-            formatter.dateStyle = .medium
+            formatter.dateStyle = .short
             formatter.timeStyle = .short
             return formatter.string(from: match.startTime)
-            
-        case .inProgress:
-            // For live matches, we can't accurately calculate the minute without API data
-            // Just show that it's in progress
-            return "Live"
-            
-        case .halftime:
-            return "Half-time"
-            
-        case .completed:
-            return "Full-time"
-            
-        case .unknown:
-            return "Unknown"
-        case .finished:
-            return "Finished"
-        case .postponed:
-            return "Postponed"
-        case .cancelled:
-            return "Cancelled"
-        case .paused:
-            return "Paused"
-        case .suspended:
-            return "Suspended"
+        case .inProgress: return "Live"
+        case .halftime: return "Half-time"
+        case .completed, .finished: return "Full-time"
+        case .postponed: return "Postponed"
+        case .cancelled: return "Cancelled"
+        case .paused: return "Paused"
+        case .suspended: return "Suspended"
+        case .unknown: return "Unknown"
         }
     }
 }

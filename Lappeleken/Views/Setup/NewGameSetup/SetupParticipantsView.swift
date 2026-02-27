@@ -2,7 +2,7 @@
 //  SetupParticipantsView.swift
 //  Lucky Football Slip
 //
-//  Step 1: Add participants
+//  Step 1: Add participants - Football themed design
 //
 
 import SwiftUI
@@ -11,132 +11,239 @@ struct SetupParticipantsView: View {
     @ObservedObject var gameSession: GameSession
     @Binding var participantName: String
     
+    @Environment(\.colorScheme) var colorScheme
+    
     var body: some View {
-        VStack(spacing: 24) {
-            SetupStepHeader(
+        VStack(spacing: 20) {
+            // Header
+            SetupStepHeaderNew(
                 icon: "person.2.fill",
-                iconColor: AppDesignSystem.Colors.primary,
                 title: "Who's Playing?",
-                subtitle: "Add the names of everyone who will be participating in this game."
+                subtitle: "Add everyone joining this game"
             )
             
-            // Add participant section
-            VStack(spacing: 16) {
-                HStack {
-                    TextField("Enter participant name", text: $participantName)
-                        .font(AppDesignSystem.Typography.bodyFont)
-                        .padding()
-                        .background(
-                            RoundedRectangle(cornerRadius: AppDesignSystem.Layout.cornerRadius)
-                                .fill(AppDesignSystem.Colors.cardBackground)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: AppDesignSystem.Layout.cornerRadius)
-                                        .stroke(AppDesignSystem.Colors.primary.opacity(0.3), lineWidth: 1)
-                                )
-                        )
-                        .onSubmit {
-                            addParticipant()
-                        }
-                    
-                    Button(action: addParticipant) {
-                        HStack(spacing: 8) {
-                            Image(systemName: "plus.circle.fill")
-                                .font(.system(size: 18))
-                            Text("Add")
-                                .font(.system(size: 16, weight: .semibold))
-                        }
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 12)
-                        .background(
-                            participantName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?
-                            Color.gray.opacity(0.5) :
-                            AppDesignSystem.Colors.primary
-                        )
-                        .cornerRadius(AppDesignSystem.Layout.cornerRadius)
-                        .vibrantButton()
-                    }
-                    .disabled(participantName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }
+            // Add participant input
+            addParticipantSection
             
             // Participants list
             if !gameSession.participants.isEmpty {
-                VStack(alignment: .leading, spacing: 16) {
-                    HStack {
-                        Text("Participants")
-                            .font(AppDesignSystem.Typography.subheadingFont)
-                            .foregroundColor(AppDesignSystem.Colors.primaryText)
-                        
-                        Spacer()
-                        
-                        VibrantStatusBadge("\(gameSession.participants.count)", color: AppDesignSystem.Colors.success)
-                    }
-                    
-                    LazyVStack(spacing: 12) {
-                        ForEach(gameSession.participants) { participant in
-                            ParticipantRow(
-                                participant: participant,
-                                onDelete: { deleteParticipant(participant) }
+                participantsList
+            } else {
+                emptyState
+            }
+        }
+    }
+    
+    // MARK: - Add Participant Section
+    
+    private var addParticipantSection: some View {
+        HStack(spacing: 12) {
+            // Input field
+            HStack(spacing: 10) {
+                Image(systemName: "person.fill")
+                    .font(.system(size: 16))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                
+                TextField("Enter name", text: $participantName)
+                    .font(.system(size: 16))
+                    .submitLabel(.done)
+                    .onSubmit(addParticipant)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(AppDesignSystem.Colors.cardBackground)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(AppDesignSystem.Colors.grassGreen.opacity(0.3), lineWidth: 1)
+                    )
+            )
+            
+            // Add button
+            Button(action: addParticipant) {
+                Image(systemName: "plus")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 48, height: 48)
+                    .background(
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(
+                                participantName.trimmingCharacters(in: .whitespaces).isEmpty
+                                    ? AppDesignSystem.Colors.secondaryText.opacity(0.4)
+                                    : AppDesignSystem.Colors.grassGreen
                             )
-                        }
-                    }
+                    )
+            }
+            .disabled(participantName.trimmingCharacters(in: .whitespaces).isEmpty)
+        }
+    }
+    
+    // MARK: - Participants List
+    
+    private var participantsList: some View {
+        VStack(spacing: 14) {
+            // Section header
+            HStack {
+                Text("Participants")
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                Spacer()
+                
+                Text("\(gameSession.participants.count)")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(Capsule().fill(AppDesignSystem.Colors.grassGreen))
+            }
+            
+            // Participant rows
+            LazyVStack(spacing: 10) {
+                ForEach(Array(gameSession.participants.enumerated()), id: \.element.id) { index, participant in
+                    ParticipantRowNew(
+                        participant: participant,
+                        index: index,
+                        onDelete: { deleteParticipant(participant) }
+                    )
                 }
             }
         }
     }
+    
+    // MARK: - Empty State
+    
+    private var emptyState: some View {
+        VStack(spacing: 16) {
+            ZStack {
+                Circle()
+                    .fill(AppDesignSystem.Colors.grassGreen.opacity(0.1))
+                    .frame(width: 72, height: 72)
+                
+                Image(systemName: "person.2")
+                    .font(.system(size: 32))
+                    .foregroundColor(AppDesignSystem.Colors.grassGreen.opacity(0.5))
+            }
+            
+            VStack(spacing: 6) {
+                Text("No Participants Yet")
+                    .font(.system(size: 17, weight: .semibold, design: .rounded))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                Text("Add at least 2 people to start a game")
+                    .font(.system(size: 14))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+            }
+        }
+        .padding(.vertical, 40)
+        .frame(maxWidth: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 14)
+                .fill(AppDesignSystem.Colors.cardBackground)
+                .shadow(
+                    color: colorScheme == .dark ? Color.black.opacity(0.2) : Color.black.opacity(0.05),
+                    radius: 6,
+                    x: 0,
+                    y: 3
+                )
+        )
+    }
+    
+    // MARK: - Actions
     
     private func addParticipant() {
         let trimmedName = participantName.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedName.isEmpty {
-            gameSession.addParticipant(trimmedName)
-            participantName = ""
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                gameSession.addParticipant(trimmedName)
+                participantName = ""
+            }
+            
+            let impact = UIImpactFeedbackGenerator(style: .light)
+            impact.impactOccurred()
         }
     }
     
     private func deleteParticipant(_ participant: Participant) {
-        if let index = gameSession.participants.firstIndex(where: { $0.id == participant.id }) {
-            gameSession.participants.remove(at: index)
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            if let index = gameSession.participants.firstIndex(where: { $0.id == participant.id }) {
+                gameSession.participants.remove(at: index)
+            }
         }
     }
 }
 
-// MARK: - Participant Row
+// MARK: - Participant Row (New Design)
 
-struct ParticipantRow: View {
+struct ParticipantRowNew: View {
     let participant: Participant
+    let index: Int
     let onDelete: () -> Void
     
+    @Environment(\.colorScheme) var colorScheme
+    
+    // Rotating colors for visual variety
+    private var accentColor: Color {
+        let colors: [Color] = [
+            AppDesignSystem.Colors.grassGreen,
+            AppDesignSystem.Colors.goalYellow,
+            AppDesignSystem.Colors.primary,
+            AppDesignSystem.Colors.accent
+        ]
+        return colors[index % colors.count]
+    }
+    
     var body: some View {
-        HStack {
-            Circle()
-                .fill(AppDesignSystem.Colors.primary)
-                .frame(width: 32, height: 32)
-                .overlay(
-                    Text(String(participant.name.prefix(1)).uppercased())
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(.white)
-                )
+        HStack(spacing: 14) {
+            // Avatar with jersey number style
+            ZStack {
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(accentColor)
+                    .frame(width: 44, height: 44)
+                
+                Text("\(index + 1)")
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+            }
             
-            Text(participant.name)
-                .font(AppDesignSystem.Typography.bodyFont)
-                .foregroundColor(AppDesignSystem.Colors.primaryText)
+            // Name
+            VStack(alignment: .leading, spacing: 2) {
+                Text(participant.name)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                Text("Player \(index + 1)")
+                    .font(.system(size: 12))
+                    .foregroundColor(accentColor)
+            }
             
             Spacer()
             
+            // Delete button
             Button(action: onDelete) {
                 Image(systemName: "trash")
+                    .font(.system(size: 14))
                     .foregroundColor(AppDesignSystem.Colors.error)
-                    .padding(8)
+                    .padding(10)
+                    .background(
+                        Circle()
+                            .fill(AppDesignSystem.Colors.error.opacity(0.1))
+                    )
             }
             .buttonStyle(PlainButtonStyle())
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
         .background(
-            RoundedRectangle(cornerRadius: AppDesignSystem.Layout.cornerRadius)
+            RoundedRectangle(cornerRadius: 12)
                 .fill(AppDesignSystem.Colors.cardBackground)
-                .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
+                .shadow(
+                    color: colorScheme == .dark ? Color.black.opacity(0.15) : Color.black.opacity(0.04),
+                    radius: 3,
+                    x: 0,
+                    y: 2
+                )
         )
     }
 }

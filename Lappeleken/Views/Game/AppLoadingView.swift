@@ -2,7 +2,7 @@
 //  AppLoadingView.swift
 //  Lucky Football Slip
 //
-//  App startup loading screen
+//  App startup loading screen - Football themed
 //
 
 import SwiftUI
@@ -13,7 +13,7 @@ struct AppLoadingView: View {
     @State private var logoScale: CGFloat = 0.8
     @State private var logoOpacity: Double = 0
     @State private var textOpacity: Double = 0
-    @State private var showMainContent = false
+    @State private var ballRotation: Double = 0
     
     private let loadingTips = [
         "🎯 Welcome to Lucky Football Slip!",
@@ -25,110 +25,156 @@ struct AppLoadingView: View {
     
     var body: some View {
         ZStack {
-            // App brand gradient background
+            // Football pitch gradient
             LinearGradient(
                 colors: [
-                    AppDesignSystem.Colors.primary,
-                    AppDesignSystem.Colors.primary.opacity(0.8),
-                    AppDesignSystem.Colors.secondary.opacity(0.6)
+                    AppDesignSystem.Colors.grassGreen,
+                    AppDesignSystem.Colors.grassGreen.opacity(0.85),
+                    Color(red: 0.1, green: 0.4, blue: 0.2)
                 ],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
             .ignoresSafeArea()
             
+            // Pitch decorations
+            pitchDecoration
+            
             VStack(spacing: 40) {
                 Spacer()
-                
-                // App logo/icon area
-                VStack(spacing: 24) {
-                    // Main app icon
-                    ZStack {
-                        Circle()
-                            .fill(.white.opacity(0.2))
-                            .frame(width: 140, height: 140)
-                            .scaleEffect(isAnimating ? 1.05 : 0.95)
-                            .animation(
-                                Animation.easeInOut(duration: 2.0).repeatForever(autoreverses: true),
-                                value: isAnimating
-                            )
-                        
-                        VStack(spacing: 8) {
-                            Image(systemName: "soccerball")
-                                .font(.system(size: 50, weight: .medium))
-                                .foregroundColor(.white)
-                            
-                            Text("LFS")
-                                .font(.system(size: 16, weight: .bold, design: .rounded))
-                                .foregroundColor(.white)
-                        }
-                    }
-                    .scaleEffect(logoScale)
-                    .opacity(logoOpacity)
-                    
-                    // App name and subtitle
-                    VStack(spacing: 8) {
-                        Text("Lucky Football Slip")
-                            .font(.system(size: 28, weight: .bold, design: .rounded))
-                            .foregroundColor(.white)
-                        
-                        Text("The Ultimate Football Betting Game")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(.white.opacity(0.9))
-                    }
-                    .opacity(textOpacity)
-                }
-                
+                logoSection
                 Spacer()
-                
-                // Loading indicator
-                VStack(spacing: 20) {
-                    // Spinning loading indicator
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                        .scaleEffect(1.2)
-                    
-                    // Rotating tips
-                    Text(loadingTips[currentTip])
-                        .font(.system(size: 18, weight: .medium))
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 40)
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
-                        .id("tip-\(currentTip)")
-                        .opacity(textOpacity)
-                }
-                
+                loadingSection
                 Spacer()
             }
         }
-        .onAppear {
-            startLoadingSequence()
+        .onAppear { startLoadingSequence() }
+    }
+    
+    // MARK: - Pitch Decoration
+    
+    private var pitchDecoration: some View {
+        GeometryReader { geo in
+            ZStack {
+                // Center circle
+                Circle()
+                    .stroke(Color.white.opacity(0.1), lineWidth: 2)
+                    .frame(width: geo.size.width * 0.5)
+                    .position(x: geo.size.width / 2, y: geo.size.height * 0.35)
+                
+                // Center dot
+                Circle()
+                    .fill(Color.white.opacity(0.1))
+                    .frame(width: 12, height: 12)
+                    .position(x: geo.size.width / 2, y: geo.size.height * 0.35)
+                
+                // Halfway line
+                Rectangle()
+                    .fill(Color.white.opacity(0.08))
+                    .frame(width: geo.size.width, height: 2)
+                    .position(x: geo.size.width / 2, y: geo.size.height * 0.35)
+            }
         }
     }
     
+    // MARK: - Logo Section
+    
+    private var logoSection: some View {
+        VStack(spacing: 24) {
+            ZStack {
+                // Outer glow
+                Circle()
+                    .fill(Color.white.opacity(0.15))
+                    .frame(width: 140, height: 140)
+                    .scaleEffect(isAnimating ? 1.1 : 0.95)
+                    .animation(Animation.easeInOut(duration: 2.0).repeatForever(autoreverses: true), value: isAnimating)
+                
+                // Inner circle
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: 110, height: 110)
+                    .shadow(color: Color.black.opacity(0.2), radius: 20, x: 0, y: 10)
+                
+                // Football icon
+                VStack(spacing: 6) {
+                    Image(systemName: "soccerball")
+                        .font(.system(size: 44, weight: .medium))
+                        .foregroundColor(AppDesignSystem.Colors.grassGreen)
+                        .rotationEffect(.degrees(ballRotation))
+                    
+                    Text("LFS")
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .foregroundColor(AppDesignSystem.Colors.grassGreen)
+                }
+            }
+            .scaleEffect(logoScale)
+            .opacity(logoOpacity)
+            
+            // App name
+            VStack(spacing: 10) {
+                Text("Lucky Football Slip")
+                    .font(.system(size: 30, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+                
+                Text("The Ultimate Football Betting Game")
+                    .font(.system(size: 16, weight: .medium, design: .rounded))
+                    .foregroundColor(.white.opacity(0.85))
+            }
+            .opacity(textOpacity)
+        }
+    }
+    
+    // MARK: - Loading Section
+    
+    private var loadingSection: some View {
+        VStack(spacing: 24) {
+            // Loading dots
+            HStack(spacing: 8) {
+                ForEach(0..<3, id: \.self) { index in
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: 10, height: 10)
+                        .scaleEffect(isAnimating ? 1.0 : 0.5)
+                        .opacity(isAnimating ? 1.0 : 0.3)
+                        .animation(
+                            Animation.easeInOut(duration: 0.6)
+                                .repeatForever(autoreverses: true)
+                                .delay(Double(index) * 0.2),
+                            value: isAnimating
+                        )
+                }
+            }
+            
+            // Tips
+            Text(loadingTips[currentTip])
+                .font(.system(size: 16, weight: .medium, design: .rounded))
+                .foregroundColor(.white)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                .id("tip-\(currentTip)")
+                .opacity(textOpacity)
+        }
+    }
+    
+    // MARK: - Animation Sequence
+    
     private func startLoadingSequence() {
-        // Logo animation
         withAnimation(.easeOut(duration: 0.8)) {
             logoScale = 1.0
             logoOpacity = 1.0
         }
         
-        // Text animation (delayed)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-            withAnimation(.easeOut(duration: 0.6)) {
-                textOpacity = 1.0
-            }
+            withAnimation(.easeOut(duration: 0.6)) { textOpacity = 1.0 }
         }
         
-        // Start other animations
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-            withAnimation {
-                isAnimating = true
+            withAnimation { isAnimating = true }
+            withAnimation(Animation.linear(duration: 20).repeatForever(autoreverses: false)) {
+                ballRotation = 360
             }
-            
-            // Start tip rotation
-            Timer.scheduledTimer(withTimeInterval: 1.5, repeats: true) { _ in
+            Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
                 withAnimation(.easeInOut(duration: 0.5)) {
                     currentTip = (currentTip + 1) % loadingTips.count
                 }
@@ -137,7 +183,7 @@ struct AppLoadingView: View {
     }
 }
 
-// MARK: - Main App View with Loading State
+// MARK: - Main App View
 
 struct MainAppView: View {
     @State private var isLoading = true
@@ -167,21 +213,15 @@ struct MainAppView: View {
     }
     
     private func startupSequence() {
-        // Initialize app services
         ManualModeManager.shared.initialize()
-        
-        // Validate configuration
         AppConfig.validateConfiguration()
         
-        // Simulate app initialization tasks
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3.0) {
-            withAnimation(.easeInOut(duration: 0.5)) {
-                isLoading = false
-            }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            withAnimation(.easeInOut(duration: 0.5)) { isLoading = false }
         }
     }
 }
 
 #Preview {
-    MainAppView()
+    AppLoadingView()
 }

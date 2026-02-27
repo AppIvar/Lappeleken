@@ -201,101 +201,195 @@ struct BetRuleCard: View {
     @Binding var amount: Double
     @Binding var isNegative: Bool
     
-    var body: some View {
-        VStack(spacing: 12) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(eventType.rawValue.capitalized)
-                        .font(.system(size: 16, weight: .medium))
-                        .foregroundColor(AppDesignSystem.Colors.primaryText)
-                    
-                    Text(getEventDescription(eventType))
-                        .font(AppDesignSystem.Typography.captionFont)
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                        .lineLimit(2)
-                }
-                
-                Spacer()
-                
-                HStack(spacing: 12) {
-                    Button(action: {
-                        withAnimation(AppDesignSystem.Animations.quick) {
-                            isNegative.toggle()
-                        }
-                    }) {
-                        Image(systemName: isNegative ? "minus.circle.fill" : "plus.circle.fill")
-                            .foregroundColor(isNegative ? AppDesignSystem.Colors.error : AppDesignSystem.Colors.success)
-                            .font(.title2)
-                    }
-                    .scaleEffect(isNegative ? 1.1 : 1.0)
-                    .animation(AppDesignSystem.Animations.bouncy, value: isNegative)
-                    
-                    TextField("Amount", value: $amount, format: .number)
-                        .font(.system(size: 16, weight: .semibold))
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .frame(width: 80)
-                        .background(
-                            RoundedRectangle(cornerRadius: AppDesignSystem.Layout.smallCornerRadius)
-                                .fill(AppDesignSystem.Colors.cardBackground)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: AppDesignSystem.Layout.smallCornerRadius)
-                                        .stroke(AppDesignSystem.Colors.primary.opacity(0.3), lineWidth: 1)
-                                )
-                        )
-                        .keyboardType(.decimalPad)
-                }
-            }
-            
-            HStack {
-                Spacer()
-                
-                VStack(alignment: .trailing, spacing: 2) {
-                    HStack(spacing: 4) {
-                        Image(systemName: isNegative ? "arrow.down" : "arrow.up")
-                            .font(.system(size: 12, weight: .bold))
-                        
-                        Text(isNegative ? "Penalty" : "Reward")
-                            .font(.system(size: 12, weight: .semibold))
-                    }
-                    .foregroundColor(isNegative ? AppDesignSystem.Colors.error : AppDesignSystem.Colors.success)
-                    
-                    Text(isNegative ? "Others gain money" : "Player owners gain money")
-                        .font(.system(size: 10))
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill((isNegative ? AppDesignSystem.Colors.error : AppDesignSystem.Colors.success).opacity(0.1))
-                )
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: AppDesignSystem.Layout.cornerRadius)
-                .fill(AppDesignSystem.Colors.cardBackground)
-                .overlay(
-                    RoundedRectangle(cornerRadius: AppDesignSystem.Layout.cornerRadius)
-                        .stroke((isNegative ? AppDesignSystem.Colors.error : AppDesignSystem.Colors.success).opacity(0.3), lineWidth: 1)
-                )
-        )
-        .shadow(color: Color.black.opacity(0.05), radius: 2, x: 0, y: 1)
+    @State private var amountText: String = ""
+    @FocusState private var isAmountFocused: Bool
+    
+    private var currencySymbol: String {
+        UserDefaults.standard.string(forKey: "currencySymbol") ?? "€"
     }
     
-    private func getEventDescription(_ eventType: Bet.EventType) -> String {
+    private var eventColor: Color {
+        switch eventType {
+        case .goal: return AppDesignSystem.Colors.success
+        case .assist: return AppDesignSystem.Colors.info
+        case .yellowCard: return AppDesignSystem.Colors.warning
+        case .redCard: return AppDesignSystem.Colors.error
+        case .ownGoal: return AppDesignSystem.Colors.warning
+        case .penalty: return AppDesignSystem.Colors.primary
+        case .penaltyMissed: return AppDesignSystem.Colors.error
+        case .cleanSheet: return AppDesignSystem.Colors.success
+        case .custom: return AppDesignSystem.Colors.accent
+        }
+    }
+    
+    private var eventIcon: String {
+        switch eventType {
+        case .goal: return "soccerball"
+        case .assist: return "arrow.up.forward"
+        case .yellowCard, .redCard: return "square.fill"
+        case .ownGoal: return "arrow.uturn.backward"
+        case .penalty: return "p.circle"
+        case .penaltyMissed: return "p.circle.fill"
+        case .cleanSheet: return "lock.shield"
+        case .custom: return "star"
+        }
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Colored header strip
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [eventColor, eventColor.opacity(0.6)],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .frame(height: 4)
+            
+            VStack(spacing: 14) {
+                // Header with icon
+                HStack(spacing: 12) {
+                    ZStack {
+                        Circle()
+                            .fill(
+                                LinearGradient(
+                                    colors: [eventColor, eventColor.opacity(0.6)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                )
+                            )
+                            .frame(width: 44, height: 44)
+                        
+                        Image(systemName: eventIcon)
+                            .font(.system(size: 20, weight: .medium))
+                            .foregroundColor(.white)
+                    }
+                    .shadow(color: eventColor.opacity(0.3), radius: 4, x: 0, y: 2)
+                    
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(eventType.rawValue)
+                            .font(.system(size: 16, weight: .bold, design: .rounded))
+                            .foregroundColor(AppDesignSystem.Colors.primaryText)
+                        
+                        Text(eventDescription)
+                            .font(.system(size: 12))
+                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    }
+                    
+                    Spacer()
+                    
+                    // Win/Lose toggle
+                    Button(action: {
+                        isNegative.toggle()
+                        updateAmount()
+                    }) {
+                        HStack(spacing: 4) {
+                            Image(systemName: isNegative ? "minus.circle.fill" : "plus.circle.fill")
+                                .font(.system(size: 14))
+                            Text(isNegative ? "LOSE" : "WIN")
+                                .font(.system(size: 12, weight: .bold))
+                        }
+                        .foregroundColor(isNegative ? AppDesignSystem.Colors.error : AppDesignSystem.Colors.success)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(
+                            Capsule()
+                                .fill(isNegative ? AppDesignSystem.Colors.error.opacity(0.12) : AppDesignSystem.Colors.success.opacity(0.12))
+                        )
+                    }
+                }
+                
+                // Amount input with TextField
+                HStack(spacing: 8) {
+                    // Currency symbol
+                    Text(currencySymbol)
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundColor(eventColor)
+                        .frame(width: 24)
+                    
+                    // Amount TextField
+                    TextField("0", text: $amountText)
+                        .keyboardType(.decimalPad)
+                        .font(.system(size: 24, weight: .bold, design: .rounded))
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
+                        .multilineTextAlignment(.center)
+                        .focused($isAmountFocused)
+                        .onChange(of: amountText) { newValue in
+                            // Filter to only allow numbers and decimal
+                            let filtered = newValue.filter { "0123456789.".contains($0) }
+                            if filtered != newValue {
+                                amountText = filtered
+                            }
+                            updateAmount()
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                        .background(
+                            RoundedRectangle(cornerRadius: AppDesignSystem.Layout.radiusSmall)
+                                .fill(AppDesignSystem.Colors.background)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: AppDesignSystem.Layout.radiusSmall)
+                                        .stroke(isAmountFocused ? eventColor : eventColor.opacity(0.3), lineWidth: isAmountFocused ? 2 : 1)
+                                )
+                        )
+                    
+                    // Quick amount buttons
+                    VStack(spacing: 4) {
+                        quickAmountButton(5)
+                        quickAmountButton(10)
+                    }
+                    
+                    VStack(spacing: 4) {
+                        quickAmountButton(20)
+                        quickAmountButton(50)
+                    }
+                }
+            }
+            .padding(16)
+        }
+        .background(
+            RoundedRectangle(cornerRadius: AppDesignSystem.Layout.radiusMedium)
+                .fill(AppDesignSystem.Colors.cardBackground)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: AppDesignSystem.Layout.radiusMedium))
+        .onAppear {
+            amountText = amount == 0 ? "" : String(format: "%.0f", abs(amount))
+        }
+    }
+    
+    private func quickAmountButton(_ value: Int) -> some View {
+        Button(action: {
+            amountText = "\(value)"
+            updateAmount()
+        }) {
+            Text("\(value)")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(eventColor)
+                .frame(width: 36, height: 28)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(eventColor.opacity(0.1))
+                )
+        }
+    }
+    
+    private func updateAmount() {
+        let value = Double(amountText) ?? 0
+        amount = isNegative ? -abs(value) : abs(value)
+    }
+    
+    private var eventDescription: String {
         switch eventType {
         case .goal: return "Player scores a goal"
         case .assist: return "Player provides an assist"
         case .yellowCard: return "Player receives a yellow card"
         case .redCard: return "Player receives a red card"
-        case .ownGoal: return "Player scores an own goal"
-        case .penalty: return "Player scores a penalty"
+        case .ownGoal: return "Player scores own goal"
+        case .penalty: return "Player converts a penalty"
         case .penaltyMissed: return "Player misses a penalty"
-        case .cleanSheet: return "Goalkeeper keeps a clean sheet"
+        case .cleanSheet: return "Goalkeeper keeps clean sheet"
         case .custom: return "Custom event"
         }
     }
@@ -454,21 +548,39 @@ struct SetupStepHeader: View {
     let subtitle: String
     
     var body: some View {
-        VStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 48))
-                .foregroundColor(iconColor)
+        HStack(spacing: 16) {
+            // Gradient icon
+            ZStack {
+                Circle()
+                    .fill(
+                        LinearGradient(
+                            colors: [iconColor, iconColor.opacity(0.6)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                    )
+                    .frame(width: 56, height: 56)
+                
+                Image(systemName: icon)
+                    .font(.system(size: 26, weight: .medium))
+                    .foregroundColor(.white)
+            }
+            .shadow(color: iconColor.opacity(0.4), radius: 8, x: 0, y: 4)
             
-            Text(title)
-                .font(AppDesignSystem.Typography.headingFont)
-                .foregroundColor(AppDesignSystem.Colors.primaryText)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                Text(subtitle)
+                    .font(.system(size: 14))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    .lineLimit(2)
+            }
             
-            Text(subtitle)
-                .font(AppDesignSystem.Typography.bodyFont)
-                .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 20)
+            Spacer()
         }
+        .padding(.bottom, 8)
     }
 }
 
@@ -476,36 +588,75 @@ struct SetupStepHeader: View {
 
 struct SetupSummaryCard<Content: View>: View {
     let title: String
+    let icon: String
     let count: Int
     let color: Color
     @ViewBuilder let content: () -> Content
     
+    init(title: String, icon: String = "list.bullet", count: Int, color: Color, @ViewBuilder content: @escaping () -> Content) {
+        self.title = title
+        self.icon = icon
+        self.count = count
+        self.color = color
+        self.content = content
+    }
+    
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 0) {
+            // Colored header
             HStack {
+                ZStack {
+                    Circle()
+                        .fill(color.opacity(0.15))
+                        .frame(width: 32, height: 32)
+                    
+                    Image(systemName: icon)
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(color)
+                }
+                
                 Text(title)
-                    .font(AppDesignSystem.Typography.subheadingFont)
+                    .font(.system(size: 16, weight: .bold, design: .rounded))
                     .foregroundColor(AppDesignSystem.Colors.primaryText)
                 
                 Spacer()
                 
-                VibrantStatusBadge("\(count)", color: color)
+                Text("\(count)")
+                    .font(.system(size: 14, weight: .bold, design: .rounded))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(
+                        Capsule().fill(
+                            LinearGradient(
+                                colors: [color, color.opacity(0.7)],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                    )
             }
+            .padding(16)
+            .background(color.opacity(0.08))
             
-            content()
+            // Content
+            VStack(alignment: .leading, spacing: 8) {
+                content()
+            }
+            .padding(16)
         }
-        .padding(AppDesignSystem.Layout.standardPadding)
         .background(
-            RoundedRectangle(cornerRadius: AppDesignSystem.Layout.cornerRadius)
+            RoundedRectangle(cornerRadius: AppDesignSystem.Layout.radiusMedium)
                 .fill(AppDesignSystem.Colors.cardBackground)
-                .overlay(
-                    RoundedRectangle(cornerRadius: AppDesignSystem.Layout.cornerRadius)
-                        .stroke(color.opacity(0.3), lineWidth: 1)
-                )
         )
-        .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
+        .overlay(
+            RoundedRectangle(cornerRadius: AppDesignSystem.Layout.radiusMedium)
+                .stroke(color.opacity(0.2), lineWidth: 1)
+        )
     }
 }
+
+
 
 // MARK: - Helper Functions
 

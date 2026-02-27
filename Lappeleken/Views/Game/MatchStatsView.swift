@@ -2,226 +2,322 @@
 //  MatchStatsView.swift
 //  Lucky Football Slip
 //
-//  Created by Ivar Hovland on 22/05/2025.
+//  Football themed match statistics view
 //
 
 import SwiftUI
 
 struct MatchStatsView: View {
     @ObservedObject var gameSession: GameSession
+    @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
-        ScrollView {
-            VStack(spacing: 20) {
+        ScrollView(showsIndicators: false) {
+            VStack(spacing: 16) {
                 // Participant standings
-                ParticipantStandingsView(gameSession: gameSession)
+                standingsSection
                 
-                // Player performance stats
-                PlayerPerformanceView(gameSession: gameSession)
+                // Top performers
+                topPerformersSection
                 
                 // Event summary
-                EventSummaryView(gameSession: gameSession)
+                eventSummarySection
             }
-            .padding()
+            .padding(16)
         }
-        .withTabBanner(tabName: "MatchStats")
+        .background(footballBackground)
     }
-}
-
-struct ParticipantStandingsView: View {
-    @ObservedObject var gameSession: GameSession
     
-    var body: some View {
-        CardView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Participant Standings")
-                    .font(AppDesignSystem.Typography.subheadingFont)
-                    .foregroundColor(AppDesignSystem.Colors.primaryText)
-                
-                ForEach(gameSession.participants.sorted(by: { $0.balance > $1.balance })) { participant in
-                    HStack {
-                        // Position indicator
-                        let position = gameSession.participants.sorted(by: { $0.balance > $1.balance }).firstIndex(where: { $0.id == participant.id })! + 1
-                        
-                        Text("\(position).")
-                            .font(AppDesignSystem.Typography.bodyFont.bold())
-                            .foregroundColor(positionColor(position))
-                            .frame(width: 24, alignment: .leading)
-                        
-                        Text(participant.name)
-                            .font(AppDesignSystem.Typography.bodyFont)
-                            .foregroundColor(AppDesignSystem.Colors.primaryText)
-                        
-                        Spacer()
-                        
-                        Text(formatCurrency(participant.balance))
-                            .font(AppDesignSystem.Typography.bodyFont.bold())
-                            .foregroundColor(participant.balance >= 0 ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.error)
+    // MARK: - Background
+    
+    private var footballBackground: some View {
+        ZStack {
+            Color(colorScheme == .dark ? UIColor(red: 0.05, green: 0.08, blue: 0.06, alpha: 1) : UIColor(red: 0.96, green: 0.98, blue: 0.96, alpha: 1))
+            
+            VStack {
+                LinearGradient(
+                    colors: [
+                        AppDesignSystem.Colors.grassGreen.opacity(colorScheme == .dark ? 0.08 : 0.04),
+                        Color.clear
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 100)
+                Spacer()
+            }
+        }
+        .ignoresSafeArea()
+    }
+    
+    // MARK: - Standings Section
+    
+    private var standingsSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            StatsSectionHeader(title: "Standings", icon: "trophy.fill", color: AppDesignSystem.Colors.goalYellow)
+            
+            let sortedParticipants = gameSession.participants.sorted { $0.balance > $1.balance }
+            
+            VStack(spacing: 0) {
+                ForEach(Array(sortedParticipants.enumerated()), id: \.element.id) { index, participant in
+                    StandingRow(participant: participant, position: index + 1)
+                    
+                    if index < sortedParticipants.count - 1 {
+                        Divider()
+                            .padding(.horizontal, 12)
                     }
-                    .padding(.vertical, 4)
                 }
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(AppDesignSystem.Colors.cardBackground)
+            )
+        }
+    }
+    
+    // MARK: - Top Performers
+    
+    private var topPerformersSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            StatsSectionHeader(title: "Top Performers", icon: "star.fill", color: AppDesignSystem.Colors.accent)
+            
+            let hasStats = gameSession.availablePlayers.contains { $0.goals > 0 || $0.assists > 0 || $0.yellowCards > 0 || $0.redCards > 0 }
+            
+            if hasStats {
+                VStack(spacing: 8) {
+                    if let topScorer = gameSession.availablePlayers.max(by: { $0.goals < $1.goals }), topScorer.goals > 0 {
+                        PerformerRow(
+                            title: "Top Scorer",
+                            player: topScorer,
+                            stat: "\(topScorer.goals) goal\(topScorer.goals == 1 ? "" : "s")",
+                            icon: "soccerball",
+                            color: AppDesignSystem.Colors.grassGreen
+                        )
+                    }
+                    
+                    if let topAssister = gameSession.availablePlayers.max(by: { $0.assists < $1.assists }), topAssister.assists > 0 {
+                        PerformerRow(
+                            title: "Most Assists",
+                            player: topAssister,
+                            stat: "\(topAssister.assists) assist\(topAssister.assists == 1 ? "" : "s")",
+                            icon: "arrow.up.forward",
+                            color: AppDesignSystem.Colors.info
+                        )
+                    }
+                    
+                    let mostCarded = gameSession.availablePlayers.max { ($0.yellowCards + $0.redCards) < ($1.yellowCards + $1.redCards) }
+                    if let cardedPlayer = mostCarded, (cardedPlayer.yellowCards + cardedPlayer.redCards) > 0 {
+                        PerformerRow(
+                            title: "Most Cards",
+                            player: cardedPlayer,
+                            stat: "\(cardedPlayer.yellowCards + cardedPlayer.redCards) card\((cardedPlayer.yellowCards + cardedPlayer.redCards) == 1 ? "" : "s")",
+                            icon: "square.fill",
+                            color: AppDesignSystem.Colors.goalYellow
+                        )
+                    }
+                }
+            } else {
+                emptyPerformersView
             }
         }
     }
     
-    private func positionColor(_ position: Int) -> Color {
-        switch position {
-        case 1: return AppDesignSystem.Colors.success
-        case 2: return AppDesignSystem.Colors.primary
-        case 3: return AppDesignSystem.Colors.secondary
-        default: return AppDesignSystem.Colors.secondaryText
+    private var emptyPerformersView: some View {
+        HStack {
+            Spacer()
+            VStack(spacing: 8) {
+                Image(systemName: "chart.bar.xaxis")
+                    .font(.system(size: 24))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText.opacity(0.5))
+                
+                Text("No stats yet")
+                    .font(.system(size: 13))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+            }
+            .padding(.vertical, 20)
+            Spacer()
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(AppDesignSystem.Colors.cardBackground)
+        )
+    }
+    
+    // MARK: - Event Summary
+    
+    private var eventSummarySection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            StatsSectionHeader(title: "Event Summary", icon: "list.bullet.clipboard", color: AppDesignSystem.Colors.grassGreen)
+            
+            if gameSession.events.isEmpty {
+                emptyEventsView
+            } else {
+                let eventCounts = Dictionary(grouping: gameSession.events, by: { $0.eventType })
+                    .mapValues { $0.count }
+                
+                VStack(spacing: 0) {
+                    ForEach(Bet.EventType.allCases, id: \.self) { eventType in
+                        if let count = eventCounts[eventType], count > 0 {
+                            EventCountRow(eventType: eventType, count: count)
+                            
+                            if eventType != Bet.EventType.allCases.filter({ eventCounts[$0] ?? 0 > 0 }).last {
+                                Divider()
+                                    .padding(.horizontal, 12)
+                            }
+                        }
+                    }
+                }
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(AppDesignSystem.Colors.cardBackground)
+                )
+            }
         }
     }
     
-    private func formatCurrency(_ value: Double) -> String {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .currency
-        formatter.currencySymbol = UserDefaults.standard.string(forKey: "currencySymbol") ?? "€"
-        
-        return formatter.string(from: NSNumber(value: value)) ?? "€0.00"
+    private var emptyEventsView: some View {
+        HStack {
+            Spacer()
+            VStack(spacing: 8) {
+                Image(systemName: "clock")
+                    .font(.system(size: 24))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText.opacity(0.5))
+                
+                Text("No events recorded yet")
+                    .font(.system(size: 13))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+            }
+            .padding(.vertical, 20)
+            Spacer()
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(AppDesignSystem.Colors.cardBackground)
+        )
     }
 }
 
-struct PlayerPerformanceView: View {
-    @ObservedObject var gameSession: GameSession
+// MARK: - Stats Section Header
+
+struct StatsSectionHeader: View {
+    let title: String
+    let icon: String
+    let color: Color
     
     var body: some View {
-        CardView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Top Performers")
-                    .font(AppDesignSystem.Typography.subheadingFont)
-                    .foregroundColor(AppDesignSystem.Colors.primaryText)
-                
-                // Top scorers
-                if let topScorer = gameSession.availablePlayers.max(by: { $0.goals < $1.goals }), topScorer.goals > 0 {
-                    PerformanceRow(
-                        title: "Top Scorer",
-                        player: topScorer,
-                        stat: "\(topScorer.goals) goals",
-                        icon: "soccerball",
-                        color: AppDesignSystem.Colors.success
-                    )
-                }
-                
-                // Top assists
-                if let topAssister = gameSession.availablePlayers.max(by: { $0.assists < $1.assists }), topAssister.assists > 0 {
-                    PerformanceRow(
-                        title: "Most Assists",
-                        player: topAssister,
-                        stat: "\(topAssister.assists) assists",
-                        icon: "arrow.up.forward",
-                        color: AppDesignSystem.Colors.primary
-                    )
-                }
-                
-                // Most carded
-                let mostCarded = gameSession.availablePlayers.max { (player1, player2) in
-                    let cards1 = player1.yellowCards + player1.redCards
-                    let cards2 = player2.yellowCards + player2.redCards
-                    return cards1 < cards2
-                }
-                
-                if let cardedPlayer = mostCarded, (cardedPlayer.yellowCards + cardedPlayer.redCards) > 0 {
-                    PerformanceRow(
-                        title: "Most Cards",
-                        player: cardedPlayer,
-                        stat: "\(cardedPlayer.yellowCards + cardedPlayer.redCards) cards",
-                        icon: "square.fill",
-                        color: AppDesignSystem.Colors.warning
-                    )
-                }
-                
-                if gameSession.availablePlayers.allSatisfy({ $0.goals == 0 && $0.assists == 0 && $0.yellowCards == 0 && $0.redCards == 0 }) {
-                    Text("No player statistics yet")
-                        .font(AppDesignSystem.Typography.bodyFont)
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                        .italic()
-                }
-            }
+        HStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 14))
+                .foregroundColor(color)
+            
+            Text(title)
+                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .foregroundColor(AppDesignSystem.Colors.primaryText)
         }
     }
 }
 
-struct PerformanceRow: View {
+// MARK: - Standing Row
+
+struct StandingRow: View {
+    let participant: Participant
+    let position: Int
+    
+    private var positionColor: Color {
+        switch position {
+        case 1: return AppDesignSystem.Colors.goalYellow
+        case 2: return AppDesignSystem.Colors.secondaryText
+        case 3: return AppDesignSystem.Colors.accent
+        default: return AppDesignSystem.Colors.secondaryText.opacity(0.6)
+        }
+    }
+    
+    private var currencySymbol: String {
+        UserDefaults.standard.string(forKey: "currencySymbol") ?? "€"
+    }
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Position badge
+            ZStack {
+                Circle()
+                    .fill(positionColor.opacity(position <= 3 ? 0.15 : 0.08))
+                    .frame(width: 28, height: 28)
+                
+                Text("\(position)")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(positionColor)
+            }
+            
+            Text(participant.name)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundColor(AppDesignSystem.Colors.primaryText)
+            
+            Spacer()
+            
+            Text("\(participant.balance >= 0 ? "+" : "")\(currencySymbol)\(String(format: "%.2f", participant.balance))")
+                .font(.system(size: 14, weight: .bold, design: .rounded))
+                .foregroundColor(participant.balance >= 0 ? AppDesignSystem.Colors.grassGreen : AppDesignSystem.Colors.error)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+    }
+}
+
+// MARK: - Performer Row
+
+struct PerformerRow: View {
     let title: String
     let player: Player
     let stat: String
     let icon: String
     let color: Color
     
+    @Environment(\.colorScheme) var colorScheme
+    
     var body: some View {
-        HStack {
-            Image(systemName: icon)
-                .font(.system(size: 16))
-                .foregroundColor(color)
-                .frame(width: 20)
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(color.opacity(0.12))
+                    .frame(width: 36, height: 36)
+                
+                Image(systemName: icon)
+                    .font(.system(size: 16))
+                    .foregroundColor(color)
+            }
             
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(AppDesignSystem.Typography.captionFont)
+                    .font(.system(size: 11))
                     .foregroundColor(AppDesignSystem.Colors.secondaryText)
                 
                 Text(player.name)
-                    .font(AppDesignSystem.Typography.bodyFont)
+                    .font(.system(size: 13, weight: .medium))
                     .foregroundColor(AppDesignSystem.Colors.primaryText)
             }
             
             Spacer()
             
             Text(stat)
-                .font(AppDesignSystem.Typography.bodyFont.bold())
+                .font(.system(size: 13, weight: .bold))
                 .foregroundColor(color)
         }
-        .padding(.vertical, 4)
+        .padding(12)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .fill(AppDesignSystem.Colors.cardBackground)
+        )
     }
 }
 
-struct EventSummaryView: View {
-    @ObservedObject var gameSession: GameSession
+// MARK: - Event Count Row
+
+struct EventCountRow: View {
+    let eventType: Bet.EventType
+    let count: Int
     
-    var body: some View {
-        CardView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text("Event Summary")
-                    .font(AppDesignSystem.Typography.subheadingFont)
-                    .foregroundColor(AppDesignSystem.Colors.primaryText)
-                
-                if gameSession.events.isEmpty {
-                    Text("No events recorded yet")
-                        .font(AppDesignSystem.Typography.bodyFont)
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                        .italic()
-                } else {
-                    let eventCounts = Dictionary(grouping: gameSession.events, by: { $0.eventType })
-                        .mapValues { $0.count }
-                    
-                    ForEach(Bet.EventType.allCases, id: \.self) { eventType in
-                        if let count = eventCounts[eventType], count > 0 {
-                            HStack {
-                                Image(systemName: iconForEvent(eventType))
-                                    .font(.system(size: 16))
-                                    .foregroundColor(colorForEvent(eventType))
-                                    .frame(width: 20)
-                                
-                                Text(eventType.rawValue)
-                                    .font(AppDesignSystem.Typography.bodyFont)
-                                    .foregroundColor(AppDesignSystem.Colors.primaryText)
-                                
-                                Spacer()
-                                
-                                Text("\(count)")
-                                    .font(AppDesignSystem.Typography.bodyFont.bold())
-                                    .foregroundColor(AppDesignSystem.Colors.primaryText)
-                            }
-                            .padding(.vertical, 2)
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    private func iconForEvent(_ eventType: Bet.EventType) -> String {
+    private var eventIcon: String {
         switch eventType {
         case .goal: return "soccerball"
         case .assist: return "arrow.up.forward"
@@ -235,15 +331,36 @@ struct EventSummaryView: View {
         }
     }
     
-    private func colorForEvent(_ eventType: Bet.EventType) -> Color {
+    private var eventColor: Color {
         switch eventType {
-        case .goal, .assist: return AppDesignSystem.Colors.success
-        case .yellowCard: return Color.yellow
+        case .goal, .assist: return AppDesignSystem.Colors.grassGreen
+        case .yellowCard: return AppDesignSystem.Colors.goalYellow
         case .redCard: return AppDesignSystem.Colors.error
         case .ownGoal, .penaltyMissed: return AppDesignSystem.Colors.warning
-        case .penalty: return AppDesignSystem.Colors.primary
-        case .cleanSheet: return Color.blue
-        case .custom: return AppDesignSystem.Colors.secondary
+        case .penalty: return AppDesignSystem.Colors.info
+        case .cleanSheet: return AppDesignSystem.Colors.info
+        case .custom: return AppDesignSystem.Colors.accent
         }
+    }
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: eventIcon)
+                .font(.system(size: 14))
+                .foregroundColor(eventColor)
+                .frame(width: 20)
+            
+            Text(eventType.rawValue.capitalized)
+                .font(.system(size: 13, weight: .medium))
+                .foregroundColor(AppDesignSystem.Colors.primaryText)
+            
+            Spacer()
+            
+            Text("\(count)")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundColor(eventColor)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
     }
 }

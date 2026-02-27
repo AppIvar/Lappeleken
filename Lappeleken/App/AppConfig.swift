@@ -38,7 +38,7 @@ struct AppConfig {
     /// Purchase system configuration
     struct PurchaseConfig {
         /// Master toggle for all purchases (for testing without payments)
-        static let purchasesEnabled = true  // Set to true when ready to enable purchases
+        static let purchasesEnabled = false  // Set to true when ready to enable purchases
         
         /// World Cup 2026 expiry date (August 1, 2026)
         static let worldCup2026ExpiryDate: Date = {
@@ -264,6 +264,18 @@ static func toggleDataManagerForTesting() {
     @MainActor
     static func incrementMatchUsage() {
         recordLiveMatchUsage()
+    }
+    
+    // MARK: - Live Mode First-Use Tracking
+
+    /// Check if user has ever used Live Mode (for showing "NEW" badge)
+    static var hasUsedFreeLiveMatch: Bool {
+        return UserDefaults.standard.bool(forKey: "hasUsedFreeLiveMatch")
+    }
+
+    /// Mark that user has used Live Mode
+    static func markFreeLiveMatchUsed() {
+        UserDefaults.standard.set(true, forKey: "hasUsedFreeLiveMatch")
     }
     
     // MARK: - Competition Access Control

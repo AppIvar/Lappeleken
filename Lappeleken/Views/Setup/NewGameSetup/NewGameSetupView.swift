@@ -2,7 +2,7 @@
 //  NewGameSetupView.swift
 //  Lucky Football Slip
 //
-//  Main coordinator for manual game setup - refactored modular version
+//  Main coordinator for manual game setup - Football themed
 //
 
 import SwiftUI
@@ -27,32 +27,60 @@ struct NewGameSetupView: View {
     // Player drawing
     @State private var playerAssignments: [Participant: [Player]] = [:]
     
-    private let steps = ["Add Participants", "Select Players", "Set Bet Rules", "Review & Start"]
+    private let steps = ["Participants", "Players", "Bet Rules", "Review"]
     
     var body: some View {
         NavigationView {
-            VStack(spacing: 0) {
-                progressIndicator
+            ZStack {
+                // Football themed background
+                SetupBackground()
                 
-                ScrollView {
-                    VStack(spacing: 24) {
-                        stepContent
+                VStack(spacing: 0) {
+                    // Progress bar
+                    SetupProgressBar(steps: steps, currentStep: currentStep)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 12)
+                        .padding(.bottom, 8)
+                    
+                    // Step content
+                    ScrollView(showsIndicators: false) {
+                        VStack(spacing: 24) {
+                            stepContent
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 16)
                     }
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 20)
+                    
+                    // Bottom navigation
+                    SetupBottomBar(
+                        showBack: currentStep > 0,
+                        nextTitle: currentStep == steps.count - 1 ? "Start Game" : "Continue",
+                        canProceed: canProceed,
+                        onBack: {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                currentStep -= 1
+                            }
+                        },
+                        onNext: {
+                            if currentStep == steps.count - 1 {
+                                startGameWithAdCheck()
+                            } else {
+                                handleNextButton()
+                            }
+                        }
+                    )
                 }
-                .background(AppDesignSystem.Colors.background)
-                
-                bottomButton
             }
-            .navigationTitle("Manual Game Setup")
+            .navigationTitle("Manual Mode")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationBarItems(
-                leading: Button("Cancel") {
-                    presentationMode.wrappedValue.dismiss()
+            .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button("Cancel") {
+                        presentationMode.wrappedValue.dismiss()
+                    }
+                    .foregroundColor(AppDesignSystem.Colors.grassGreen)
                 }
-                    .foregroundColor(AppDesignSystem.Colors.primary)
-            )
+            }
             .sheet(isPresented: $showPlayerEntry) {
                 ManualPlayerEntryView(gameSession: gameSession)
             }
@@ -71,7 +99,9 @@ struct NewGameSetupView: View {
                         applyPlayerAssignments(assignments)
                         playerAssignments = assignments
                         showingPlayerDrawing = false
-                        currentStep += 1
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            currentStep += 1
+                        }
                     },
                     onBack: {
                         showingPlayerDrawing = false
@@ -83,55 +113,6 @@ struct NewGameSetupView: View {
             }
         }
         .withMinimalBanner()
-    }
-    
-    // MARK: - Progress Indicator
-    
-    private var progressIndicator: some View {
-        HStack {
-            ForEach(0..<steps.count, id: \.self) { index in
-                VStack(spacing: 8) {
-                    Circle()
-                        .fill(index <= currentStep ? AppDesignSystem.Colors.primary : Color.gray.opacity(0.3))
-                        .frame(width: 36, height: 36)
-                        .overlay(
-                            Group {
-                                if index < currentStep {
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 14, weight: .bold))
-                                        .foregroundColor(.white)
-                                } else {
-                                    Text("\(index + 1)")
-                                        .font(.system(size: 14, weight: .bold))
-                                        .foregroundColor(index <= currentStep ? .white : .gray)
-                                }
-                            }
-                        )
-                        .shadow(color: index <= currentStep ? AppDesignSystem.Colors.primary.opacity(0.3) : Color.clear, radius: 4, x: 0, y: 2)
-                    
-                    Text(steps[index])
-                        .font(AppDesignSystem.Typography.captionFont)
-                        .multilineTextAlignment(.center)
-                        .foregroundColor(index <= currentStep ? AppDesignSystem.Colors.primaryText : AppDesignSystem.Colors.secondaryText)
-                }
-                .frame(maxWidth: .infinity)
-                
-                if index < steps.count - 1 {
-                    Rectangle()
-                        .fill(index < currentStep ? AppDesignSystem.Colors.primary : Color.gray.opacity(0.3))
-                        .frame(height: 3)
-                        .frame(maxWidth: .infinity)
-                        .cornerRadius(1.5)
-                }
-            }
-        }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
-        .background(
-            Rectangle()
-                .fill(AppDesignSystem.Colors.cardBackground)
-                .shadow(color: Color.black.opacity(0.05), radius: 4, x: 0, y: 2)
-        )
     }
     
     // MARK: - Step Content
@@ -167,64 +148,11 @@ struct NewGameSetupView: View {
         }
     }
     
-    // MARK: - Bottom Button
-    
-    private var bottomButton: some View {
-        VStack(spacing: 0) {
-            Divider()
-            
-            HStack(spacing: 16) {
-                if currentStep > 0 {
-                    Button("Back") {
-                        withAnimation(AppDesignSystem.Animations.standard) {
-                            currentStep -= 1
-                        }
-                    }
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(AppDesignSystem.Colors.primary)
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 12)
-                    .background(
-                        RoundedRectangle(cornerRadius: AppDesignSystem.Layout.cornerRadius)
-                            .stroke(AppDesignSystem.Colors.primary, lineWidth: 2)
-                    )
-                    .frame(maxWidth: .infinity)
-                }
-                
-                Button(currentStep == steps.count - 1 ? "Start Game" : "Next") {
-                    if currentStep == steps.count - 1 {
-                        startGameWithAdCheck()
-                    } else {
-                        handleNextButton()
-                    }
-                }
-                .font(.system(size: 16, weight: .bold))
-                .foregroundColor(.white)
-                .padding(.horizontal, 24)
-                .padding(.vertical, 12)
-                .background(canProceed ? AppDesignSystem.Colors.primary : Color.gray.opacity(0.5))
-                .cornerRadius(AppDesignSystem.Layout.cornerRadius)
-                .frame(maxWidth: .infinity, minHeight: currentStep == 0 ? 50 : nil)
-                .disabled(!canProceed)
-                .vibrantButton()
-                .scaleEffect(canProceed ? 1.0 : 0.95)
-                .animation(AppDesignSystem.Animations.quick, value: canProceed)
-            }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 20)
-            .background(
-                Rectangle()
-                    .fill(AppDesignSystem.Colors.cardBackground)
-                    .shadow(color: Color.black.opacity(0.1), radius: 8, x: 0, y: -4)
-            )
-        }
-    }
-    
     // MARK: - Navigation Logic
     
     private var canProceed: Bool {
         switch currentStep {
-        case 0: return !gameSession.participants.isEmpty
+        case 0: return gameSession.participants.count >= 2
         case 1: return !selectedPlayerIds.isEmpty
         case 2: return !playerAssignments.isEmpty
         case 3: return true
@@ -250,7 +178,7 @@ struct NewGameSetupView: View {
         }
         
         if currentStep < steps.count - 1 {
-            withAnimation(AppDesignSystem.Animations.standard) {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                 currentStep += 1
             }
         }
@@ -346,7 +274,7 @@ struct NewGameSetupView: View {
         // Dismiss view
         presentationMode.wrappedValue.dismiss()
         
-        // Use the notification that ContentView actually handles!
+        // Notify to start game
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             NotificationCenter.default.post(name: Notification.Name("StartGameWithSelectedMatch"), object: nil)
         }

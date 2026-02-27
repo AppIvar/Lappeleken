@@ -1,8 +1,8 @@
 //
-//  FixedPlayerSelectionView.swift
+//  EnhancedPlayerSelectionView.swift
 //  Lucky Football Slip
 //
-//  Fixed version that properly displays players
+//  Football themed player selection for live mode
 //
 
 import SwiftUI
@@ -15,16 +15,15 @@ struct PlayerSelectionView: View {
     @State private var selectedTeamFilter: Team?
     @State private var showingTeamPicker = false
     
-    // Simple filtered players
+    @Environment(\.colorScheme) var colorScheme
+    
     private var filteredPlayers: [Player] {
         var players = gameSession.availablePlayers
         
-        // Apply team filter first
         if let team = selectedTeamFilter {
             players = players.filter { $0.team.id == team.id }
         }
         
-        // Apply search filter
         if !searchText.isEmpty {
             let searchTerm = searchText.lowercased()
             players = players.filter {
@@ -36,25 +35,17 @@ struct PlayerSelectionView: View {
         return players
     }
     
-    // Get unique teams for filter
     private var availableTeams: [Team] {
         let uniqueTeams = Set(gameSession.availablePlayers.map { $0.team })
         return Array(uniqueTeams).sorted { $0.name < $1.name }
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            // Header
-            headerView
-            
-            // Stats and validation
-            statsView
-            
-            // Search and filters
-            filtersView
-            
-            // Players list
-            playersListView
+        VStack(alignment: .leading, spacing: 14) {
+            headerSection
+            statsSection
+            filtersSection
+            playersListSection
         }
         .sheet(isPresented: $showingManualEntry) {
             ManualPlayerEntryView(gameSession: gameSession)
@@ -62,148 +53,175 @@ struct PlayerSelectionView: View {
         .sheet(isPresented: $showingTeamPicker) {
             teamPickerSheet
         }
-        .withMinimalBanner()
     }
     
     // MARK: - Header
     
-    private var headerView: some View {
+    private var headerSection: some View {
         HStack {
-            Text("Select Players")
-                .font(.title2)
-                .fontWeight(.semibold)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Select Players")
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                
+                Text("\(filteredPlayers.count) available")
+                    .font(.system(size: 12))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+            }
             
             Spacer()
             
-            Button("Add Player") {
-                showingManualEntry = true
+            Button(action: { showingManualEntry = true }) {
+                HStack(spacing: 4) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 12, weight: .bold))
+                    Text("Add")
+                        .font(.system(size: 13, weight: .semibold))
+                }
+                .foregroundColor(AppDesignSystem.Colors.grassGreen)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(AppDesignSystem.Colors.grassGreen.opacity(0.12))
+                )
             }
-            .font(.subheadline)
-            .foregroundColor(.blue)
         }
     }
     
     // MARK: - Stats
     
-    private var statsView: some View {
+    private var statsSection: some View {
         VStack(spacing: 8) {
+            // Selection count
             HStack {
-                Text("\(filteredPlayers.count) available players")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 14))
+                        .foregroundColor(AppDesignSystem.Colors.grassGreen)
+                    
+                    Text("\(selectedPlayerIds.count) selected")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(AppDesignSystem.Colors.primaryText)
+                }
                 
                 Spacer()
                 
-                Text("\(selectedPlayerIds.count) selected")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundColor(selectedPlayerIds.isEmpty ? .secondary : .blue)
-            }
-            
-            // Validation message
-            if selectedPlayerIds.isEmpty {
-                HStack {
-                    Image(systemName: "exclamationmark.triangle")
-                        .foregroundColor(.orange)
-                    Text("Select at least one player to continue")
-                        .font(.caption)
-                        .foregroundColor(.orange)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            
-            // Quick actions
-            if !filteredPlayers.isEmpty {
-                quickActionsView
-            }
-        }
-    }
-    
-    // MARK: - Quick Actions
-    
-    private var quickActionsView: some View {
-        HStack(spacing: 12) {
-            if !selectedPlayerIds.isEmpty {
-                Button("Clear All") {
-                    selectedPlayerIds.removeAll()
-                }
-                .font(.caption)
-                .foregroundColor(.red)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color.red.opacity(0.1))
-                .cornerRadius(4)
-            }
-            
-            if selectedPlayerIds.count < filteredPlayers.count {
-                Button("Select All") {
-                    for player in filteredPlayers {
-                        selectedPlayerIds.insert(player.id)
+                // Quick actions
+                HStack(spacing: 8) {
+                    if !selectedPlayerIds.isEmpty {
+                        Button("Clear") {
+                            withAnimation { selectedPlayerIds.removeAll() }
+                        }
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(AppDesignSystem.Colors.error)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(AppDesignSystem.Colors.error.opacity(0.1))
+                        .cornerRadius(4)
+                    }
+                    
+                    if selectedPlayerIds.count < filteredPlayers.count && !filteredPlayers.isEmpty {
+                        Button("Select All") {
+                            withAnimation {
+                                filteredPlayers.forEach { selectedPlayerIds.insert($0.id) }
+                            }
+                        }
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(AppDesignSystem.Colors.grassGreen)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(AppDesignSystem.Colors.grassGreen.opacity(0.1))
+                        .cornerRadius(4)
                     }
                 }
-                .font(.caption)
-                .foregroundColor(.blue)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(Color.blue.opacity(0.1))
-                .cornerRadius(4)
             }
             
-            Spacer()
+            // Validation
+            if selectedPlayerIds.isEmpty {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 12))
+                        .foregroundColor(AppDesignSystem.Colors.goalYellow)
+                    
+                    Text("Select at least one player")
+                        .font(.system(size: 12))
+                        .foregroundColor(AppDesignSystem.Colors.goalYellow)
+                    
+                    Spacer()
+                }
+            }
         }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill(AppDesignSystem.Colors.grassGreen.opacity(0.06))
+        )
     }
     
     // MARK: - Filters
     
-    private var filtersView: some View {
-        HStack(spacing: 12) {
-            // Search
-            HStack {
+    private var filtersSection: some View {
+        HStack(spacing: 10) {
+            // Search field
+            HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
-                    .foregroundColor(.gray)
-                    .font(.caption)
+                    .font(.system(size: 13))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
                 
                 TextField("Search players", text: $searchText)
-                    .font(.subheadline)
+                    .font(.system(size: 14))
+                
+                if !searchText.isEmpty {
+                    Button(action: { searchText = "" }) {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    }
+                }
             }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(Color.gray.opacity(0.1))
-            .cornerRadius(6)
+            .padding(8)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(colorScheme == .dark ? Color.white.opacity(0.05) : Color.black.opacity(0.04))
+            )
             
             // Team filter
-            Button(selectedTeamFilter?.shortName ?? "All Teams") {
-                showingTeamPicker = true
+            Button(action: { showingTeamPicker = true }) {
+                HStack(spacing: 4) {
+                    Text(selectedTeamFilter?.shortName ?? "All")
+                        .font(.system(size: 12, weight: .medium))
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10, weight: .semibold))
+                }
+                .foregroundColor(selectedTeamFilter != nil ? AppDesignSystem.Colors.grassGreen : AppDesignSystem.Colors.primaryText)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(selectedTeamFilter != nil ? AppDesignSystem.Colors.grassGreen.opacity(0.12) : colorScheme == .dark ? Color.white.opacity(0.05) : Color.black.opacity(0.04))
+                )
             }
-            .font(.caption)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(selectedTeamFilter != nil ? Color.blue.opacity(0.1) : Color.gray.opacity(0.1))
-            .foregroundColor(selectedTeamFilter != nil ? .blue : .primary)
-            .cornerRadius(6)
         }
     }
     
     // MARK: - Players List
     
-    private var playersListView: some View {
+    private var playersListSection: some View {
         Group {
             if gameSession.availablePlayers.isEmpty {
-                // No players at all
-                emptyPlayersView
+                emptyStateView
             } else if filteredPlayers.isEmpty {
-                // No players match filter
                 noMatchesView
             } else {
-                // Show players
                 ScrollView {
-                    LazyVStack(spacing: 8) {
+                    LazyVStack(spacing: 6) {
                         ForEach(filteredPlayers, id: \.id) { player in
                             UnifiedPlayerCard(
                                 player: player,
                                 isSelected: selectedPlayerIds.contains(player.id)
                             ) {
-                                togglePlayerSelection(player)
+                                togglePlayer(player)
                             }
                         }
                     }
@@ -215,53 +233,59 @@ struct PlayerSelectionView: View {
     
     // MARK: - Empty States
     
-    private var emptyPlayersView: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "person.3")
-                .font(.system(size: 48))
-                .foregroundColor(.secondary)
+    private var emptyStateView: some View {
+        VStack(spacing: 14) {
+            ZStack {
+                Circle()
+                    .fill(AppDesignSystem.Colors.grassGreen.opacity(0.1))
+                    .frame(width: 56, height: 56)
+                
+                Image(systemName: "person.3.fill")
+                    .font(.system(size: 24))
+                    .foregroundColor(AppDesignSystem.Colors.grassGreen.opacity(0.5))
+            }
             
             Text("No Players Available")
-                .font(.headline)
-                .foregroundColor(.secondary)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(AppDesignSystem.Colors.primaryText)
             
             Text("Add players manually to get started")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
+                .font(.system(size: 13))
+                .foregroundColor(AppDesignSystem.Colors.secondaryText)
             
-            Button("Add First Player") {
-                showingManualEntry = true
+            Button(action: { showingManualEntry = true }) {
+                Text("Add First Player")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(AppDesignSystem.Colors.grassGreen)
+                    .cornerRadius(8)
             }
-            .buttonStyle(.borderedProminent)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 40)
+        .padding(.vertical, 32)
     }
     
     private var noMatchesView: some View {
         VStack(spacing: 12) {
             Image(systemName: "magnifyingglass")
-                .font(.title)
-                .foregroundColor(.secondary)
+                .font(.system(size: 24))
+                .foregroundColor(AppDesignSystem.Colors.secondaryText)
             
             Text("No matches found")
-                .font(.headline)
-                .foregroundColor(.secondary)
-            
-            Text("Try adjusting your search or filter")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundColor(AppDesignSystem.Colors.primaryText)
             
             Button("Clear Filters") {
                 searchText = ""
                 selectedTeamFilter = nil
             }
-            .font(.caption)
-            .foregroundColor(.blue)
+            .font(.system(size: 13, weight: .medium))
+            .foregroundColor(AppDesignSystem.Colors.grassGreen)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 20)
+        .padding(.vertical, 24)
     }
     
     // MARK: - Team Picker Sheet
@@ -269,32 +293,34 @@ struct PlayerSelectionView: View {
     private var teamPickerSheet: some View {
         NavigationView {
             List {
-                // All teams option
                 Button("All Teams") {
                     selectedTeamFilter = nil
                     showingTeamPicker = false
                 }
-                .foregroundColor(selectedTeamFilter == nil ? .blue : .primary)
+                .foregroundColor(selectedTeamFilter == nil ? AppDesignSystem.Colors.grassGreen : AppDesignSystem.Colors.primaryText)
                 
-                // Individual teams
                 ForEach(availableTeams, id: \.id) { team in
                     Button(action: {
                         selectedTeamFilter = team
                         showingTeamPicker = false
                     }) {
                         HStack {
+                            RoundedRectangle(cornerRadius: 2)
+                                .fill(AppDesignSystem.TeamColors.getColor(for: team))
+                                .frame(width: 4, height: 20)
+                            
                             Text(team.name)
-                                .foregroundColor(.primary)
+                                .foregroundColor(AppDesignSystem.Colors.primaryText)
                             
                             Spacer()
                             
                             Text(team.shortName)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
+                                .font(.system(size: 12))
+                                .foregroundColor(AppDesignSystem.Colors.secondaryText)
                             
                             if selectedTeamFilter?.id == team.id {
                                 Image(systemName: "checkmark")
-                                    .foregroundColor(.blue)
+                                    .foregroundColor(AppDesignSystem.Colors.grassGreen)
                             }
                         }
                     }
@@ -303,18 +329,19 @@ struct PlayerSelectionView: View {
             }
             .navigationTitle("Filter by Team")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationBarItems(
-                trailing: Button("Done") {
-                    showingTeamPicker = false
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Done") { showingTeamPicker = false }
+                        .foregroundColor(AppDesignSystem.Colors.grassGreen)
                 }
-            )
+            }
         }
     }
     
-    // MARK: - Helper Methods
+    // MARK: - Helpers
     
-    private func togglePlayerSelection(_ player: Player) {
-        withAnimation(.easeInOut(duration: 0.2)) {
+    private func togglePlayer(_ player: Player) {
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.7)) {
             if selectedPlayerIds.contains(player.id) {
                 selectedPlayerIds.remove(player.id)
             } else {
@@ -324,7 +351,7 @@ struct PlayerSelectionView: View {
     }
 }
 
-// MARK: - Unified Player Card (Single Component)
+// MARK: - Unified Player Card
 
 struct UnifiedPlayerCard: View {
     let player: Player
@@ -332,14 +359,17 @@ struct UnifiedPlayerCard: View {
     let action: () -> Void
     
     @State private var isPressed = false
+    @Environment(\.colorScheme) var colorScheme
+    
+    private var teamColor: Color {
+        AppDesignSystem.TeamColors.getColor(for: player.team)
+    }
     
     var body: some View {
         Button(action: {
-            // Simple animation feedback
             withAnimation(.easeInOut(duration: 0.1)) {
                 isPressed = true
             }
-            
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 withAnimation(.easeInOut(duration: 0.1)) {
                     isPressed = false
@@ -347,30 +377,30 @@ struct UnifiedPlayerCard: View {
                 action()
             }
         }) {
-            HStack(spacing: 12) {
+            HStack(spacing: 10) {
                 // Team color indicator
-                Rectangle()
-                    .fill(AppDesignSystem.TeamColors.getColor(for: player.team))
-                    .frame(width: 4, height: 36)
-                    .cornerRadius(2)
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(teamColor)
+                    .frame(width: 4, height: 32)
                 
-                VStack(alignment: .leading, spacing: 3) {
+                // Player info
+                VStack(alignment: .leading, spacing: 2) {
                     Text(player.name)
-                        .font(.system(size: 15, weight: .medium))
+                        .font(.system(size: 14, weight: .medium))
                         .foregroundColor(AppDesignSystem.Colors.primaryText)
                         .lineLimit(1)
                     
-                    HStack(spacing: 6) {
+                    HStack(spacing: 4) {
                         Text(player.team.shortName)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(AppDesignSystem.TeamColors.getColor(for: player.team))
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(teamColor)
                         
                         Text("•")
-                            .font(.system(size: 11))
+                            .font(.system(size: 10))
                             .foregroundColor(AppDesignSystem.Colors.secondaryText)
                         
                         Text(player.position.rawValue)
-                            .font(.system(size: 12))
+                            .font(.system(size: 11))
                             .foregroundColor(AppDesignSystem.Colors.secondaryText)
                     }
                 }
@@ -379,68 +409,21 @@ struct UnifiedPlayerCard: View {
                 
                 // Selection indicator
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .foregroundColor(isSelected ? AppDesignSystem.Colors.success : AppDesignSystem.Colors.secondaryText.opacity(0.5))
-                    .font(.system(size: 20))
+                    .font(.system(size: 18))
+                    .foregroundColor(isSelected ? AppDesignSystem.Colors.grassGreen : AppDesignSystem.Colors.secondaryText.opacity(0.4))
             }
-            .padding(.horizontal, 14)
+            .padding(.horizontal, 12)
             .padding(.vertical, 10)
             .background(
-                RoundedRectangle(cornerRadius: 10)
-                    .fill(isSelected ? 
-                          AppDesignSystem.TeamColors.getColor(for: player.team).opacity(0.2) :
-                            AppDesignSystem.Colors.cardBackground)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(
-                        isSelected ?
-                        AppDesignSystem.TeamColors.getColor(for: player.team) :
-                        Color.gray.opacity(0.2),
-                        lineWidth: isSelected ? 1.5 : 0.5
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(isSelected ? AppDesignSystem.Colors.grassGreen.opacity(0.08) : AppDesignSystem.Colors.cardBackground)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(isSelected ? AppDesignSystem.Colors.grassGreen.opacity(0.3) : colorScheme == .dark ? Color.white.opacity(0.05) : Color.black.opacity(0.05), lineWidth: 1)
                     )
             )
             .scaleEffect(isPressed ? 0.98 : 1.0)
-            .shadow(
-                color: isSelected ?
-                AppDesignSystem.TeamColors.getColor(for: player.team).opacity(0.15) :
-                Color.black.opacity(0.04),
-                radius: isSelected ? 3 : 1,
-                x: 0,
-                y: 1
-            )
         }
         .buttonStyle(PlainButtonStyle())
-    }
-}
-
-// MARK: - Debug View for Testing
-
-struct PlayerSelectionDebugView: View {
-    @ObservedObject var gameSession: GameSession
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Debug Info")
-                .font(.headline)
-            
-            Text("Available Players: \(gameSession.availablePlayers.count)")
-            Text("Sample Players: \(SampleData.corePlayers.count)")
-            
-            if gameSession.availablePlayers.isEmpty {
-                Button("Load Sample Data") {
-                    gameSession.addPlayers(SampleData.corePlayers)
-                }
-                .buttonStyle(.borderedProminent)
-            }
-            
-            Text("First 5 players:")
-            ForEach(gameSession.availablePlayers.prefix(5), id: \.id) { player in
-                Text("• \(player.name) (\(player.team.shortName))")
-                    .font(.caption)
-            }
-        }
-        .padding()
-        .background(Color.yellow.opacity(0.1))
-        .cornerRadius(8)
     }
 }
