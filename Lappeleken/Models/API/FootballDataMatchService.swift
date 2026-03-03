@@ -67,7 +67,8 @@ class FootballDataMatchService: MatchService {
     /// Fetch live/in-play matches
     /// Optional filter by competition code
     func fetchLiveMatches(competitionCode: String? = nil) async throws -> [Match] {
-        var endpoint = "matches?status=LIVE,IN_PLAY"
+        // Include PAUSED for halftime matches
+        var endpoint = "matches?status=LIVE,IN_PLAY,PAUSED"
         if let code = competitionCode {
             endpoint += "&competitions=\(code)"
         }
@@ -355,7 +356,10 @@ class FootballDataMatchService: MatchService {
                     playerOnId: "\(playerInId)"
                 ))
                 
-                print("✅ Created substitution event: \(playerOutName) → \(playerInName) at \(minute)'")
+                // Debug: Log parsed substitution (not a game event yet, just API data)
+                if AppConfig.enableDetailedLogging {
+                    print("📋 Parsed API substitution: \(playerOutName) → \(playerInName) at \(minute)'")
+                }
             }
         }
         
@@ -547,7 +551,8 @@ class FootballDataMatchService: MatchService {
             name: name,
             shortName: String(shortName),
             logoName: "team_logo",
-            primaryColor: "#1a73e8"
+            primaryColor: "#1a73e8",
+            apiId: String(id)  // Store the raw API ID
         )
     }
     
@@ -597,5 +602,3 @@ class FootballDataMatchService: MatchService {
         }
     }
 }
-
-

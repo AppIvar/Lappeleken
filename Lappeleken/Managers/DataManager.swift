@@ -196,9 +196,15 @@ class DataManager {
             // Get match details to know which teams are playing
             let matchDetail = try await fetchMatchDetails(matchId)
             
+            // Use effectiveApiId to get the raw API ID (e.g., "57" instead of UUID)
+            let homeTeamApiId = matchDetail.match.homeTeam.effectiveApiId
+            let awayTeamApiId = matchDetail.match.awayTeam.effectiveApiId
+            
+            print("🔍 Fetching squads for teams: \(homeTeamApiId), \(awayTeamApiId)")
+            
             // Fetch both team squads
-            async let homeSquadTask = footballDataService.fetchTeamSquad(teamId: matchDetail.match.homeTeam.id.uuidString)
-            async let awaySquadTask = footballDataService.fetchTeamSquad(teamId: matchDetail.match.awayTeam.id.uuidString)
+            async let homeSquadTask = footballDataService.fetchTeamSquad(teamId: homeTeamApiId)
+            async let awaySquadTask = footballDataService.fetchTeamSquad(teamId: awayTeamApiId)
             
             let (homeSquad, awaySquad) = try await (homeSquadTask, awaySquadTask)
             
@@ -318,6 +324,3 @@ enum DataError: Error {
         }
     }
 }
-
-
-

@@ -177,6 +177,61 @@ static func toggleDataManagerForTesting() {
         }
     }
     
+    // MARK: - Cache Server Configuration
+    
+    /// Configuration for server-side caching to reduce football-data.org API load
+    struct CacheServer {
+        /// Enable routing API calls through your cache server
+        static var enabled: Bool {
+            #if DEBUG
+            return UserDefaults.standard.bool(forKey: "cacheServer_enabled")
+            #else
+            // Enable in production once server is deployed
+            return UserDefaults.standard.bool(forKey: "cacheServer_enabled")
+            #endif
+        }
+        
+        /// Cache server base URL
+        static var baseURL: String {
+            switch environment {
+            case .development:
+                return "https://dev-cache.lappeleken.com"
+            case .staging:
+                return "https://staging-cache.lappeleken.com"
+            case .production:
+                return "https://cache.lappeleken.com"
+            }
+        }
+        
+        /// Endpoints that should be routed through cache server
+        /// Format: /v4/matches → /api/football/matches
+        static let cachedEndpoints: Set<String> = [
+            "matches",
+            "competitions",
+            "teams"
+        ]
+        
+        /// Cache TTL hints for different data types (in seconds)
+        /// Server should respect these but can override based on load
+        static let cacheTTL: [String: Int] = [
+            "competitions": 86400,    // 24 hours
+            "matches_list": 300,      // 5 minutes
+            "match_detail": 60,       // 1 minute for live matches
+            "team_squad": 3600,       // 1 hour
+            "lineup": 300             // 5 minutes
+        ]
+        
+        /// Enable for testing
+        static func enable() {
+            UserDefaults.standard.set(true, forKey: "cacheServer_enabled")
+        }
+        
+        /// Disable cache server (direct API calls)
+        static func disable() {
+            UserDefaults.standard.set(false, forKey: "cacheServer_enabled")
+        }
+    }
+    
     static let footballDataAPIKey: String = {
         if let apiKey = Bundle.main.object(forInfoDictionaryKey: "FOOTBALL_DATA_API_KEY") as? String, !apiKey.isEmpty {
             return apiKey

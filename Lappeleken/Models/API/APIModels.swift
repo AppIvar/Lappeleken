@@ -45,10 +45,12 @@ struct TeamResponse: Codable {
     
     func toTeamSquad() -> TeamSquad {
         let team = Team(
+            id: UUID(uuidString: "00000000-0000-0000-0000-\(String(format: "%012d", id))") ?? UUID(),
             name: name,
             shortName: shortName ?? String(name.prefix(3)).uppercased(),
             logoName: "team_logo",
-            primaryColor: "#1a73e8"
+            primaryColor: "#1a73e8",
+            apiId: String(id)
         )
         
         let players = squad.map { $0.toAppModel(team: team) }
@@ -196,7 +198,8 @@ struct APITeam: Codable {
             name: name,
             shortName: shortName ?? name.prefix(3).uppercased(),
             logoName: "team_logo",
-            primaryColor: "#1a73e8"
+            primaryColor: "#1a73e8",
+            apiId: String(id)
         )
     }
     
@@ -457,7 +460,8 @@ struct APITeamWithStats: Codable {
             name: name,
             shortName: shortName ?? String(name.prefix(3)).uppercased(),
             logoName: "team_logo",
-            primaryColor: "#1a73e8"
+            primaryColor: "#1a73e8",
+            apiId: String(id)
         )
     }
 }

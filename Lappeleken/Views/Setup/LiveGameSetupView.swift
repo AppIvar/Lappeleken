@@ -17,6 +17,7 @@ struct LiveGameSetupView: View {
     @State private var participantName = ""
     @State private var selectedMatchIds = Set<String>()
     @State private var selectedPlayerIds = Set<UUID>()
+    @State private var startingXIPlayerIds = Set<UUID>()  // Track which players are Starting XI
     @State private var betAmounts = [Bet.EventType: Double]()
     @State private var betNegativeFlags = [Bet.EventType: Bool]()
     @State private var showingCustomBetSheet = false
@@ -498,7 +499,7 @@ struct LiveGameSetupView: View {
             LiveStepHeader(
                 icon: "person.crop.rectangle.stack.fill",
                 title: "Select Players",
-                subtitle: "Choose players to include in the game"
+                subtitle: "Choose players from the starting lineup"
             )
             
             if gameSession.availablePlayers.isEmpty {
@@ -515,7 +516,7 @@ struct LiveGameSetupView: View {
                 // Quick actions
                 HStack(spacing: 10) {
                     Button(action: selectAllStartingXI) {
-                        Text("Select Starting XI")
+                        Text("Select All")
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundColor(.white)
                             .padding(.horizontal, 14)
@@ -524,7 +525,7 @@ struct LiveGameSetupView: View {
                     }
                     
                     Button(action: deselectAllPlayers) {
-                        Text("Clear All")
+                        Text("Clear")
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundColor(AppDesignSystem.Colors.error)
                             .padding(.horizontal, 14)
@@ -539,17 +540,21 @@ struct LiveGameSetupView: View {
                         .foregroundColor(AppDesignSystem.Colors.secondaryText)
                 }
                 
-                // Players by team
+                // Players by team (with Starting XI and Reserves sections)
                 ForEach(getPlayersByTeam(gameSession.availablePlayers), id: \.team.id) { teamData in
                     LiveTeamPlayersSection(
                         team: teamData.team,
                         players: teamData.players,
                         selectedIds: selectedPlayerIds,
+                        startingXIIds: startingXIPlayerIds,
                         onTogglePlayer: { player in
-                            togglePlayerSelection(player)
+                            // Only allow toggling Starting XI players
+                            if startingXIPlayerIds.contains(player.id) {
+                                togglePlayerSelection(player)
+                            }
                         },
                         onSelectTeam: {
-                            selectTeamPlayers(teamId: teamData.team.id)
+                            selectTeamStartingXI(teamId: teamData.team.id)
                         }
                     )
                 }
@@ -765,8 +770,17 @@ struct LiveGameSetupView: View {
     }
     
     private func selectAllStartingXI() {
-        let startingXI = getStartingXIPlayers()
-        selectedPlayerIds = Set(startingXI.map { $0.id })
+        // Only select Starting XI players (not reserves)
+        selectedPlayerIds = startingXIPlayerIds
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+    
+    private func selectTeamStartingXI(teamId: UUID) {
+        // Select only Starting XI players from this team
+        let teamStartingXI = gameSession.availablePlayers
+            .filter { $0.team.id == teamId && startingXIPlayerIds.contains($0.id) }
+            .map { $0.id }
+        selectedPlayerIds.formUnion(teamStartingXI)
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     }
     
@@ -775,26 +789,13 @@ struct LiveGameSetupView: View {
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
     }
     
-    private func selectTeamPlayers(teamId: UUID) {
-        let teamPlayerIds = gameSession.availablePlayers.filter { $0.team.id == teamId }.map { $0.id }
-        selectedPlayerIds.formUnion(teamPlayerIds)
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-    }
-    
-    private func getStartingXIPlayers() -> [Player] {
-        guard !gameSession.matchLineups.isEmpty else { return gameSession.availablePlayers }
-        
-        return gameSession.availablePlayers.filter { player in
-            gameSession.matchLineups.values.contains { lineup in
-                lineup.homeTeam.startingXI.contains { $0.id == player.id } ||
-                lineup.awayTeam.startingXI.contains { $0.id == player.id }
-            }
-        }
-    }
-    
     private func getPlayersByTeam(_ players: [Player]) -> [TeamPlayersData] {
-        Dictionary(grouping: players) { $0.team }
-            .map { TeamPlayersData(team: $0.key, players: $0.value) }
+        return Dictionary(grouping: players) { $0.team }
+            .map { team, teamPlayers in
+                // Sort alphabetically by name
+                let sortedPlayers = teamPlayers.sorted { $0.name < $1.name }
+                return TeamPlayersData(team: team, players: sortedPlayers)
+            }
             .sorted { $0.team.name < $1.team.name }
     }
     
@@ -823,19 +824,61 @@ struct LiveGameSetupView: View {
         
         Task {
             do {
+                var startingXIApiIds = Set<String>()
+                var allPlayers: [Player] = []
+                var seenApiIds = Set<String>()  // Use API ID for deduplication
+                
                 for matchId in selectedMatchIds {
                     try await gameSession.fetchMatchLineup(for: matchId)
                     
                     if let lineup = gameSession.matchLineups[matchId] {
-                        let players = lineup.homeTeam.startingXI + lineup.homeTeam.substitutes +
-                                     lineup.awayTeam.startingXI + lineup.awayTeam.substitutes
-                        await MainActor.run {
-                            gameSession.availablePlayers.append(contentsOf: players)
+                        // Get Starting XI
+                        let homeStartingXI = lineup.homeTeam.startingXI
+                        let awayStartingXI = lineup.awayTeam.startingXI
+                        
+                        // Get Substitutes
+                        let homeSubstitutes = lineup.homeTeam.substitutes
+                        let awaySubstitutes = lineup.awayTeam.substitutes
+                        
+                        // Track Starting XI API IDs
+                        for player in homeStartingXI + awayStartingXI {
+                            if let apiId = player.apiId {
+                                startingXIApiIds.insert(apiId)
+                            }
+                        }
+                        
+                        // Add ALL players, avoiding duplicates by API ID
+                        let matchPlayers = homeStartingXI + awayStartingXI + homeSubstitutes + awaySubstitutes
+                        for player in matchPlayers {
+                            let playerKey = player.apiId ?? player.id.uuidString
+                            if !seenApiIds.contains(playerKey) {
+                                seenApiIds.insert(playerKey)
+                                allPlayers.append(player)
+                            }
                         }
                     }
                 }
                 
-                await MainActor.run { isLoading = false }
+                // Build startingXIPlayerIds from the final player list
+                let startingXIIds = Set(allPlayers.filter {
+                    guard let apiId = $0.apiId else { return false }
+                    return startingXIApiIds.contains(apiId)
+                }.map { $0.id })
+                
+                await MainActor.run {
+                    // Clear existing players and set fresh list
+                    gameSession.availablePlayers = allPlayers
+                    
+                    // Store starting XI IDs for UI differentiation
+                    self.startingXIPlayerIds = startingXIIds
+                    // No auto-selection
+                    selectedPlayerIds = Set<UUID>()
+                    isLoading = false
+                    
+                    let startingCount = startingXIIds.count
+                    let totalCount = allPlayers.count
+                    print("✅ Loaded \(startingCount) starting XI + \(totalCount - startingCount) substitutes (deduplicated by apiId)")
+                }
             } catch {
                 await MainActor.run {
                     isLoading = false
@@ -846,7 +889,30 @@ struct LiveGameSetupView: View {
     }
     
     private func loadFullSquadForMatch(_ matchId: String) {
-        // Implementation for loading full squad
+        isLoading = true
+        error = nil
+        
+        Task {
+            do {
+                let players = try await DataManager.shared.fetchSquad(for: matchId)
+                
+                await MainActor.run {
+                    // Add players to available players (avoiding duplicates)
+                    let existingIds = Set(gameSession.availablePlayers.map { $0.id })
+                    let newPlayers = players.filter { !existingIds.contains($0.id) }
+                    gameSession.availablePlayers.append(contentsOf: newPlayers)
+                    
+                    isLoading = false
+                    print("✅ Loaded \(newPlayers.count) squad players for match \(matchId)")
+                }
+            } catch {
+                await MainActor.run {
+                    isLoading = false
+                    self.error = "Failed to load squad: \(error.localizedDescription)"
+                    print("❌ Failed to load squad: \(error)")
+                }
+            }
+        }
     }
     
     private func clearPendingMatch() {
@@ -875,7 +941,7 @@ struct LiveGameSetupView: View {
         }
         
         // Notify and dismiss
-        NotificationCenter.default.post(name: Notification.Name("StartGame"), object: nil)
+        NotificationCenter.default.post(name: Notification.Name("StartGameWithSelectedMatch"), object: nil)
         presentationMode.wrappedValue.dismiss()
     }
     
@@ -1189,11 +1255,20 @@ struct LiveTeamPlayersSection: View {
     let team: Team
     let players: [Player]
     let selectedIds: Set<UUID>
+    let startingXIIds: Set<UUID>
     let onTogglePlayer: (Player) -> Void
     let onSelectTeam: () -> Void
     
     @Environment(\.colorScheme) var colorScheme
     @State private var isExpanded = true
+    
+    private var startingXI: [Player] {
+        players.filter { startingXIIds.contains($0.id) }.sorted { $0.name < $1.name }
+    }
+    
+    private var reserves: [Player] {
+        players.filter { !startingXIIds.contains($0.id) }.sorted { $0.name < $1.name }
+    }
     
     var body: some View {
         VStack(spacing: 8) {
@@ -1208,8 +1283,8 @@ struct LiveTeamPlayersSection: View {
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(AppDesignSystem.Colors.primaryText)
                     
-                    let selectedCount = players.filter { selectedIds.contains($0.id) }.count
-                    Text("\(selectedCount)/\(players.count)")
+                    let selectedCount = startingXI.filter { selectedIds.contains($0.id) }.count
+                    Text("\(selectedCount)/\(startingXI.count)")
                         .font(.system(size: 12))
                         .foregroundColor(AppDesignSystem.Colors.secondaryText)
                     
@@ -1230,13 +1305,53 @@ struct LiveTeamPlayersSection: View {
             
             // Players
             if isExpanded {
-                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
-                    ForEach(players) { player in
-                        LivePlayerChip(
-                            player: player,
-                            isSelected: selectedIds.contains(player.id),
-                            onTap: { onTogglePlayer(player) }
-                        )
+                VStack(alignment: .leading, spacing: 12) {
+                    // Starting XI section
+                    if !startingXI.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Starting XI")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(AppDesignSystem.Colors.grassGreen)
+                                .textCase(.uppercase)
+                            
+                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
+                                ForEach(startingXI) { player in
+                                    LivePlayerChip(
+                                        player: player,
+                                        isSelected: selectedIds.contains(player.id),
+                                        isReserve: false,
+                                        onTap: { onTogglePlayer(player) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Reserves section
+                    if !reserves.isEmpty {
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack(spacing: 6) {
+                                Text("Reserves")
+                                    .font(.system(size: 11, weight: .semibold))
+                                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                                    .textCase(.uppercase)
+                                
+                                Text("(available if subbed on)")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(AppDesignSystem.Colors.secondaryText.opacity(0.7))
+                            }
+                            
+                            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
+                                ForEach(reserves) { player in
+                                    LivePlayerChip(
+                                        player: player,
+                                        isSelected: false,
+                                        isReserve: true,
+                                        onTap: { } // No action for reserves
+                                    )
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1252,6 +1367,7 @@ struct LiveTeamPlayersSection: View {
 struct LivePlayerChip: View {
     let player: Player
     let isSelected: Bool
+    var isReserve: Bool = false
     let onTap: () -> Void
     
     @Environment(\.colorScheme) var colorScheme
@@ -1260,36 +1376,53 @@ struct LivePlayerChip: View {
         Button(action: onTap) {
             HStack(spacing: 6) {
                 RoundedRectangle(cornerRadius: 1.5)
-                    .fill(AppDesignSystem.TeamColors.getColor(for: player.team))
+                    .fill(AppDesignSystem.TeamColors.getColor(for: player.team).opacity(isReserve ? 0.4 : 1.0))
                     .frame(width: 3, height: 20)
                 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(player.name)
                         .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(AppDesignSystem.Colors.primaryText)
+                        .foregroundColor(isReserve ? AppDesignSystem.Colors.secondaryText.opacity(0.6) : AppDesignSystem.Colors.primaryText)
                         .lineLimit(1)
                     Text(player.position.rawValue)
                         .font(.system(size: 10))
-                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText.opacity(isReserve ? 0.5 : 1.0))
                 }
                 
                 Spacer(minLength: 4)
                 
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 16))
-                    .foregroundColor(isSelected ? AppDesignSystem.Colors.grassGreen : AppDesignSystem.Colors.secondaryText.opacity(0.4))
+                if isReserve {
+                    // Show "SUB" badge for reserves
+                    Text("SUB")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText.opacity(0.5))
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color.gray.opacity(0.15))
+                        )
+                } else {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 16))
+                        .foregroundColor(isSelected ? AppDesignSystem.Colors.grassGreen : AppDesignSystem.Colors.secondaryText.opacity(0.4))
+                }
             }
             .padding(8)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(isSelected ? AppDesignSystem.Colors.grassGreen.opacity(0.08) : colorScheme == .dark ? Color.white.opacity(0.03) : Color.black.opacity(0.02))
+                    .fill(isReserve
+                        ? (colorScheme == .dark ? Color.white.opacity(0.02) : Color.black.opacity(0.02))
+                        : (isSelected ? AppDesignSystem.Colors.grassGreen.opacity(0.08) : colorScheme == .dark ? Color.white.opacity(0.03) : Color.black.opacity(0.02)))
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
-                            .stroke(isSelected ? AppDesignSystem.Colors.grassGreen.opacity(0.3) : Color.clear, lineWidth: 1)
+                            .stroke(isSelected && !isReserve ? AppDesignSystem.Colors.grassGreen.opacity(0.3) : Color.clear, lineWidth: 1)
                     )
             )
+            .opacity(isReserve ? 0.6 : 1.0)
         }
         .buttonStyle(PlainButtonStyle())
+        .disabled(isReserve)
     }
 }
 
@@ -1344,4 +1477,3 @@ struct TeamPlayersData {
     let team: Team
     let players: [Player]
 }
-

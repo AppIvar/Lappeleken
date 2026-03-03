@@ -107,24 +107,30 @@ class APIClient {
         // Record the API call
         APIRateLimiter.shared.recordCall()
         
-        guard let url = URL(string: "\(baseURL)/\(endpoint)") else {
+        // Determine URL based on cache server configuration
+        let (requestURL, usesCacheServer) = buildRequestURL(for: endpoint)
+        
+        guard let url = requestURL else {
             throw APIError.invalidURL
         }
         
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.addValue("application/json", forHTTPHeaderField: "Accept")
-        request.addValue(AppConfig.footballDataAPIKey, forHTTPHeaderField: "X-Auth-Token")
         
-        // ADD THIS DEBUGGING:
-        print("🔧 API Request Debug:")
-        print("   URL: \(url.absoluteString)")
-        print("   Headers: \(request.allHTTPHeaderFields ?? [:])")
-        print("   API Key: \(String(AppConfig.footballDataAPIKey.prefix(8)))...")
+        // Only add API key for direct football-data.org calls
+        // Cache server handles its own authentication
+        if !usesCacheServer {
+            request.addValue(AppConfig.footballDataAPIKey, forHTTPHeaderField: "X-Auth-Token")
+        } else {
+            // Add app identifier for cache server analytics
+            request.addValue("LuckyFootballSlip/1.0", forHTTPHeaderField: "X-Client-ID")
+        }
         
         if AppConfig.enableDetailedLogging {
             let stats = APIRateLimiter.shared.getUsageStats()
-            print("📡 API Request (\(stats.current)/\(stats.max)): \(url.absoluteString)")
+            let source = usesCacheServer ? "CACHE" : "DIRECT"
+            print("📡 [\(source)] API Request (\(stats.current)/\(stats.max)): \(url.absoluteString)")
         }
         
         do {
@@ -155,5 +161,22 @@ class APIClient {
             throw APIError.networkError(error)
         }
     }
+    
+    /// Build request URL, routing through cache server if enabled
+    private func buildRequestURL(for endpoint: String) -> (URL?, Bool) {
+        // Check if cache server is enabled and endpoint is cacheable
+        if AppConfig.CacheServer.enabled {
+            let endpointBase = endpoint.components(separatedBy: "?").first ?? endpoint
+            
+            if AppConfig.CacheServer.cachedEndpoints.contains(where: { endpointBase.hasPrefix($0) }) {
+                // Route through cache server
+                let cacheURL = URL(string: "\(AppConfig.CacheServer.baseURL)/api/football/\(endpoint)")
+                return (cacheURL, true)
+            }
+        }
+        
+        // Direct call to football-data.org
+        let directURL = URL(string: "\(baseURL)/\(endpoint)")
+        return (directURL, false)
+    }
 }
-

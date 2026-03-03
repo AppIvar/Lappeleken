@@ -259,7 +259,9 @@ class GameEventMonitor {
         do {
             guard APIRateLimiter.shared.canMakeCall() else {
                 let waitTime = APIRateLimiter.shared.timeUntilNextCall()
-                print("⏳ Rate limited, waiting \(waitTime)s")
+                if AppConfig.enableDetailedLogging {
+                    print("⏳ Rate limited, waiting \(waitTime)s")
+                }
                 try await Task.sleep(nanoseconds: UInt64(waitTime * 1_000_000_000))
                 return
             }
@@ -276,10 +278,13 @@ class GameEventMonitor {
                 
                 onUpdate(update)
                 lastEventTime = Date()
+                print("🎯 Found \(newEvents.count) new event(s) for \(match.homeTeam.shortName) vs \(match.awayTeam.shortName)")
             }
             
             let interval = calculatePollingInterval()
-            print("⏰ Poll \(pollCount): waiting \(interval)s until next check")
+            if AppConfig.enableDetailedLogging {
+                print("⏰ Poll \(pollCount): next check in \(Int(interval))s")
+            }
             
             try await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
             
@@ -292,44 +297,52 @@ class GameEventMonitor {
     private func fetchMatchEvents() async -> [LiveMatchEvent] {
         do {
             let apiEvents = try await footballService.fetchMatchEvents(matchId: match.id)
-            return apiEvents.compactMap { convertAPIEventToLiveEvent($0) }
+            let liveEvents = apiEvents.compactMap { convertAPIEventToLiveEvent($0) }
+            
+            if AppConfig.enableDetailedLogging {
+                print("📥 Fetched \(apiEvents.count) API events, \(liveEvents.count) match tracked players")
+            }
+            
+            return liveEvents
         } catch {
-            print("⚠️ Real API failed, using demo events: \(error)")
+            if AppConfig.enableDetailedLogging {
+                print("⚠️ Failed to fetch events: \(error)")
+            }
             return []
         }
     }
     
     private func convertAPIEventToLiveEvent(_ apiEvent: MatchEvent) -> LiveMatchEvent? {
         if apiEvent.type.lowercased() == "substitution" {
-            // For substitutions, we need both players
-            guard let playerOff = findPlayerForEvent(apiEvent) else {
-                print("⚠️ Could not find player going OFF for substitution")
+            // For substitutions, check if either player is in our tracked players
+            let playerOffInSelection = gameSession.selectedPlayers.first { player in
+                player.apiId == apiEvent.playerId ||
+                player.name.lowercased() == (apiEvent.playerName ?? "").lowercased()
+            }
+            
+            // Log only if the player going OFF is one we're tracking
+            if playerOffInSelection == nil {
+                // This is expected - we don't track all players, just selected ones
+                // Substitution will still be processed by the game's substitution system
                 return nil
             }
             
             guard let playerOnId = apiEvent.playerOnId else {
-                print("⚠️ Substitution missing playerOnId")
+                print("⚠️ Substitution missing playerOnId for tracked player \(apiEvent.playerName ?? "unknown")")
                 return nil
             }
             
-            // Find the substitute player by API ID
+            // Find the substitute player (might be in availablePlayers as a reserve)
             let playerOn = gameSession.availablePlayers.first { $0.apiId == playerOnId }
-            
-            if playerOn == nil {
-                print("⚠️ Could not find player coming ON (ID: \(playerOnId))")
-                // Debug: Show available player IDs
-                print("   Available player API IDs: \(gameSession.availablePlayers.compactMap { $0.apiId }.prefix(10))")
-                return nil
-            }
             
             return LiveMatchEvent(
                 id: apiEvent.id,
                 type: .substitution,
                 minute: apiEvent.minute,
-                player: playerOff,
-                team: playerOff.team,
+                player: playerOffInSelection,
+                team: playerOffInSelection!.team,
                 timestamp: Date(),
-                description: "Substitution: \(playerOff.name) OFF → \(playerOn!.name) ON",
+                description: "Substitution: \(playerOffInSelection!.name) OFF → \(playerOn?.name ?? "Unknown") ON",
                 substitutePlayer: playerOn
             )
         }
@@ -384,20 +397,25 @@ class GameEventMonitor {
     
     
     private func calculatePollingInterval() -> TimeInterval {
+        // NOTE: For launch, using 30s interval to stay well under API rate limits
+        // With 30 calls/min limit: 30s interval = 2 calls/match/min
+        // Can support 10+ simultaneous matches per user safely
+        // TODO: When cache server is ready, can reduce to 15s via server-side caching
+        
         switch match.status {
         case .inProgress, .halftime:
-            return 15
+            return 30  // Poll every 30 seconds during match
         case .upcoming:
             let timeUntilStart = match.startTime.timeIntervalSinceNow
-            return timeUntilStart < 300 ? 30 : 120
+            return timeUntilStart < 300 ? 60 : 180  // More conservative pre-match
         case .completed, .finished:
-            return 300
+            return 300  // 5 minutes after match ends
         case .postponed, .cancelled:
-            return 600
+            return 600  // 10 minutes for postponed
         case .paused, .suspended:
-            return 60
+            return 90   // 90 seconds for paused
         case .unknown:
-            return 120
+            return 120  // 2 minutes for unknown status
         }
     }
 }

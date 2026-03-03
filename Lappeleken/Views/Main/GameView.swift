@@ -159,6 +159,15 @@ struct GameView: View {
         }
         .onAppear {
             gameSession.autoFixCustomEventsOnGameStart()
+            
+            // Start live event monitoring if in live mode
+            if gameSession.isLiveMode && !gameSession.selectedMatches.isEmpty {
+                print("🎯 GameView appeared - starting live event monitoring")
+                print("   Selected matches: \(gameSession.selectedMatches.map { "\($0.homeTeam.shortName) vs \($0.awayTeam.shortName)" })")
+                print("   Selected players: \(gameSession.selectedPlayers.count)")
+                print("   Player API IDs: \(gameSession.selectedPlayers.compactMap { $0.apiId }.prefix(5))...")
+                gameSession.startRealEventDrivenMode()
+            }
         }
         .onReceive(gameSession.$events) { events in
             if let lastEvent = events.last {
@@ -732,4 +741,3 @@ extension Participant {
         }
     }
 }
-
