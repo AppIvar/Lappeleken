@@ -171,24 +171,13 @@ class EventDrivenManager: ObservableObject {
     }
     
     private func convertToGameEvent(_ liveEvent: LiveMatchEvent, in gameSession: GameSession) -> (player: Player, eventType: Bet.EventType)? {
-        // Handle substitutions separately - don't convert them to bet events
-        if liveEvent.type == .substitution {
-            // Process the substitution in GameSession instead
-            if let playerOff = liveEvent.player {
-                // This should call handleSubstitution in GameSession
-                // But we need the substitute player info, which might not be in liveEvent.player
-                print("🔄 Substitution detected but needs separate handling in GameSession")
-            }
-            return nil // Don't create a bet event for substitutions
-        }
-        
+        // Only attribute an event to a player we can positively identify.
+        // No random/“pick anyone on the team” fallback — that mis-pays participants.
         guard let eventPlayer = liveEvent.player,
               let ourPlayer = gameSession.selectedPlayers.first(where: { $0.id == eventPlayer.id }) else {
             return nil
         }
-        
-        let betEventType = convertToBetEventType(liveEvent.type)
-        return (player: ourPlayer, eventType: betEventType)
+        return (player: ourPlayer, eventType: convertToBetEventType(liveEvent.type))
     }
     
     private func convertToBetEventType(_ liveEventType: LiveMatchEvent.LiveEventType) -> Bet.EventType {

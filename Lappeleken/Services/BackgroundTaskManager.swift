@@ -145,42 +145,10 @@ class BackgroundTaskManager: ObservableObject {
     // MARK: - Enhanced Event Detection
     
     private func checkForNewEvents(gameInfo: ActiveGameInfo) async -> [MatchEventType] {
-        var detectedEvents: [MatchEventType] = []
-        
-        do {
-            // Try to fetch match details - adjust this based on your actual service structure
-            let matchDetails = try await ServiceProvider.shared.getMatchService().fetchMatchDetails(matchId: String(gameInfo.matchId))
-            
-            // For now, we'll use a simplified approach since we're not sure of the exact structure
-            // You can enhance this once we know the exact MatchDetail structure
-            
-            print("📊 Match details fetched for game \(gameInfo.gameId)")
-            
-            // Simple time-based event generation for testing
-            let timeSinceLastCheck = Date().timeIntervalSince(gameInfo.lastEventCheck)
-            if timeSinceLastCheck > 300 { // 5 minutes
-                // Randomly generate an event for testing
-                let eventTypes: [MatchEventType] = [.goal, .yellowCard, .redCard, .penalty]
-                if Bool.random() && Double.random(in: 0...1) < 0.2 { // 20% chance
-                    let randomEvent = eventTypes.randomElement()!
-                    detectedEvents.append(randomEvent)
-                    print("🎲 Generated test event: \(randomEvent.rawValue)")
-                }
-            }
-            
-        } catch {
-            print("❌ Error checking match events: \(error)")
-            
-            // Fallback: occasional random event for testing/demo
-            let timeSinceLastCheck = Date().timeIntervalSince(gameInfo.lastEventCheck)
-            if timeSinceLastCheck > 900 { // 15 minutes
-                if Bool.random() && Double.random(in: 0...1) < 0.1 { // 10% chance
-                    detectedEvents.append(.goal)
-                }
-            }
-        }
-        
-        return detectedEvents
+        // Background event detection is not yet implemented against real API data.
+        // Returning [] instead of fabricating events so notifications are never false.
+        // TODO (Phase 2): diff real match events fetched via the unified monitor.
+        return []
     }
     
     // MARK: - Enhanced Notification Management

@@ -84,18 +84,18 @@ class APIClient {
         }
     }
     
-    func footballDataRequest<T: Decodable>(endpoint: String) async throws -> T {
-        // Check rate limit before making calls
+    /// Performs a rate-limited GET to football-data.org (or the cache server, when enabled)
+    /// and returns the raw response body. Every football-data call should go through this
+    /// or `footballDataRequest`, so `APIRateLimiter` sees all of them.
+    func footballDataRawData(endpoint: String) async throws -> Data {
+        // Rate-limit gate
         if !APIRateLimiter.shared.canMakeCall() {
             let waitTime = APIRateLimiter.shared.timeUntilNextCall()
             if AppConfig.enableDetailedLogging {
                 print("🚨 Rate limit reached, waiting \(waitTime) seconds")
             }
-            
-            if waitTime > 0 && waitTime < 60 { // Don't wait more than 1 minute
+            if waitTime > 0 && waitTime < 60 {
                 try await Task.sleep(nanoseconds: UInt64(waitTime * 1_000_000_000))
-                
-                // Check again after waiting
                 guard APIRateLimiter.shared.canMakeCall() else {
                     throw APIError.rateLimited
                 }
@@ -103,62 +103,62 @@ class APIClient {
                 throw APIError.rateLimited
             }
         }
-        
-        // Record the API call
+
+        // Count this call BEFORE making it
         APIRateLimiter.shared.recordCall()
-        
-        // Determine URL based on cache server configuration
+
+        // Route through cache server if enabled, else direct to football-data.org
         let (requestURL, usesCacheServer) = buildRequestURL(for: endpoint)
-        
         guard let url = requestURL else {
             throw APIError.invalidURL
         }
-        
+
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.addValue("application/json", forHTTPHeaderField: "Accept")
-        
-        // Only add API key for direct football-data.org calls
-        // Cache server handles its own authentication
         if !usesCacheServer {
             request.addValue(AppConfig.footballDataAPIKey, forHTTPHeaderField: "X-Auth-Token")
         } else {
-            // Add app identifier for cache server analytics
             request.addValue("LuckyFootballSlip/1.0", forHTTPHeaderField: "X-Client-ID")
         }
-        
+
         if AppConfig.enableDetailedLogging {
             let stats = APIRateLimiter.shared.getUsageStats()
             let source = usesCacheServer ? "CACHE" : "DIRECT"
             print("📡 [\(source)] API Request (\(stats.current)/\(stats.max)): \(url.absoluteString)")
         }
-        
+
         do {
             let (data, response) = try await session.data(for: request)
-            
+
             guard let httpResponse = response as? HTTPURLResponse else {
                 throw APIError.unknown
             }
-            
             if httpResponse.statusCode == 429 {
                 throw APIError.rateLimited
             }
-            
-            if (200...299).contains(httpResponse.statusCode) {
-                let decoder = JSONDecoder()
-                decoder.keyDecodingStrategy = .convertFromSnakeCase
-                decoder.dateDecodingStrategy = .iso8601
-                
-                return try decoder.decode(T.self, from: data)
-            } else {
+            guard (200...299).contains(httpResponse.statusCode) else {
                 let errorBody = String(data: data, encoding: .utf8) ?? "No error body"
                 throw APIError.serverError(httpResponse.statusCode, errorBody)
             }
+            return data
         } catch {
             if let apiError = error as? APIError {
                 throw apiError
             }
             throw APIError.networkError(error)
+        }
+    }
+    
+    func footballDataRequest<T: Decodable>(endpoint: String) async throws -> T {
+        let data = try await footballDataRawData(endpoint: endpoint)
+        do {
+            let decoder = JSONDecoder()
+            decoder.keyDecodingStrategy = .convertFromSnakeCase
+            decoder.dateDecodingStrategy = .iso8601
+            return try decoder.decode(T.self, from: data)
+        } catch {
+            throw APIError.decodingError(error)
         }
     }
     

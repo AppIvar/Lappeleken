@@ -16,40 +16,47 @@ class GameLogicManager {
     
     /// Process a game event and update participant balances
     func processEvent(_ event: GameEvent, in gameSession: GameSession) {
-        // Store backup for undo functionality
-        storeEventBackup(event: event, gameSession: gameSession)
-        
-        // Add event to session
+        // Snapshot every balance BEFORE this event, keyed to the event id, for exact undo.
+        let snapshot = gameSession.participants.reduce(into: [UUID: Double]()) { result, participant in
+            result[participant.id] = participant.balance
+        }
+        gameSession.balanceSnapshots.append((eventId: event.id, balances: snapshot))
+
         gameSession.events.append(event)
-        
-        // Calculate and apply payments
         calculatePayments(for: event, in: gameSession)
-        
-        // Enable undo
+
         gameSession.canUndoLastEvent = true
-        
-        // Notify UI of changes
         gameSession.objectWillChange.send()
-        
-        print("✅ Processed event: \(event.eventType.rawValue) for \(event.player.name)")
+
+        print("✅ Processed event: \(getEventLabel(event)) for \(event.player.name)")
     }
     
     /// Undo the last event and reverse all changes
     func undoLastEvent(in gameSession: GameSession) {
         guard !gameSession.events.isEmpty else { return }
-        
+
         let lastEvent = gameSession.events.removeLast()
-        
-        // Reverse the balance changes
-        reversePayments(for: lastEvent, in: gameSession)
-        
-        // Update undo availability
+
+        // Restore balances exactly, if we have a snapshot for this event.
+        // Recompute-free: immune to ownership changes (substitutions) since the event.
+        if let top = gameSession.balanceSnapshots.last, top.eventId == lastEvent.id {
+            gameSession.balanceSnapshots.removeLast()
+            for i in 0..<gameSession.participants.count {
+                if let restored = top.balances[gameSession.participants[i].id] {
+                    gameSession.participants[i].balance = restored
+                }
+            }
+        } else {
+            // No matching snapshot → the event had no balance effect (e.g. a substitution
+            // timeline entry). Remove it without touching balances. Roster reversal for
+            // substitutions is intentionally out of scope here.
+            print("ℹ️ Undo: no balance snapshot for \(getEventLabel(lastEvent)) — removed event only")
+        }
+
         gameSession.canUndoLastEvent = !gameSession.events.isEmpty
-        
-        // Notify UI of changes
         gameSession.objectWillChange.send()
-        
-        print("🔄 Undid event: \(lastEvent.eventType.rawValue) for \(lastEvent.player.name)")
+
+        print("🔄 Undid event: \(getEventLabel(lastEvent)) for \(lastEvent.player.name)")
     }
     
     // MARK: - Payment Calculations
@@ -57,7 +64,7 @@ class GameLogicManager {
     /// Calculate and apply payments for an event
     private func calculatePayments(for event: GameEvent, in gameSession: GameSession) {
         // Find the bet for this event type
-        guard let bet = gameSession.bets.first(where: { $0.eventType == event.eventType }) else {
+        guard let bet = resolveBet(for: event, in: gameSession) else {
             print("⚠️ No bet found for event type: \(event.eventType.rawValue)")
             return
         }
@@ -92,33 +99,22 @@ class GameLogicManager {
         }
     }
     
-    /// Reverse payments for an event (for undo functionality)
-    private func reversePayments(for event: GameEvent, in gameSession: GameSession) {
-        guard let bet = gameSession.bets.first(where: { $0.eventType == event.eventType }) else { return }
-        
-        let (participantsWithPlayer, participantsWithoutPlayer) = getParticipantGroups(
-            for: event.player,
-            in: gameSession
-        )
-        
-        guard !participantsWithPlayer.isEmpty && !participantsWithoutPlayer.isEmpty else { return }
-        
-        // Reverse the payment logic (opposite of calculatePayments)
-        if bet.amount >= 0 {
-            reversePositiveBetPayment(
-                bet: bet,
-                participantsWithPlayer: participantsWithPlayer,
-                participantsWithoutPlayer: participantsWithoutPlayer,
-                in: gameSession
-            )
-        } else {
-            reverseNegativeBetPayment(
-                bet: bet,
-                participantsWithPlayer: participantsWithPlayer,
-                participantsWithoutPlayer: participantsWithoutPlayer,
-                in: gameSession
-            )
+    /// Find the bet a given event should pay out against.
+    /// Custom events must match the *specific* custom bet by name, not just the first `.custom` bet.
+    private func resolveBet(for event: GameEvent, in gameSession: GameSession) -> Bet? {
+        if event.eventType == .custom {
+            return gameSession.bets.first { bet in
+                bet.eventType == .custom &&
+                gameSession.customEventMappings[bet.id] == event.customEventName
+            }
         }
+        return gameSession.bets.first { $0.eventType == event.eventType }
+    }
+
+    /// Readable label for logging (custom events show their name, not "Custom Event").
+    private func getEventLabel(_ event: GameEvent) -> String {
+        if event.eventType == .custom { return event.customEventName ?? "Custom Event" }
+        return event.eventType.rawValue
     }
     
     // MARK: - Player Assignment
@@ -175,6 +171,8 @@ class GameLogicManager {
         }
         
         print("✅ Balance recalculation complete")
+        gameSession.balanceSnapshots.removeAll()
+        gameSession.canUndoLastEvent = false
         gameSession.objectWillChange.send()
     }
     
@@ -230,7 +228,7 @@ extension GameLogicManager {
         
         for (index, participant) in gameSession.participants.enumerated() {
             let hasPlayer = participant.selectedPlayers.contains { $0.id == player.id } ||
-                           participant.substitutedPlayers.contains { $0.id == player.id }
+            participant.substitutedPlayers.contains { $0.id == player.id }
             
             if hasPlayer {
                 participantsWithPlayer.append(index)
@@ -280,38 +278,6 @@ extension GameLogicManager {
         print("💸 Negative bet: \(participantsWithPlayer.count) pay \(totalPayment) each, \(participantsWithoutPlayer.count) receive proportionally")
     }
     
-    // MARK: - Payment Logic - Reverse (for Undo)
-    
-    /// Reverse positive bet payment
-    func reversePositiveBetPayment(bet: Bet, participantsWithPlayer: [Int], participantsWithoutPlayer: [Int], in gameSession: GameSession) {
-        let totalAmount = Double(participantsWithoutPlayer.count) * bet.amount
-        let amountPerWinner = totalAmount / Double(participantsWithPlayer.count)
-        
-        // Reverse: subtract from winners, add to payers
-        for index in participantsWithPlayer {
-            gameSession.participants[index].balance -= amountPerWinner
-        }
-        
-        for index in participantsWithoutPlayer {
-            gameSession.participants[index].balance += bet.amount
-        }
-    }
-    
-    /// Reverse negative bet payment
-    func reverseNegativeBetPayment(bet: Bet, participantsWithPlayer: [Int], participantsWithoutPlayer: [Int], in gameSession: GameSession) {
-        let payAmount = abs(bet.amount)
-        let totalPayment = payAmount * Double(participantsWithoutPlayer.count)
-        
-        // Reverse: add to payers, subtract from receivers
-        for index in participantsWithPlayer {
-            gameSession.participants[index].balance += totalPayment
-        }
-        
-        for index in participantsWithoutPlayer {
-            gameSession.participants[index].balance -= payAmount * Double(participantsWithPlayer.count)
-        }
-    }
-    
     // MARK: - Player Assignment Helpers
     
     /// Clear all existing player assignments
@@ -337,8 +303,8 @@ extension GameLogicManager {
         
         for i in 0..<gameSession.participants.count {
             let numberOfPlayers = i < distribution.remainingPlayers ?
-                distribution.playersPerParticipant + 1 :
-                distribution.playersPerParticipant
+            distribution.playersPerParticipant + 1 :
+            distribution.playersPerParticipant
             
             for _ in 0..<numberOfPlayers {
                 if playerIndex < players.count {
@@ -356,18 +322,5 @@ extension GameLogicManager {
             let playerNames = participant.selectedPlayers.map { $0.name }.joined(separator: ", ")
             print("  \(participant.name): \(participant.selectedPlayers.count) players - \(playerNames)")
         }
-    }
-    
-    // MARK: - Backup for Undo
-    
-    /// Store backup data for undo functionality
-    func storeEventBackup(event: GameEvent, gameSession: GameSession) {
-        let participantBalanceBackup = gameSession.participants.reduce(into: [UUID: Double]()) { result, participant in
-            result[participant.id] = participant.balance
-        }
-        
-        // Store backup in GameSession (we'll move this to GameLogicManager later)
-        // For now, we'll work with the existing backup system
-        print("💾 Stored backup for event: \(event.eventType.rawValue)")
     }
 }

@@ -121,18 +121,7 @@ class FootballDataMatchService: MatchService {
     /// Fetch detailed match information including lineups
     /// - Parameter matchId: The match ID
     func fetchMatchDetails(matchId: String) async throws -> MatchDetail {
-        let url = URL(string: "https://api.football-data.org/v4/matches/\(matchId)")!
-        var request = URLRequest(url: url)
-        request.setValue(apiKey, forHTTPHeaderField: "X-Auth-Token")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
-            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 500
-            throw APIError.serverError(statusCode, "Failed to fetch match details")
-        }
+        let data = try await apiClient.footballDataRawData(endpoint: "matches/\(matchId)")
         
         let apiMatchDetail = try JSONDecoder().decode(APIMatchDetailResponse.self, from: data)
 
@@ -163,18 +152,7 @@ class FootballDataMatchService: MatchService {
     /// - Returns: Array of players from both teams
     /// - Throws: LineupError.notAvailableYet if lineup hasn't been announced
     func fetchMatchPlayers(matchId: String) async throws -> [Player] {
-        let url = URL(string: "https://api.football-data.org/v4/matches/\(matchId)")!
-        var request = URLRequest(url: url)
-        request.setValue(apiKey, forHTTPHeaderField: "X-Auth-Token")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
-            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 500
-            throw APIError.serverError(statusCode, "Failed to fetch match data")
-        }
+        let data = try await apiClient.footballDataRawData(endpoint: "matches/\(matchId)")
         
         guard let jsonData = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let homeTeamData = jsonData["homeTeam"] as? [String: Any],
@@ -223,12 +201,7 @@ class FootballDataMatchService: MatchService {
     
     /// Fetch live match details with events (REQUIRED BY MatchService PROTOCOL)
     func fetchLiveMatchDetails(matchId: String) async throws -> MatchWithEvents {
-        let url = URL(string: "https://api.football-data.org/v4/matches/\(matchId)")!
-        var request = URLRequest(url: url)
-        request.setValue(apiKey, forHTTPHeaderField: "X-Auth-Token")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let data = try await apiClient.footballDataRawData(endpoint: "matches/\(matchId)")
         let apiMatch = try JSONDecoder().decode(APIMatch.self, from: data)
         
         return apiMatch.toMatchWithEvents()
@@ -236,12 +209,7 @@ class FootballDataMatchService: MatchService {
     
     /// Fetch match events (REQUIRED BY MatchService PROTOCOL)
     func fetchMatchEvents(matchId: String) async throws -> [MatchEvent] {
-        let url = URL(string: "https://api.football-data.org/v4/matches/\(matchId)")!
-        var request = URLRequest(url: url)
-        request.setValue(apiKey, forHTTPHeaderField: "X-Auth-Token")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let data = try await apiClient.footballDataRawData(endpoint: "matches/\(matchId)")
         
         // Parse the full match response
         guard let jsonData = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
@@ -419,18 +387,7 @@ class FootballDataMatchService: MatchService {
     
     /// Fetch match lineup (REQUIRED BY MatchService PROTOCOL)
     func fetchMatchLineup(matchId: String) async throws -> Lineup {
-        let url = URL(string: "https://api.football-data.org/v4/matches/\(matchId)")!
-        var request = URLRequest(url: url)
-        request.setValue(apiKey, forHTTPHeaderField: "X-Auth-Token")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse,
-              httpResponse.statusCode == 200 else {
-            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 500
-            throw APIError.serverError(statusCode, "Failed to fetch match data")
-        }
+        let data = try await apiClient.footballDataRawData(endpoint: "matches/\(matchId)")
         
         guard let jsonData = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let homeTeamData = jsonData["homeTeam"] as? [String: Any],

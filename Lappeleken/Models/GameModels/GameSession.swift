@@ -35,8 +35,8 @@ class GameSession: ObservableObject, Codable {
 
     private var dataService: GameDataService
     private var matchMonitoringTask: Task<Void, Error>?
+    internal var balanceSnapshots: [(eventId: UUID, balances: [UUID: Double])] = []
     internal var matchService: MatchService?
-    private var lastEventBackup: (event: GameEvent, participantBalances: [UUID: Double])? = nil
     private var matchMonitoringTasks: [String: Task<Void, Error>] = [:]
 
     
@@ -1073,85 +1073,23 @@ class GameSession: ObservableObject, Codable {
     }
     
     @MainActor func recordCustomEvent(player: Player, eventName: String) {
-        // Find the custom bet that matches this event name
-        guard let customBet = bets.first(where: { bet in
-            bet.eventType == .custom && customEventMappings[bet.id] == eventName
-        }) else {
+        // Validate that a custom bet with this name exists before recording.
+        guard bets.contains(where: { $0.eventType == .custom && customEventMappings[$0.id] == eventName }) else {
             print("❌ Could not find custom bet for event: \(eventName)")
             return
         }
-        
-        // Create the event WITH the custom event name stored
+
         let event = GameEvent(
             player: player,
             eventType: .custom,
             timestamp: Date(),
-            customEventName: eventName  // Store the actual event name
+            customEventName: eventName  // resolveBet uses this to find the right custom bet
         )
-        
-        // Store backup for undo
-        let participantBalanceBackup = participants.reduce(into: [UUID: Double]()) { result, participant in
-            result[participant.id] = participant.balance
-        }
-        lastEventBackup = (event: event, participantBalances: participantBalanceBackup)
-        canUndoLastEvent = true
-        
-        // Add the event
-        events.append(event)
-        
-        // Process betting logic
-        processCustomEventBetting(event: event, customBet: customBet, eventName: eventName)
-        
-        print("✅ Recorded custom event: \(eventName) for \(player.name)")
-        
-        // Force UI update
-        objectWillChange.send()
-    }
 
-    private func processCustomEventBetting(event: GameEvent, customBet: Bet, eventName: String) {
-        // Determine which participants have the player who triggered the event
-        let participantsWithPlayer = participants.enumerated().compactMap { (index, participant) in
-            let hasPlayer = participant.selectedPlayers.contains { $0.id == event.player.id } ||
-                           participant.substitutedPlayers.contains { $0.id == event.player.id }
-            return hasPlayer ? index : nil
-        }
-        
-        let participantsWithoutPlayer = participants.enumerated().compactMap { (index, participant) in
-            let hasPlayer = participant.selectedPlayers.contains { $0.id == event.player.id } ||
-                           participant.substitutedPlayers.contains { $0.id == event.player.id }
-            return hasPlayer ? nil : index
-        }
-        
-        // Apply the betting logic based on whether it's positive or negative
-        if customBet.amount > 0 {
-            // Positive bet: participants WITHOUT player pay those WITH player
-            let payAmount = customBet.amount
-            
-            for i in 0..<participants.count {
-                let hasPlayer = participantsWithPlayer.contains(i)
-                
-                if hasPlayer {
-                    participants[i].balance += payAmount * Double(participantsWithoutPlayer.count)
-                } else {
-                    participants[i].balance -= payAmount
-                }
-            }
-        } else {
-            // Negative bet: participants WITH player pay those WITHOUT player
-            let payAmount = abs(customBet.amount)
-            
-            for i in 0..<participants.count {
-                let hasPlayer = participantsWithPlayer.contains(i)
-                
-                if hasPlayer {
-                    participants[i].balance -= payAmount * Double(participantsWithoutPlayer.count)
-                } else {
-                    participants[i].balance += payAmount * Double(participantsWithPlayer.count)
-                }
-            }
-        }
-        
-        print("💰 Processed betting for custom event '\(eventName)': \(customBet.amount > 0 ? "Positive" : "Negative") bet of \(abs(customBet.amount))")
+        // Single source of truth: same path as every other event (snapshot + pay).
+        GameLogicManager.shared.processEvent(event, in: self)
+
+        print("✅ Recorded custom event: \(eventName) for \(player.name)")
     }
     
     func debugAndFixCustomEventMappings() {
