@@ -233,15 +233,18 @@ static func toggleDataManagerForTesting() {
     }
     
     static let footballDataAPIKey: String = {
-        if let apiKey = Bundle.main.object(forInfoDictionaryKey: "FOOTBALL_DATA_API_KEY") as? String, !apiKey.isEmpty {
+        if let apiKey = Bundle.main.object(forInfoDictionaryKey: "FOOTBALL_DATA_API_KEY") as? String,
+           !apiKey.isEmpty,
+           apiKey != "$(FOOTBALL_DATA_API_KEY)" {   // guard against an unsubstituted xcconfig placeholder
             return apiKey
         }
-        
-#if DEBUG
-        return "23b9a294b92a48d3b50444a6ee280aca"
-#else
-        fatalError("API key not found in Info.plist")
-#endif
+
+        // No key found. Fail loudly in every configuration rather than shipping a key in source.
+        #if DEBUG
+        fatalError("FOOTBALL_DATA_API_KEY missing. Add it to Secrets.xcconfig (see setup notes).")
+        #else
+        fatalError("FOOTBALL_DATA_API_KEY not found in Info.plist")
+        #endif
     }()
     
     static var useStubData: Bool {

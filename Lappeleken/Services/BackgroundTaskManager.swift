@@ -145,10 +145,69 @@ class BackgroundTaskManager: ObservableObject {
     // MARK: - Enhanced Event Detection
     
     private func checkForNewEvents(gameInfo: ActiveGameInfo) async -> [MatchEventType] {
-        // Background event detection is not yet implemented against real API data.
-        // Returning [] instead of fabricating events so notifications are never false.
-        // TODO (Phase 2): diff real match events fetched via the unified monitor.
-        return []
+        var detectedEvents: [MatchEventType] = []
+
+        // Respect the shared rate limiter even in the background.
+        guard APIRateLimiter.shared.canMakeCall() else {
+            print("⏳ Background check skipped: rate limited")
+            return []
+        }
+
+        do {
+            // One call gives us fresh status + score. matchId is stored as Int; the API wants String.
+            let detail = try await DataManager.shared.fetchMatchDetails(String(gameInfo.matchId))
+            let match = detail.match
+
+            let statusKey = "lastStatus_\(gameInfo.matchId)"
+            let scoreKey  = "lastScore_\(gameInfo.matchId)"
+
+            let previousStatus = UserDefaults.standard.string(forKey: statusKey) ?? "notStarted"
+            let previousScore  = UserDefaults.standard.string(forKey: scoreKey) ?? "0-0"
+
+            let currentStatus = String(describing: match.status)
+            // TODO: compare MatchStatus by rawValue, not String(describing:)
+            let currentScore  = "\(detail.homeScore)-\(detail.awayScore)"
+
+            // Score went up → at least one goal since we last looked.
+            if currentScore != previousScore, goalsIncreased(from: previousScore, to: currentScore) {
+                detectedEvents.append(.goal)
+            }
+
+            // Status transitions worth a nudge.
+            if currentStatus != previousStatus {
+                switch match.status {
+                case .inProgress where previousStatus == "notStarted" || previousStatus.contains("upcoming"):
+                    detectedEvents.append(.matchStart)
+                case .halftime:
+                    detectedEvents.append(.halfTime)
+                case .completed, .finished:
+                    detectedEvents.append(.matchEnd)
+                default:
+                    break
+                }
+            }
+
+            // Persist the new baseline for next time.
+            UserDefaults.standard.set(currentStatus, forKey: statusKey)
+            UserDefaults.standard.set(currentScore, forKey: scoreKey)
+
+            print("📊 Background diff for \(gameInfo.matchName): \(previousScore)→\(currentScore), \(previousStatus)→\(currentStatus)")
+
+        } catch {
+            // No fabrication on failure — just report nothing this cycle.
+            print("❌ Background event check failed: \(error)")
+        }
+
+        return detectedEvents
+    }
+
+    /// True if the total goals in `to` exceeds the total in `from` (guards against score corrections going down).
+    private func goalsIncreased(from: String, to: String) -> Bool {
+        func total(_ s: String) -> Int {
+            let parts = s.split(separator: "-").compactMap { Int($0) }
+            return parts.count == 2 ? parts[0] + parts[1] : 0
+        }
+        return total(to) > total(from)
     }
     
     // MARK: - Enhanced Notification Management

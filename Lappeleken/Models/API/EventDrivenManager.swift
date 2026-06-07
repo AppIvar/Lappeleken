@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import UserNotifications
 
 // MARK: - Live Match Event
 
@@ -58,7 +59,11 @@ class EventDrivenManager: ObservableObject {
     private let footballService: FootballDataMatchService
     
     private init() {
-        self.footballService = ServiceProvider.shared.getMatchService() as! FootballDataMatchService
+        let footballDataAPIClient = APIClient(baseURL: "https://api.football-data.org/v4")
+        self.footballService = FootballDataMatchService(
+            apiClient: footballDataAPIClient,
+            apiKey: AppConfig.footballDataAPIKey
+        )
         print("🎯 EventDrivenManager initialized")
     }
     
@@ -110,47 +115,78 @@ class EventDrivenManager: ObservableObject {
     
     private func processEventUpdate(_ update: LiveMatchUpdate, for gameSession: GameSession) {
         print("📡 Processing event update: \(update.newEvents.count) new events")
-        
+
         for liveEvent in update.newEvents {
-            // Handle substitutions through GameSession
-            if liveEvent.type == .substitution {
-                print("🔄 Substitution detected in EventDrivenManager")
-                
-                // Create a MatchEvent from LiveMatchEvent for substitution
-                if let playerOff = liveEvent.player,
-                   let playerOn = liveEvent.substitutePlayer {
-                    
-                    let matchEvent = MatchEvent(
-                        id: liveEvent.id,
-                        type: "SUBSTITUTION",
-                        playerId: playerOff.apiId ?? "",
-                        playerName: playerOff.name,
-                        minute: liveEvent.minute,
-                        teamId: liveEvent.team.id.uuidString,
-                        playerOffId: playerOff.apiId,
-                        playerOnId: playerOn.apiId
-                    )
-                    
-                    // Let GameSession handle it through processLiveEvent
-                    gameSession.processLiveEvent(matchEvent)
-                }
-                continue
-            }
-            
-            // Handle other events
-            if let gameEvent = convertToGameEvent(liveEvent, in: gameSession) {
-                gameSession.recordEvent(player: gameEvent.player, eventType: gameEvent.eventType)
-                print("✅ Recorded event: \(gameEvent.eventType) for \(gameEvent.player.name)")
-                
+            // Build a MatchEvent and funnel EVERYTHING through processLiveEvent,
+            // which owns dedup (processedEventIds) and substitution handling.
+            let matchEvent = MatchEvent(
+                id: liveEvent.id,
+                type: liveEvent.type.rawValue,
+                playerId: liveEvent.player?.apiId ?? "",
+                playerName: liveEvent.player?.name ?? "",
+                minute: liveEvent.minute,
+                teamId: liveEvent.team.id.uuidString,
+                playerOffId: liveEvent.type == .substitution ? liveEvent.player?.apiId : nil,
+                playerOnId: liveEvent.type == .substitution ? liveEvent.substitutePlayer?.apiId : nil
+            )
+
+            gameSession.processLiveEvent(matchEvent)
+
+            // In-app banner (foreground only) + real local notification (foreground + background window).
+            if liveEvent.type != .substitution, liveEvent.player != nil {
                 showMissedEventNotification(liveEvent, in: gameSession)
+                scheduleEventNotification(liveEvent, in: gameSession)
             }
         }
-        
+
+        // Score/status now ride on the same update (statusChanged set by the monitor).
         if update.statusChanged {
             gameSession.selectedMatch = update.match
         }
-        
+
         gameSession.objectWillChange.send()
+    }
+    
+    /// Fire a real local notification for a detected, tracked-player event.
+    /// Works in foreground (NotificationDelegate presents it) and the short background window.
+    /// userInfo matches what NotificationDelegate reads (gameId, type) so taps open the game.
+    private func scheduleEventNotification(_ event: LiveMatchEvent, in gameSession: GameSession) {
+        guard let player = event.player else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = notificationTitle(for: event.type)
+        let matchName = "\(gameSession.selectedMatch?.homeTeam.shortName ?? "")-\(gameSession.selectedMatch?.awayTeam.shortName ?? "")"
+        content.body = matchName.isEmpty
+            ? "\(player.name) — \(event.minute)'"
+            : "\(player.name) — \(event.minute)' (\(matchName))"
+        content.sound = .default
+        content.userInfo = [
+            "gameId": gameSession.id.uuidString,
+            "type": event.type.rawValue
+        ]
+
+        // Stable identifier so the same event can't notify twice even across cycles.
+        let identifier = "live_event_\(gameSession.id.uuidString)_\(event.id)"
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
+
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                print("❌ Failed to schedule event notification: \(error)")
+            }
+        }
+    }
+
+    /// Short, event-appropriate notification title.
+    private func notificationTitle(for type: LiveMatchEvent.LiveEventType) -> String {
+        switch type {
+        case .goal, .penalty:   return "⚽ GOAL!"
+        case .ownGoal:          return "⚽ Own Goal"
+        case .assist:           return "🅰️ Assist"
+        case .yellowCard:       return "🟨 Yellow Card"
+        case .redCard:          return "🟥 Red Card"
+        case .penaltyMissed:    return "❌ Penalty Missed"
+        default:                return "Match Update"
+        }
     }
     
     private func showMissedEventNotification(_ event: LiveMatchEvent, in gameSession: GameSession) {
@@ -167,29 +203,6 @@ class EventDrivenManager: ObservableObject {
                     "playerName": event.player?.name ?? "Unknown"
                 ]
             )
-        }
-    }
-    
-    private func convertToGameEvent(_ liveEvent: LiveMatchEvent, in gameSession: GameSession) -> (player: Player, eventType: Bet.EventType)? {
-        // Only attribute an event to a player we can positively identify.
-        // No random/“pick anyone on the team” fallback — that mis-pays participants.
-        guard let eventPlayer = liveEvent.player,
-              let ourPlayer = gameSession.selectedPlayers.first(where: { $0.id == eventPlayer.id }) else {
-            return nil
-        }
-        return (player: ourPlayer, eventType: convertToBetEventType(liveEvent.type))
-    }
-    
-    private func convertToBetEventType(_ liveEventType: LiveMatchEvent.LiveEventType) -> Bet.EventType {
-        switch liveEventType {
-        case .goal: return .goal
-        case .assist: return .assist
-        case .yellowCard: return .yellowCard
-        case .redCard: return .redCard
-        case .ownGoal: return .ownGoal
-        case .penaltyMissed: return .penaltyMissed
-        case .penalty: return .penalty
-        default: return .goal
         }
     }
     
@@ -211,7 +224,7 @@ class EventDrivenManager: ObservableObject {
 
 class GameEventMonitor {
     private let gameSession: GameSession
-    internal let match: Match
+    var match: Match
     private let footballService: FootballDataMatchService
     private let onUpdate: (LiveMatchUpdate) -> Void
     
@@ -244,60 +257,43 @@ class GameEventMonitor {
     
     private func performMonitoringCycle() async {
         pollCount += 1
-        
+
         do {
             guard APIRateLimiter.shared.canMakeCall() else {
                 let waitTime = APIRateLimiter.shared.timeUntilNextCall()
-                if AppConfig.enableDetailedLogging {
-                    print("⏳ Rate limited, waiting \(waitTime)s")
-                }
+                if AppConfig.enableDetailedLogging { print("⏳ Rate limited, waiting \(waitTime)s") }
                 try await Task.sleep(nanoseconds: UInt64(waitTime * 1_000_000_000))
                 return
             }
-            
-            let matchEvents = await fetchMatchEvents()
-            let newEvents = filterNewEvents(matchEvents)
-            
-            if !newEvents.isEmpty {
+
+            // ONE call returns both the fresh match (status/score) and its events.
+            let snapshot = try await footballService.fetchMatchSnapshot(matchId: match.id)
+            let liveEvents = snapshot.events.compactMap { convertAPIEventToLiveEvent($0) }
+            let newEvents = filterNewEvents(liveEvents)
+
+            let statusChanged = snapshot.match.status != match.status
+            self.match = snapshot.match   // keep status/score fresh for interval + next compare
+
+            if !newEvents.isEmpty || statusChanged {
                 let update = LiveMatchUpdate(
-                    match: match,
+                    match: snapshot.match,
                     newEvents: newEvents,
-                    statusChanged: false
+                    statusChanged: statusChanged
                 )
-                
                 onUpdate(update)
-                lastEventTime = Date()
-                print("🎯 Found \(newEvents.count) new event(s) for \(match.homeTeam.shortName) vs \(match.awayTeam.shortName)")
+                if !newEvents.isEmpty {
+                    lastEventTime = Date()
+                    print("🎯 Found \(newEvents.count) new event(s) for \(match.homeTeam.shortName) vs \(match.awayTeam.shortName)")
+                }
             }
-            
+
             let interval = calculatePollingInterval()
-            if AppConfig.enableDetailedLogging {
-                print("⏰ Poll \(pollCount): next check in \(Int(interval))s")
-            }
-            
+            if AppConfig.enableDetailedLogging { print("⏰ Poll \(pollCount): next check in \(Int(interval))s") }
             try await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
-            
+
         } catch {
             print("❌ Error in monitoring cycle: \(error)")
-            try? await Task.sleep(nanoseconds: 300_000_000_000) // 5 minutes
-        }
-    }
-    
-    private func fetchMatchEvents() async -> [LiveMatchEvent] {
-        do {
-            let apiEvents = try await footballService.fetchMatchEvents(matchId: match.id)
-            let liveEvents = apiEvents.compactMap { convertAPIEventToLiveEvent($0) }
-            
-            if AppConfig.enableDetailedLogging {
-                print("📥 Fetched \(apiEvents.count) API events, \(liveEvents.count) match tracked players")
-            }
-            
-            return liveEvents
-        } catch {
-            if AppConfig.enableDetailedLogging {
-                print("⚠️ Failed to fetch events: \(error)")
-            }
-            return []
+            try? await Task.sleep(nanoseconds: 300_000_000_000)
         }
     }
     

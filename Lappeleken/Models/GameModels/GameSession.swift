@@ -34,12 +34,9 @@ class GameSession: ObservableObject, Codable {
     internal var saveId: UUID? = nil
 
     private var dataService: GameDataService
-    private var matchMonitoringTask: Task<Void, Error>?
     internal var balanceSnapshots: [(eventId: UUID, balances: [UUID: Double])] = []
     internal var matchService: MatchService?
-    private var matchMonitoringTasks: [String: Task<Void, Error>] = [:]
 
-    
     // Default initializer
     init() {
         self.dataService = ServiceProvider.shared.getGameDataService()
@@ -269,81 +266,6 @@ class GameSession: ObservableObject, Codable {
         return players
     }
     
-    @MainActor func startMonitoringMatches(_ matches: [Match]) {
-        guard isLiveMode, let matchService = matchService else { return }
-        
-        print("🎯 Starting monitoring for \(matches.count) matches")
-        
-        // Clear processed events when starting new monitoring
-        processedEventIds.removeAll()
-        
-        for match in matches {
-            print("📍 Starting monitor for: \(match.homeTeam.name) vs \(match.awayTeam.name)")
-            
-            let task = matchService.monitorMatch(
-                matchId: match.id,
-                onUpdate: { [weak self] update in
-                    guard let self = self else { return }
-                    
-                    Task { @MainActor in
-                        self.processMatchUpdate(update)
-                        
-                        // Send notification for important events
-                        if !update.newEvents.isEmpty {
-                            self.sendNotification(for: update)
-                        }
-                    }
-                }
-            )
-            
-            matchMonitoringTasks[match.id] = task
-        }
-    }
-    
-    @MainActor func stopMonitoring(for matchId: String) {
-        matchMonitoringTasks[matchId]?.cancel()
-        matchMonitoringTasks.removeValue(forKey: matchId)
-        print("🛑 Stopped monitoring for match \(matchId)")
-    }
-    
-    @MainActor func stopAllMonitoring() {
-        print("🛑 Stopping ALL monitoring systems...")
-        
-        // Cancel all match monitoring tasks
-        for task in matchMonitoringTasks.values {
-            task.cancel()
-        }
-        matchMonitoringTasks.removeAll()
-        
-        // Stop other monitoring systems
-        EventDrivenManager.shared.stopMonitoring(for: self)
-        BackgroundTaskManager.shared.stopBackgroundMonitoring(for: self)
-        
-        print("✅ All monitoring stopped")
-    }
-    
-    // Add notification support
-    private func sendNotification(for update: MatchUpdate) {
-        // You'll need to implement this based on your notification setup
-        // Example:
-        let content = UNMutableNotificationContent()
-        content.title = "Match Update"
-        content.body = "\(update.newEvents.count) new events in \(update.match.homeTeam.name) vs \(update.match.awayTeam.name)"
-        content.sound = .default
-        
-        let request = UNNotificationRequest(
-            identifier: UUID().uuidString,
-            content: content,
-            trigger: nil
-        )
-        
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                print("❌ Notification error: \(error)")
-            }
-        }
-    }
-    
     func selectMatch(_ match: Match) async {
         await selectMatchRobust(match)
     }
@@ -565,23 +487,6 @@ class GameSession: ObservableObject, Codable {
         
         // Show ads after events (for free users)
         checkAndShowInterstitialAfterEvent()
-    }
-    
-    @MainActor func startRealEventDrivenModeForAllMatches() {
-        guard isLiveMode else {
-            print("⚠️ Not in live mode, skipping event-driven setup")
-            return
-        }
-        
-        print("🎯 Setting up REAL event-driven mode for \(selectedMatches.count) matches")
-        
-        // Track usage for free users
-        AppConfig.recordLiveMatchUsage()
-        
-        // Start monitoring (this will handle all selected matches)
-        EventDrivenManager.shared.startMonitoring(for: self)
-        
-        print("✅ Started monitoring for \(selectedMatches.count) matches")
     }
 
     @MainActor func getRealEventDrivenStatsForAllMatches() -> String {
@@ -822,77 +727,6 @@ class GameSession: ObservableObject, Codable {
         }
     }
     
-    @MainActor private func processEnhancedMatchUpdate(_ update: MatchUpdate) {
-        self.selectedMatch = update.match
-        
-        for event in update.newEvents {
-            processLiveEvent(event)
-        }
-        
-        self.matchEvents = update.newEvents
-        
-        self.objectWillChange.send()
-    }
-    
-    @MainActor private func processMatchUpdate(_ update: MatchUpdate) {
-        self.selectedMatch = update.match
-        
-        for event in update.newEvents {
-            processLiveEvent(event)
-        }
-        
-        self.matchEvents = update.newEvents
-        
-        // Send notification for new events
-        if !update.newEvents.isEmpty {
-            sendMatchEventNotification(for: update)
-        }
-        
-        self.objectWillChange.send()
-    }
-
-    private func sendMatchEventNotification(for update: MatchUpdate) {
-        guard !update.newEvents.isEmpty else { return }
-        
-        let content = UNMutableNotificationContent()
-        content.title = "⚽ Match Update"
-        
-        // Create body based on events
-        let eventDescriptions = update.newEvents.compactMap { event -> String? in
-            switch event.type.lowercased() {
-            case "goal", "regular": return "⚽ Goal by \(event.playerName ?? "Unknown")"
-            case "yellow": return "🟨 Yellow card: \(event.playerName ?? "Unknown")"
-            case "red": return "🟥 Red card: \(event.playerName ?? "Unknown")"
-            case "substitution": return "🔄 Substitution"
-            default: return nil
-            }
-        }.joined(separator: "\n")
-        
-        content.body = "\(update.match.homeTeam.name) vs \(update.match.awayTeam.name)\n\(eventDescriptions)"
-        content.sound = .default
-        
-        // Add user info for deep linking
-        content.userInfo = [
-            "gameId": self.id.uuidString,
-            "matchId": update.match.id,
-            "type": "match_event"
-        ]
-        
-        let request = UNNotificationRequest(
-            identifier: "match_\(update.match.id)_\(Date().timeIntervalSince1970)",
-            content: content,
-            trigger: nil
-        )
-        
-        UNUserNotificationCenter.current().add(request) { error in
-            if let error = error {
-                print("❌ Failed to send notification: \(error)")
-            } else {
-                print("📱 Notification sent for match update")
-            }
-        }
-    }
-    
     @MainActor internal func processLiveEvent(_ event: MatchEvent) {
         // CRITICAL: Prevent duplicate events
         let eventKey = "\(event.id)_\(event.minute)_\(event.type)_\(event.playerId)"
@@ -970,26 +804,6 @@ class GameSession: ObservableObject, Codable {
         
         return nil
     }
-
-    
-    @MainActor func setupEventDrivenMode() {
-        guard isLiveMode else { return }
-        print("🎯 Setting up event-driven mode for game \(id)")
-        
-        // IMPORTANT: Stop any existing monitoring first
-        stopAllMonitoring()
-        
-        // Clear processed events when starting fresh
-        processedEventIds.removeAll()
-        
-        // Track usage for free users
-        AppConfig.recordLiveMatchUsage()
-        
-        // Start only ONE monitoring system
-        EventDrivenManager.shared.startMonitoring(for: self)
-        
-        print("✅ Event-driven mode setup complete")
-    }
     
     // Add method to manually clear processed events (useful for testing)
     @MainActor func clearProcessedEvents() {
@@ -1003,7 +817,6 @@ class GameSession: ObservableObject, Codable {
         📊 Event Processing Status:
         - Total events recorded: \(events.count)
         - Processed event IDs: \(processedEventIds.count)
-        - Active monitoring: \(matchMonitoringTask != nil ? "YES" : "NO")
         - EventDriven active: \(EventDrivenManager.shared.getActiveGamesCount() > 0 ? "YES" : "NO")
         - Last 3 processed IDs: \(Array(processedEventIds.suffix(3)))
         """
@@ -1372,17 +1185,10 @@ class GameSession: ObservableObject, Codable {
         
         // Stop event monitoring
         EventDrivenManager.shared.stopMonitoring(for: self)
-        
-        // Cancel any existing monitoring tasks
-        matchMonitoringTask?.cancel()
-        matchMonitoringTask = nil
     }
     
     func selectMatchRobust(_ match: Match) async {
         guard isLiveMode, let matchService = matchService else { return }
-        
-        // Cancel any existing monitoring
-        matchMonitoringTask?.cancel()
         
         do {
             print("🏟️ Selected match: \(match.homeTeam.name) vs \(match.awayTeam.name)")
@@ -1413,11 +1219,6 @@ class GameSession: ObservableObject, Codable {
                     self.objectWillChange.send()
                 }
             }
-            
-            // Start smart monitoring
-            print("🎯 Starting smart match monitoring for match ID: \(match.id)")
-            startSmartMonitoring(match)
-            
         } catch {
             print("❌ Error selecting match: \(error)")
             
@@ -1435,24 +1236,6 @@ class GameSession: ObservableObject, Codable {
         }
     }
     
-    private func startSmartMonitoring(_ match: Match) {
-        guard let matchService = matchService else { return }
-        
-        print("🎯 Starting smart match monitoring for match ID: \(match.id)")
-        print("🔧 Using service type: \(type(of: matchService))")
-        
-        // Use the unified monitorMatch method
-        matchMonitoringTask = matchService.monitorMatch(
-            matchId: match.id,
-            onUpdate: { [weak self] update in
-                guard let self = self else { return }
-                
-                Task { @MainActor in
-                    self.processMatchUpdate(update)
-                }
-            }
-        )
-    }
     
     private func getUserFriendlyErrorMessage(for error: APIError) -> String {
         switch error {

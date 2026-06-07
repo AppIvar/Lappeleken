@@ -210,14 +210,18 @@ class FootballDataMatchService: MatchService {
     /// Fetch match events (REQUIRED BY MatchService PROTOCOL)
     func fetchMatchEvents(matchId: String) async throws -> [MatchEvent] {
         let data = try await apiClient.footballDataRawData(endpoint: "matches/\(matchId)")
-        
-        // Parse the full match response
+        return try parseMatchEvents(from: data)
+    }
+    
+    /// Parse goals, bookings, and substitutions out of a raw /matches/{id} payload.
+    /// Shared by fetchMatchEvents and fetchMatchSnapshot so there's one parser.
+    private func parseMatchEvents(from data: Data) throws -> [MatchEvent] {
         guard let jsonData = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw APIError.decodingError(NSError(domain: "JSON", code: 1, userInfo: nil))
         }
-        
+
         var events: [MatchEvent] = []
-        
+
         // Process goals (including penalties and own goals)
         if let goals = jsonData["goals"] as? [[String: Any]] {
             for goal in goals {
@@ -330,8 +334,19 @@ class FootballDataMatchService: MatchService {
                 }
             }
         }
-        
+
         return events.sorted { $0.minute < $1.minute }
+    }
+    
+    /// One fetch of /matches/{id} that returns both the current match (status + score)
+    /// and its parsed events. Replaces the old pattern of calling fetchMatchDetails AND
+    /// fetchMatchEvents separately (two calls to the same endpoint) each poll cycle.
+    func fetchMatchSnapshot(matchId: String) async throws -> (match: Match, events: [MatchEvent]) {
+        let data = try await apiClient.footballDataRawData(endpoint: "matches/\(matchId)")
+        let detail = try JSONDecoder().decode(APIMatchDetailResponse.self, from: data).toMatchDetail()
+        UnifiedCacheManager.shared.cacheMatch(detail.match)
+        let events = try parseMatchEvents(from: data)
+        return (detail.match, events)
     }
     
     /// Monitor a match for live updates (REQUIRED BY MatchService PROTOCOL)
