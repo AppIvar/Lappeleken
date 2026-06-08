@@ -8,6 +8,8 @@
 	</array>
 	<key>FOOTBALL_DATA_API_KEY</key>
 	<string>$(FOOTBALL_DATA_API_KEY)</string>
+	<key>CLIENT_SHARED_SECRET</key>
+	<string>$(CLIENT_SHARED_SECRET)</string>
 	<key>GADApplicationIdentifier</key>
 	<string>ca-app-pub-5153687741487701~1320799419</string>
 	<key>SKAdNetworkItems</key>

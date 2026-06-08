@@ -113,6 +113,28 @@ class APIClient {
             throw APIError.invalidURL
         }
 
+        if usesCacheServer {
+            do {
+                return try await performFootballDataRequest(url: url, usesCacheServer: true)
+            } catch {
+                // Cache server unreachable/erroring — fall back to a direct call so a
+                // Worker outage degrades gracefully instead of failing the request.
+                if AppConfig.enableDetailedLogging {
+                    print("⚠️ Cache server request failed (\(error)); falling back to direct football-data.org call")
+                }
+                guard let directURL = URL(string: "\(baseURL)/\(endpoint)") else {
+                    throw APIError.invalidURL
+                }
+                return try await performFootballDataRequest(url: directURL, usesCacheServer: false)
+            }
+        }
+
+        return try await performFootballDataRequest(url: url, usesCacheServer: false)
+    }
+
+    /// Builds and sends a single GET to `url`, applying the appropriate auth headers
+    /// (cache server vs. direct football-data.org) and validating the response.
+    private func performFootballDataRequest(url: URL, usesCacheServer: Bool) async throws -> Data {
         var request = URLRequest(url: url)
         request.httpMethod = "GET"
         request.addValue("application/json", forHTTPHeaderField: "Accept")
@@ -120,6 +142,9 @@ class APIClient {
             request.addValue(AppConfig.footballDataAPIKey, forHTTPHeaderField: "X-Auth-Token")
         } else {
             request.addValue("LuckyFootballSlip/1.0", forHTTPHeaderField: "X-Client-ID")
+            if let secret = AppConfig.clientSharedSecret {
+                request.addValue(secret, forHTTPHeaderField: "X-Client-Secret")
+            }
         }
 
         if AppConfig.enableDetailedLogging {

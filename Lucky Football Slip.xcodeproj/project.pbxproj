@@ -33,6 +33,16 @@
 		485B34C42DCDDEBA004F3267 /* Lucky Football SlipUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = "Lucky Football SlipUITests.xctest"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		927D78B427DFE03FE5190901 /* Exceptions for "Lappeleken" folder in "Lucky Football Slip" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				CLAUDE.md,
+			);
+			target = 485B34AA2DCDDEB7004F3267 /* Lucky Football Slip */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		485B34AD2DCDDEB7004F3267 /* Lucky Football Slip */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
@@ -51,6 +61,9 @@
 		};
 		485B35222DCDDEF1004F3267 /* Lappeleken */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				927D78B427DFE03FE5190901 /* Exceptions for "Lappeleken" folder in "Lucky Football Slip" target */,
+			);
 			path = Lappeleken;
 			sourceTree = "<group>";
 		};

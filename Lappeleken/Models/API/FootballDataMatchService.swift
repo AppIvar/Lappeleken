@@ -341,8 +341,11 @@ class FootballDataMatchService: MatchService {
     /// One fetch of /matches/{id} that returns both the current match (status + score)
     /// and its parsed events. Replaces the old pattern of calling fetchMatchDetails AND
     /// fetchMatchEvents separately (two calls to the same endpoint) each poll cycle.
-    func fetchMatchSnapshot(matchId: String) async throws -> (match: Match, events: [MatchEvent]) {
-        let data = try await apiClient.footballDataRawData(endpoint: "matches/\(matchId)")
+    func fetchMatchSnapshot(matchId: String, isLive: Bool) async throws -> (match: Match, events: [MatchEvent]) {
+        // `?live=1` tells the cache server to use its short (15s) TTL for in-progress
+        // matches; the Worker strips it before forwarding to football-data.org.
+        let liveHint = (AppConfig.CacheServer.enabled && isLive) ? "?live=1" : ""
+        let data = try await apiClient.footballDataRawData(endpoint: "matches/\(matchId)\(liveHint)")
         let detail = try JSONDecoder().decode(APIMatchDetailResponse.self, from: data).toMatchDetail()
         UnifiedCacheManager.shared.cacheMatch(detail.match)
         let events = try parseMatchEvents(from: data)

@@ -191,16 +191,9 @@ static func toggleDataManagerForTesting() {
             #endif
         }
         
-        /// Cache server base URL
+        /// Cache server base URL (Cloudflare Worker; *.workers.dev until a custom domain is set up)
         static var baseURL: String {
-            switch environment {
-            case .development:
-                return "https://dev-cache.lappeleken.com"
-            case .staging:
-                return "https://staging-cache.lappeleken.com"
-            case .production:
-                return "https://cache.lappeleken.com"
-            }
+            return "https://lucky-football-slip-cache.ivarhovland.workers.dev"
         }
         
         /// Endpoints that should be routed through cache server
@@ -246,7 +239,19 @@ static func toggleDataManagerForTesting() {
         fatalError("FOOTBALL_DATA_API_KEY not found in Info.plist")
         #endif
     }()
-    
+
+    /// Optional shared secret sent as `X-Client-Secret` to the cache server (Cloudflare
+    /// Worker). Unlike `footballDataAPIKey`, this is not required — the Worker only
+    /// checks it when `CLIENT_SHARED_SECRET` is configured on its side.
+    static let clientSharedSecret: String? = {
+        if let secret = Bundle.main.object(forInfoDictionaryKey: "CLIENT_SHARED_SECRET") as? String,
+           !secret.isEmpty,
+           secret != "$(CLIENT_SHARED_SECRET)" {
+            return secret
+        }
+        return nil
+    }()
+
     static var useStubData: Bool {
 #if DEBUG
         return false

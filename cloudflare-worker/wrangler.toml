@@ -1,0 +1,7 @@
+name = "lucky-football-slip-cache"
+main = "worker.ts"
+compatibility_date = "2024-11-01"
+
+# Secrets — set with `npx wrangler secret put <NAME>`, never committed here:
+#   FOOTBALL_DATA_API_KEY   football-data.org API key (required)
+#   CLIENT_SHARED_SECRET    optional; if set, requests must send X-Client-Secret

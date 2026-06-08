@@ -267,7 +267,7 @@ class GameEventMonitor {
             }
 
             // ONE call returns both the fresh match (status/score) and its events.
-            let snapshot = try await footballService.fetchMatchSnapshot(matchId: match.id)
+            let snapshot = try await footballService.fetchMatchSnapshot(matchId: match.id, isLive: match.status.isLive)
             let liveEvents = snapshot.events.compactMap { convertAPIEventToLiveEvent($0) }
             let newEvents = filterNewEvents(liveEvents)
 
