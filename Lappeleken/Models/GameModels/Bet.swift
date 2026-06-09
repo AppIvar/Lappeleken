@@ -29,6 +29,12 @@ struct Bet: Identifiable, Codable {
         case penaltyMissed = "Penalty Missed"
         case cleanSheet = "Clean Sheet"
         case custom = "Custom Event"
+
+        /// Event types the live football-data.org feed can actually produce
+        /// (see parseMatchEvents / mapAPIEventTypeToLive). Live Mode bet setup
+        /// must offer only these; Manual mode still uses the full case list,
+        /// since those events are triggered by hand.
+        static let liveAPISupported: [EventType] = [.goal, .assist, .yellowCard, .redCard]
     }
 }
 

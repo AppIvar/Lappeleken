@@ -204,16 +204,9 @@ static func toggleDataManagerForTesting() {
             "teams"
         ]
         
-        /// Cache TTL hints for different data types (in seconds)
-        /// Server should respect these but can override based on load
-        static let cacheTTL: [String: Int] = [
-            "competitions": 86400,    // 24 hours
-            "matches_list": 300,      // 5 minutes
-            "match_detail": 60,       // 1 minute for live matches
-            "team_squad": 3600,       // 1 hour
-            "lineup": 300             // 5 minutes
-        ]
-        
+        // Cache TTLs live entirely on the Worker (cloudflare-worker/worker.ts);
+        // the client only hints liveness via ?live=1. No client-side TTL table.
+
         /// Enable for testing
         static func enable() {
             UserDefaults.standard.set(true, forKey: "cacheServer_enabled")

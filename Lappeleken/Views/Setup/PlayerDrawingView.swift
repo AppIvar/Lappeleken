@@ -28,6 +28,11 @@ struct PlayerDrawingView: View {
     @State private var screenSize: CGSize = .zero
     @State private var showPickAllButton = true
     @State private var isDrawingInProgress = false
+
+    // Shuffled once on appear so the face-down slips don't reveal players in
+    // selection order (which is grouped by team). slip index -> drawPool[index]
+    // is the single source of randomness for both manual draws and "Pick All".
+    @State private var drawPool: [Player] = []
     
     // NEW: Toast state for showing assignment feedback
     @State private var toastMessage: String = ""
@@ -214,11 +219,11 @@ struct PlayerDrawingView: View {
                 .shadow(color: colorScheme == .dark ? Color.black.opacity(0.2) : Color.black.opacity(0.05), radius: 6, x: 0, y: 3)
             
             ForEach(0..<selectedPlayers.count, id: \.self) { index in
-                if index < slipPositions.count && !disappearingSlips.contains(index) {
+                if index < slipPositions.count && index < drawPool.count && !disappearingSlips.contains(index) {
                     FootballSlipView(
                         isDrawn: drawnSlips.contains(index),
                         isEnlarged: enlargedSlips.contains(index),
-                        player: selectedPlayers[index],
+                        player: drawPool[index],
                         onTap: {
                             if !drawnSlips.contains(index) && !isDrawingInProgress {
                                 if showPickAllButton {
@@ -337,6 +342,7 @@ struct PlayerDrawingView: View {
     }
     
     private func setupInitialAssignments() {
+        drawPool = selectedPlayers.shuffled()
         for participant in participants {
             assignments[participant] = []
         }
@@ -349,7 +355,7 @@ struct PlayerDrawingView: View {
         
         // Capture current participant BEFORE any state changes
         let currentParticipant = participants[currentParticipantIndex]
-        let player = selectedPlayers[index]
+        let player = drawPool[index]
         
         // Show toast with assignment
         showAssignmentToast(participant: currentParticipant, player: player)
@@ -391,14 +397,15 @@ struct PlayerDrawingView: View {
     private func pickAllSlips() {
         showPickAllButton = false
         
-        var shuffledPlayers = selectedPlayers.shuffled()
         var participantIndex = 0
-        
+
         for participant in participants {
             assignments[participant] = []
         }
-        
-        for (index, player) in shuffledPlayers.enumerated() {
+
+        // Use the already-shuffled drawPool so the bulk assignment matches the
+        // order the face-down slips are laid out in.
+        for (index, player) in drawPool.enumerated() {
             let participant = participants[participantIndex % participants.count]
             assignments[participant]?.append(player)
             participantIndex += 1

@@ -11,7 +11,7 @@ import Foundation
 
 protocol MatchService {
     func fetchCompetitions() async throws -> [Competition]
-    func fetchUpcomingMatches(competitionCode: String?) async throws -> [Match]
+    func fetchUpcomingMatches(competitionCode: String?, days: Int) async throws -> [Match]
     func fetchLiveMatches(competitionCode: String?) async throws -> [Match]
     func fetchMatchDetails(matchId: String) async throws -> MatchDetail
     func fetchMatchPlayers(matchId: String) async throws -> [Player]
@@ -79,12 +79,19 @@ class FootballDataMatchService: MatchService {
     
     /// Fetch scheduled (upcoming) matches
     /// Optional filter by competition code
-    func fetchUpcomingMatches(competitionCode: String? = nil) async throws -> [Match] {
-        var endpoint = "matches?status=SCHEDULED,TIMED"
+    func fetchUpcomingMatches(competitionCode: String? = nil, days: Int = 7) async throws -> [Match] {
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+        let today = Date()
+        let futureDate = Calendar.current.date(byAdding: .day, value: days, to: today) ?? today
+        let dateFrom = dateFormatter.string(from: today)
+        let dateTo = dateFormatter.string(from: futureDate)
+
+        var endpoint = "matches?status=SCHEDULED,TIMED&dateFrom=\(dateFrom)&dateTo=\(dateTo)"
         if let code = competitionCode {
             endpoint += "&competitions=\(code)"
         }
-        
+
         let response: MatchesResponse = try await apiClient.footballDataRequest(endpoint: endpoint)
         return response.matches.map { $0.toAppModel() }
     }

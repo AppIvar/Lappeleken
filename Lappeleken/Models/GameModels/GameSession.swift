@@ -1111,7 +1111,7 @@ class GameSession: ObservableObject, Codable {
                 
                 if matches.isEmpty {
                     print("⚪ No live matches, trying upcoming...")
-                    matches = try await matchService.fetchUpcomingMatches(competitionCode: nil)
+                    matches = try await matchService.fetchUpcomingMatches(competitionCode: nil, days: 7)
                 }
                 
                 if matches.isEmpty {

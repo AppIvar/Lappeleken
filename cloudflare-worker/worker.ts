@@ -123,7 +123,12 @@ export default {
     const upstreamURL = `${FOOTBALL_DATA_BASE}/${pathSegments.join("/")}${upstreamQuery ? `?${upstreamQuery}` : ""}`;
 
     const cache = caches.default;
-    const cacheKey = new Request(url.toString(), { method: "GET" });
+    // Normalize the cache key by stripping `live` — it only steers TTL, not the
+    // response — so live (?live=1) and non-live reads of the same match share one
+    // cache entry instead of splitting into two.
+    const cacheKeyURL = new URL(url.toString());
+    cacheKeyURL.searchParams.delete("live");
+    const cacheKey = new Request(cacheKeyURL.toString(), { method: "GET" });
 
     const cached = await cache.match(cacheKey);
     if (cached) {

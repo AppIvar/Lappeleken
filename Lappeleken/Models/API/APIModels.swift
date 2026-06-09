@@ -82,16 +82,24 @@ struct APIMatch: Codable {
     func toAppModel() -> Match {
         let date = DateUtility.iso8601Full.date(from: utcDate) ?? Date()
         
+        let matchScore = MatchScore(
+            winner: score.winner,
+            duration: score.duration,
+            fullTime: score.fullTime.map { MatchScore.ScoreValues(home: $0.home, away: $0.away) },
+            halfTime: score.halfTime.map { MatchScore.ScoreValues(home: $0.home, away: $0.away) }
+        )
+
         return Match(
             id: "\(id)",
             homeTeam: homeTeam.toAppModel(),
             awayTeam: awayTeam.toAppModel(),
             startTime: date,
             status: matchStatus(from: status),
-            competition: competition.toAppModel()
+            competition: competition.toAppModel(),
+            score: matchScore
         )
     }
-    
+
     func toMatchWithEvents() -> MatchWithEvents {
         let match = toAppModel()
         var events: [MatchEvent] = []

@@ -53,7 +53,14 @@ struct Match: Identifiable, Codable, Hashable {
     let startTime: Date
     let status: MatchStatus
     let competition: Competition
-    
+    /// Final/current score when available (e.g. finished matches in the list).
+    /// Defaults to nil so existing Match(...) call sites stay source-compatible.
+    var score: MatchScore? = nil
+
+    /// Convenience full-time score accessors (mirror MatchDetail's).
+    var homeScore: Int { score?.fullTime?.home ?? 0 }
+    var awayScore: Int { score?.fullTime?.away ?? 0 }
+
     // MARK: - Hashable Conformance
     public func hash(into hasher: inout Hasher) {
         hasher.combine(id)

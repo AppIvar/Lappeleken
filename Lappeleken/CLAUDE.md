@@ -51,8 +51,12 @@ route through the Worker; footballDataRawData falls back to a direct football-da
 call if the cache server fails; fetchMatchSnapshot appends ?live=1 when
 match.status.isLive so the Worker uses its 15s TTL; an optional X-Client-Secret
 (CLIENT_SHARED_SECRET, stored via Secrets.xcconfig) is sent on cache-server requests.
-AppConfig.CacheServer.baseURL points at the deployed *.workers.dev URL. Still needs:
-flip cacheServer_enabled on for real devices once confirmed stable in testing.
+AppConfig.CacheServer.baseURL points at the deployed *.workers.dev URL. The Worker
+cache key strips ?live=1 (live + non-live reads of a match share one entry; live=1 only
+picks the TTL); the client records the fallback as a second API call so the limiter stays
+conservative during a Worker outage. (Removed the unused AppConfig.CacheServer.cacheTTL —
+TTLs live only on the Worker.) Still needs: flip cacheServer_enabled on for real devices
+once confirmed stable in testing.
 
 TODO — Phase 3 (structure for longevity)
 
@@ -78,9 +82,6 @@ only removes the timeline entry without touching rosters/balances.
 
 Known gotchas
 
-MatchScoreView.swift (~line 199) still has a raw URLSession call hitting
-football-data.org directly — bypasses the limiter AND the proxy. Must route through the
-proxy/APIClient when the proxy lands.
 BackgroundTaskManager keys matches as Int (Int(selectedMatch.id) ?? 0) but match IDs
 are String everywhere else. Works for numeric IDs; fragile. Has a TODO to compare
 MatchStatus by rawValue instead of String(describing:).
@@ -98,3 +99,20 @@ Data: DataManager (preferred front door), ServiceProvider (legacy, to be removed
 APIClient, APIRateLimiter, UnifiedCacheManager (in-memory NSCache),
 FootballDataMatchService.
 Live monitoring: EventDrivenManager (the one foreground monitor) + BackgroundTaskManager.
+
+Conventions to keep
+Live Mode bets: the live API only produces goal/assist/yellow/red (own goals + penalties
+arrive as goals; penaltyMissed/cleanSheet never fire). Live bet setup must list only
+Bet.EventType.liveAPISupported — never surface API-unsupported types in the live flow.
+Manual mode legitimately uses the full Bet.EventType set (hand-triggered).
+Setup UI: new/edited setup screens should reuse the shared SetupComponents
+(NewGameSetup style — SetupStepHeader, ParticipantRowNew, etc.) rather than defining
+bespoke per-view structs. LiveGameSetupView has been partially migrated to these.
+Match list: Live setup fetches upcoming matches over a 7-day window
+(fetchUpcomingMatches(days:)); DataManager also merges the last 1 day of finished
+matches, shown with their final score (Match now carries an optional score, populated
+in APIMatch.toAppModel). Match reminders are owned by MatchReminderManager (singleton):
+schedules a local notification 30 min before kickoff, persists reminder match ids in
+UserDefaults, identifier match_reminder_<id>, reusing the app's existing
+UNUserNotification auth/delegate. If permission is denied the bell stays off and the
+setup view shows an enable-in-Settings hint.

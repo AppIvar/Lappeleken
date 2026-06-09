@@ -194,17 +194,12 @@ struct MatchScoreView: View {
     }
     
     private func fetchMatchWithEvents(matchId: String, homeTeamId: String) async throws -> (MatchDetail, MatchEvents) {
-        let url = URL(string: "https://api.football-data.org/v4/matches/\(matchId)")!
-        var request = URLRequest(url: url)
-        request.setValue(AppConfig.footballDataAPIKey, forHTTPHeaderField: "X-Auth-Token")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        
-        let (data, response) = try await URLSession.shared.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw URLError(.badServerResponse)
-        }
-        
+        // Route through APIClient so this respects the rate limiter AND the cache
+        // server (it injects X-Auth-Token / cache routing) instead of hitting
+        // football-data.org directly.
+        let apiClient = ServiceProvider.shared.getFootballDataAPIClient()
+        let data = try await apiClient.footballDataRawData(endpoint: "matches/\(matchId)")
+
         // Parse the full response including events
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw URLError(.cannotParseResponse)

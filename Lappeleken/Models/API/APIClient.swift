@@ -125,6 +125,9 @@ class APIClient {
                 guard let directURL = URL(string: "\(baseURL)/\(endpoint)") else {
                     throw APIError.invalidURL
                 }
+                // The fallback is a second, real football-data.org call — record it
+                // so the rate limiter stays conservative during a Worker outage.
+                APIRateLimiter.shared.recordCall()
                 return try await performFootballDataRequest(url: directURL, usesCacheServer: false)
             }
         }

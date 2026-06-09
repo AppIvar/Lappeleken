@@ -26,6 +26,8 @@ struct LiveGameSetupView: View {
     @State private var error: String? = nil
     @State private var showingPlayerUnavailableAlert = false
     @State private var unavailableMatchesMessage = ""
+    @ObservedObject private var reminderManager = MatchReminderManager.shared
+    @State private var reminderHint: String? = nil
     @State private var temporaryStep: Int? = nil
     @State private var isPresentingAlert = false
     @State private var isConnected = true
@@ -313,9 +315,10 @@ struct LiveGameSetupView: View {
     // MARK: - Step 0: Match Selection
     
     private var matchSelectionStep: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            LiveStepHeader(
+        VStack(alignment: .leading, spacing: 24) {
+            SetupStepHeader(
                 icon: "sportscourt.fill",
+                iconColor: AppDesignSystem.Colors.grassGreen,
                 title: "Select Matches",
                 subtitle: "Choose which matches to follow in real-time"
             )
@@ -325,7 +328,17 @@ struct LiveGameSetupView: View {
             } else {
                 matchesListView
             }
-            
+
+            if let reminderHint = reminderHint {
+                HStack(spacing: 6) {
+                    Image(systemName: "bell.slash.fill")
+                        .font(.system(size: 12))
+                    Text(reminderHint)
+                        .font(.system(size: 13))
+                }
+                .foregroundColor(AppDesignSystem.Colors.warning)
+            }
+
             if selectedMatchIds.isEmpty {
                 HStack(spacing: 6) {
                     Image(systemName: "info.circle.fill")
@@ -391,6 +404,10 @@ struct LiveGameSetupView: View {
                     },
                     onSelectMatch: { match in
                         toggleMatchSelection(match)
+                    },
+                    reminderMatchIds: reminderManager.reminderMatchIds,
+                    onToggleReminder: { match in
+                        toggleReminder(for: match)
                     }
                 )
             }
@@ -400,9 +417,10 @@ struct LiveGameSetupView: View {
     // MARK: - Step 1: Participants
     
     private var participantsStep: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            LiveStepHeader(
+        VStack(alignment: .leading, spacing: 24) {
+            SetupStepHeader(
                 icon: "person.3.fill",
+                iconColor: AppDesignSystem.Colors.grassGreen,
                 title: "Add Participants",
                 subtitle: "Who's playing in this game?"
             )
@@ -439,8 +457,8 @@ struct LiveGameSetupView: View {
                     .padding(.top, 8)
             } else {
                 VStack(spacing: 8) {
-                    ForEach(gameSession.participants) { participant in
-                        LiveParticipantRow(participant: participant) {
+                    ForEach(Array(gameSession.participants.enumerated()), id: \.element.id) { index, participant in
+                        ParticipantRowNew(participant: participant, index: index) {
                             removeParticipant(participant)
                         }
                     }
@@ -452,15 +470,16 @@ struct LiveGameSetupView: View {
     // MARK: - Step 2: Bets
     
     private var betsStep: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            LiveStepHeader(
+        VStack(alignment: .leading, spacing: 24) {
+            SetupStepHeader(
                 icon: "dollarsign.circle.fill",
+                iconColor: AppDesignSystem.Colors.grassGreen,
                 title: "Set Bet Amounts",
                 subtitle: "Configure how much each event is worth"
             )
             
             VStack(spacing: 10) {
-                ForEach(Bet.EventType.allCases, id: \.self) { eventType in
+                ForEach(Bet.EventType.liveAPISupported, id: \.self) { eventType in
                     LiveBetRow(
                         eventType: eventType,
                         amount: betAmounts[eventType] ?? 0,
@@ -495,9 +514,10 @@ struct LiveGameSetupView: View {
     // MARK: - Step 3: Players
     
     private var playersStep: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            LiveStepHeader(
+        VStack(alignment: .leading, spacing: 24) {
+            SetupStepHeader(
                 icon: "person.crop.rectangle.stack.fill",
+                iconColor: AppDesignSystem.Colors.grassGreen,
                 title: "Select Players",
                 subtitle: "Choose players from the starting lineup"
             )
@@ -565,9 +585,10 @@ struct LiveGameSetupView: View {
     // MARK: - Step 4: Review
     
     private var reviewStep: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            LiveStepHeader(
+        VStack(alignment: .leading, spacing: 24) {
+            SetupStepHeader(
                 icon: "checkmark.circle.fill",
+                iconColor: AppDesignSystem.Colors.grassGreen,
                 title: "Review & Start",
                 subtitle: "Everything looks good? Let's go!"
             )
@@ -733,6 +754,25 @@ struct LiveGameSetupView: View {
         }
     }
     
+    private func toggleReminder(for match: Match) {
+        let wasSet = reminderManager.hasReminder(match.id)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        Task {
+            let nowSet = await reminderManager.toggleReminder(for: match)
+            // If we tried to turn it ON but it's still off, permission was denied.
+            if !wasSet && !nowSet {
+                await MainActor.run { showReminderHint() }
+            }
+        }
+    }
+
+    private func showReminderHint() {
+        withAnimation { reminderHint = "Enable notifications in Settings to get match reminders." }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+            withAnimation { reminderHint = nil }
+        }
+    }
+
     private func toggleMatchSelection(_ match: Match) {
         if selectedMatchIds.contains(match.id) {
             selectedMatchIds.remove(match.id)
@@ -967,71 +1007,6 @@ struct LiveGameSetupView: View {
 
 // MARK: - Supporting Components
 
-struct LiveStepHeader: View {
-    let icon: String
-    let title: String
-    let subtitle: String
-    
-    var body: some View {
-        HStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(AppDesignSystem.Colors.grassGreen.opacity(0.15))
-                    .frame(width: 44, height: 44)
-                Image(systemName: icon)
-                    .font(.system(size: 20))
-                    .foregroundColor(AppDesignSystem.Colors.grassGreen)
-            }
-            
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundColor(AppDesignSystem.Colors.primaryText)
-                Text(subtitle)
-                    .font(.system(size: 13))
-                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
-            }
-        }
-    }
-}
-
-struct LiveParticipantRow: View {
-    let participant: Participant
-    let onRemove: () -> Void
-    
-    @Environment(\.colorScheme) var colorScheme
-    
-    var body: some View {
-        HStack(spacing: 12) {
-            Circle()
-                .fill(AppDesignSystem.Colors.grassGreen)
-                .frame(width: 32, height: 32)
-                .overlay(
-                    Text(String(participant.name.prefix(1)).uppercased())
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(.white)
-                )
-            
-            Text(participant.name)
-                .font(.system(size: 14, weight: .medium))
-                .foregroundColor(AppDesignSystem.Colors.primaryText)
-            
-            Spacer()
-            
-            Button(action: onRemove) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 20))
-                    .foregroundColor(AppDesignSystem.Colors.error.opacity(0.7))
-            }
-        }
-        .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(colorScheme == .dark ? Color.white.opacity(0.05) : Color.black.opacity(0.02))
-        )
-    }
-}
-
 struct LiveBetRow: View {
     let eventType: Bet.EventType
     let amount: Double
@@ -1110,7 +1085,9 @@ struct LiveLeagueSection: View {
     let selectedMatchIds: Set<String>
     let onToggleExpand: () -> Void
     let onSelectMatch: (Match) -> Void
-    
+    var reminderMatchIds: Set<String> = []
+    var onToggleReminder: ((Match) -> Void)? = nil
+
     @Environment(\.colorScheme) var colorScheme
     
     var body: some View {
@@ -1158,7 +1135,9 @@ struct LiveLeagueSection: View {
                         LiveMatchRow(
                             match: match,
                             isSelected: selectedMatchIds.contains(match.id),
-                            onTap: { onSelectMatch(match) }
+                            onTap: { onSelectMatch(match) },
+                            hasReminder: reminderMatchIds.contains(match.id),
+                            onToggleReminder: onToggleReminder.map { toggle in { toggle(match) } }
                         )
                     }
                 }
@@ -1172,25 +1151,49 @@ struct LiveMatchRow: View {
     let match: Match
     let isSelected: Bool
     let onTap: () -> Void
-    
+    var hasReminder: Bool = false
+    var onToggleReminder: (() -> Void)? = nil
+
     @Environment(\.colorScheme) var colorScheme
-    
-    var body: some View {
-        Button(action: onTap) {
-            rowContent
-        }
-        .buttonStyle(PlainButtonStyle())
+
+    /// A reminder only makes sense for a match that hasn't started yet.
+    private var canRemind: Bool {
+        onToggleReminder != nil
+            && match.startTime > Date()
+            && (match.status == .upcoming)
     }
-    
+
+    var body: some View {
+        // Plain tap gesture (not an outer Button) so the bell Button below keeps
+        // its own independent hit target.
+        rowContent
+            .contentShape(Rectangle())
+            .onTapGesture { onTap() }
+    }
+
     private var rowContent: some View {
         HStack(spacing: 12) {
             homeTeamLabel
             statusLabel
             awayTeamLabel
+            if canRemind {
+                reminderBell
+            }
             selectionIndicator
         }
         .padding(14)
         .background(rowBackground)
+    }
+
+    private var reminderBell: some View {
+        Button(action: { onToggleReminder?() }) {
+            Image(systemName: hasReminder ? "bell.fill" : "bell")
+                .font(.system(size: 18))
+                .foregroundColor(hasReminder
+                    ? AppDesignSystem.Colors.grassGreen
+                    : AppDesignSystem.Colors.secondaryText.opacity(0.5))
+        }
+        .buttonStyle(PlainButtonStyle())
     }
     
     private var homeTeamLabel: some View {
@@ -1216,6 +1219,13 @@ struct LiveMatchRow: View {
                 Text("LIVE")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundColor(AppDesignSystem.Colors.error)
+            } else if match.status == .completed || match.status == .finished {
+                Text("\(match.homeScore) - \(match.awayScore)")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(AppDesignSystem.Colors.primaryText)
+                Text("FT")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundColor(AppDesignSystem.Colors.secondaryText)
             } else {
                 Text(formattedTime)
                     .font(.system(size: 12, weight: .semibold))
@@ -1246,7 +1256,12 @@ struct LiveMatchRow: View {
     
     private var formattedTime: String {
         let formatter = DateFormatter()
-        formatter.timeStyle = .short
+        if Calendar.current.isDateInToday(match.startTime) {
+            formatter.timeStyle = .short
+        } else {
+            // Day-aware so a week of fixtures is legible, e.g. "Sat 16:00".
+            formatter.setLocalizedDateFormatFromTemplate("EEE HH:mm")
+        }
         return formatter.string(from: match.startTime)
     }
 }
