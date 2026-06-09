@@ -110,36 +110,49 @@ enum BannerStyle {
     case tab(String)
 }
 
+// MARK: - Banner Gate
+
+/// Wraps content with a banner ad, observing the purchase manager so the banner
+/// disappears immediately when the user buys Remove Ads / Premium (no relaunch).
+private struct BannerGate<Content: View>: View {
+    let style: BannerStyle
+    @ViewBuilder let content: () -> Content
+    @ObservedObject private var purchaseManager = AppPurchaseManager.shared
+
+    var body: some View {
+        if AdManager.shared.shouldShowBannerAds {
+            VStack(spacing: 0) {
+                content()
+                    .onAppear {
+                        if case .tab(let name) = style {
+                            AdManager.shared.recordViewTransition(from: "previous", to: name)
+                        }
+                    }
+
+                if case .minimal = style {} else {
+                    Divider().background(Color.gray.opacity(0.2))
+                }
+
+                BannerAdView()
+                    .frame(height: 50)
+                    .background(Color(UIColor.systemBackground))
+                    .opacity({ () -> Double in
+                        if case .minimal = style { return 0.9 }
+                        return 1.0
+                    }())
+            }
+        } else {
+            content()
+        }
+    }
+}
+
 // MARK: - View Extensions
 
 extension View {
     @MainActor
     func withBanner(style: BannerStyle = .standard) -> some View {
-        Group {
-            if AdManager.shared.shouldShowBannerAds {
-                VStack(spacing: 0) {
-                    self
-                        .onAppear {
-                            if case .tab(let name) = style {
-                                AdManager.shared.recordViewTransition(from: "previous", to: name)
-                            }
-                        }
-                    
-                    if case .minimal = style {} else {
-                        Divider().background(Color.gray.opacity(0.2))
-                    }
-                    
-                    BannerAdView()
-                        .frame(height: 50)
-                        .background(Color(UIColor.systemBackground))
-                        .opacity({ () -> Double in
-                            if case .minimal = style { return 0.9 }
-                            return 1.0
-                        }())                }
-            } else {
-                self
-            }
-        }
+        BannerGate(style: style) { self }
     }
     
     // Convenience aliases

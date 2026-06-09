@@ -15,18 +15,33 @@
   ],
   "products" : [
     {
-      "displayPrice" : "4.99",
+      "displayPrice" : "2.99",
       "familyShareable" : false,
-      "internalID" : "6746333334",
+      "internalID" : "6746333401",
       "localizations" : [
         {
-          "description" : "Unlock unlimited live matches and remove ads",
-          "displayName" : "Premium Upgrade",
+          "description" : "Remove all banner and interstitial ads forever",
+          "displayName" : "Remove Ads",
           "locale" : "en_US"
         }
       ],
-      "productID" : "HovlandGames.Lucky_Football_Slip.premium",
-      "referenceName" : "Premium Upgrade",
+      "productID" : "Lucky.Football.Slip.remove_ads",
+      "referenceName" : "Remove Ads",
+      "type" : "NonConsumable"
+    },
+    {
+      "displayPrice" : "4.99",
+      "familyShareable" : false,
+      "internalID" : "6746333402",
+      "localizations" : [
+        {
+          "description" : "Access World Cup 2026 matches (June-July 2026)",
+          "displayName" : "World Cup 2026",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "Lucky.Football.Slip.worldcup_2026",
+      "referenceName" : "World Cup 2026",
       "type" : "NonConsumable"
     }
   ],
@@ -87,11 +102,11 @@
   },
   "subscriptionGroups" : [
     {
-      "id" : "21723300",
+      "id" : "21723311",
       "localizations" : [
 
       ],
-      "name" : "Lucky Football Slip Premium",
+      "name" : "Premier League",
       "subscriptions" : [
         {
           "adHocOffers" : [
@@ -100,22 +115,207 @@
           "codeOffers" : [
 
           ],
-          "displayPrice" : "2.99",
-          "familyShareable" : true,
+          "displayPrice" : "6.99",
+          "familyShareable" : false,
           "groupNumber" : 1,
-          "internalID" : "6748069369",
+          "internalID" : "6746333411",
           "introductoryOffer" : null,
           "localizations" : [
             {
-              "description" : "No ads and unlimited live games",
-              "displayName" : "Lucky Football Slip Premium",
+              "description" : "Unlimited Premier League matches",
+              "displayName" : "Premier League",
               "locale" : "en_US"
             }
           ],
-          "productID" : "Lucky.Football.Slip.premium_monthly",
-          "recurringSubscriptionPeriod" : "P1M",
-          "referenceName" : "Lucky Football Slip Premium Monthly",
-          "subscriptionGroupID" : "21723300",
+          "productID" : "Lucky.Football.Slip.league_pl",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Premier League",
+          "subscriptionGroupID" : "21723311",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        }
+      ]
+    },
+    {
+      "id" : "21723312",
+      "localizations" : [
+
+      ],
+      "name" : "La Liga",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "6.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "6746333412",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Unlimited La Liga matches",
+              "displayName" : "La Liga",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "Lucky.Football.Slip.league_laliga",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "La Liga",
+          "subscriptionGroupID" : "21723312",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        }
+      ]
+    },
+    {
+      "id" : "21723313",
+      "localizations" : [
+
+      ],
+      "name" : "Bundesliga",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "6.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "6746333413",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Unlimited Bundesliga matches",
+              "displayName" : "Bundesliga",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "Lucky.Football.Slip.league_bundesliga",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Bundesliga",
+          "subscriptionGroupID" : "21723313",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        }
+      ]
+    },
+    {
+      "id" : "21723314",
+      "localizations" : [
+
+      ],
+      "name" : "Serie A",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "6.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "6746333414",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Unlimited Serie A matches",
+              "displayName" : "Serie A",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "Lucky.Football.Slip.league_seriea",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Serie A",
+          "subscriptionGroupID" : "21723314",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        }
+      ]
+    },
+    {
+      "id" : "21723315",
+      "localizations" : [
+
+      ],
+      "name" : "Champions League",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "4.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "6746333415",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "Champions League access",
+              "displayName" : "Champions League",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "Lucky.Football.Slip.league_cl",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Champions League",
+          "subscriptionGroupID" : "21723315",
+          "type" : "RecurringSubscription",
+          "winbackOffers" : [
+
+          ]
+        }
+      ]
+    },
+    {
+      "id" : "21723316",
+      "localizations" : [
+
+      ],
+      "name" : "Premium All-Access",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [
+
+          ],
+          "codeOffers" : [
+
+          ],
+          "displayPrice" : "19.99",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "6746333416",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "All leagues, no ads, unlimited matches",
+              "displayName" : "Premium All-Access",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "Lucky.Football.Slip.premium_yearly",
+          "recurringSubscriptionPeriod" : "P1Y",
+          "referenceName" : "Premium All-Access",
+          "subscriptionGroupID" : "21723316",
           "type" : "RecurringSubscription",
           "winbackOffers" : [
 

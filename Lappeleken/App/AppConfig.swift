@@ -17,10 +17,10 @@ struct AppConfig {
     }
     /// Individual premium feature flags (can be enabled separately for testing)
     struct PremiumFeatures {
-        static let multipleMatchSelection = true    // â† Premium: Select multiple live matches
-        static let unlimitedDailyMatches = true     // â† Premium: No 1-per-day limit
+        static let multipleMatchSelection = false    // â† Premium: Select multiple live matches
+        static let unlimitedDailyMatches = false     // â† Premium: No 1-per-day limit
         static let adFreeExperience = false          // â† Premium: Remove all ads
-        static let lineupSearchAccess = true
+        static let lineupSearchAccess = false
         
         //MARK: - Phase 1 Cleanup features
         static let useNewGameLogicManager = true
@@ -38,7 +38,7 @@ struct AppConfig {
     /// Purchase system configuration
     struct PurchaseConfig {
         /// Master toggle for all purchases (for testing without payments)
-        static let purchasesEnabled = false  // Set to true when ready to enable purchases
+        static let purchasesEnabled = true  // Set to true when ready to enable purchases
         
         /// World Cup 2026 expiry date (August 1, 2026)
         static let worldCup2026ExpiryDate: Date = {
@@ -82,8 +82,8 @@ struct AppConfig {
         if !subscriptionEnabled {
             return PremiumFeatures.adFreeExperience
         }
-        // When subscription is enabled, check actual premium status
-        return AppPurchaseManager.shared.currentTier == .premium
+        // Single source of truth: covers Remove Ads (one-time) AND Premium/All-Access.
+        return AppPurchaseManager.shared.isAdFree
     }
     
     @MainActor

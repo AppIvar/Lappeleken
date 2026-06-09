@@ -41,7 +41,12 @@ struct LiveGameSetupView: View {
     @State private var showingPlayerDrawing = false
     @State private var showingUpgradeSheet = false
     @State private var selectedLeagueForUpgrade: String? = nil
-    
+
+    // Observed so the match list re-evaluates league access (lock/unlock) when a
+    // purchase completes in the upgrade sheet.
+    @ObservedObject private var purchaseManager = AppPurchaseManager.shared
+    @ObservedObject private var leagueAccess = LeagueAccessManager.shared
+
     @StateObject private var networkMonitor = NetworkMonitor()
     @ObservedObject private var leagueManager = LeagueAccessManager.shared
 
@@ -408,7 +413,10 @@ struct LiveGameSetupView: View {
                     reminderMatchIds: reminderManager.reminderMatchIds,
                     onToggleReminder: { match in
                         toggleReminder(for: match)
-                    }
+                    },
+                    accessMessage: accessBadge(for: leagueGroup.league),
+                    isLocked: !leagueAccess.getAccessStatus(for: leagueGroup.league).isAccessible,
+                    onLockedTap: { showingUpgradeSheet = true }
                 )
             }
         }
@@ -773,7 +781,28 @@ struct LiveGameSetupView: View {
         }
     }
 
+    /// Header badge text for a league: a lock/limited hint, or nil when fully free.
+    private func accessBadge(for leagueCode: String) -> String? {
+        switch leagueAccess.getAccessStatus(for: leagueCode) {
+        case .locked, .limitedFree:
+            return leagueAccess.getAccessStatus(for: leagueCode).displayMessage
+        case .unlocked(let reason):
+            // Surface a paid-access hint, but stay quiet for plain free leagues.
+            switch reason {
+            case .freeLeague, .testingMode, .freeMatch:
+                return nil
+            case .premium, .leagueSubscription, .worldCupPurchase:
+                return leagueAccess.getAccessStatus(for: leagueCode).displayMessage
+            }
+        }
+    }
+
     private func toggleMatchSelection(_ match: Match) {
+        // A locked league can never enter the selection — prompt to purchase instead.
+        guard leagueAccess.canAccessLeague(match.competition.code) else {
+            showingUpgradeSheet = true
+            return
+        }
         if selectedMatchIds.contains(match.id) {
             selectedMatchIds.remove(match.id)
         } else {
@@ -1087,6 +1116,9 @@ struct LiveLeagueSection: View {
     let onSelectMatch: (Match) -> Void
     var reminderMatchIds: Set<String> = []
     var onToggleReminder: ((Match) -> Void)? = nil
+    var accessMessage: String? = nil
+    var isLocked: Bool = false
+    var onLockedTap: (() -> Void)? = nil
 
     @Environment(\.colorScheme) var colorScheme
     
@@ -1095,15 +1127,29 @@ struct LiveLeagueSection: View {
             // Header
             Button(action: onToggleExpand) {
                 HStack {
+                    if isLocked {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                    }
+
                     VStack(alignment: .leading, spacing: 2) {
                         Text(leagueGroup.name)
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundColor(AppDesignSystem.Colors.primaryText)
-                        Text("\(leagueGroup.matches.count) matches")
-                            .font(.system(size: 12))
-                            .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                        if let accessMessage = accessMessage {
+                            Text(accessMessage)
+                                .font(.system(size: 12, weight: isLocked ? .semibold : .regular))
+                                .foregroundColor(isLocked
+                                    ? AppDesignSystem.Colors.grassGreen
+                                    : AppDesignSystem.Colors.secondaryText)
+                        } else {
+                            Text("\(leagueGroup.matches.count) matches")
+                                .font(.system(size: 12))
+                                .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                        }
                     }
-                    
+
                     Spacer()
                     
                     let selectedCount = leagueGroup.matches.filter { selectedMatchIds.contains($0.id) }.count
@@ -1135,9 +1181,10 @@ struct LiveLeagueSection: View {
                         LiveMatchRow(
                             match: match,
                             isSelected: selectedMatchIds.contains(match.id),
-                            onTap: { onSelectMatch(match) },
-                            hasReminder: reminderMatchIds.contains(match.id),
-                            onToggleReminder: onToggleReminder.map { toggle in { toggle(match) } }
+                            onTap: { isLocked ? onLockedTap?() : onSelectMatch(match) },
+                            hasReminder: !isLocked && reminderMatchIds.contains(match.id),
+                            onToggleReminder: isLocked ? nil : onToggleReminder.map { toggle in { toggle(match) } },
+                            isLocked: isLocked
                         )
                     }
                 }
@@ -1153,6 +1200,7 @@ struct LiveMatchRow: View {
     let onTap: () -> Void
     var hasReminder: Bool = false
     var onToggleReminder: (() -> Void)? = nil
+    var isLocked: Bool = false
 
     @Environment(\.colorScheme) var colorScheme
 
@@ -1183,6 +1231,7 @@ struct LiveMatchRow: View {
         }
         .padding(14)
         .background(rowBackground)
+        .opacity(isLocked ? 0.55 : 1.0)
     }
 
     private var reminderBell: some View {
@@ -1235,9 +1284,11 @@ struct LiveMatchRow: View {
     }
     
     private var selectionIndicator: some View {
-        Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-            .font(.system(size: 22))
-            .foregroundColor(isSelected ? AppDesignSystem.Colors.grassGreen : AppDesignSystem.Colors.secondaryText.opacity(0.4))
+        Image(systemName: isLocked ? "lock.fill" : (isSelected ? "checkmark.circle.fill" : "circle"))
+            .font(.system(size: isLocked ? 18 : 22))
+            .foregroundColor(isLocked
+                ? AppDesignSystem.Colors.secondaryText.opacity(0.6)
+                : (isSelected ? AppDesignSystem.Colors.grassGreen : AppDesignSystem.Colors.secondaryText.opacity(0.4)))
     }
     
     private var rowBackground: some View {
