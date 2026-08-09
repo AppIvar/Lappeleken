@@ -59,11 +59,13 @@ class GameSession: ObservableObject, Codable {
     enum CodingKeys: CodingKey {
         case id, participants, bets, events, availablePlayers, selectedPlayers, substitutions, customBetNames, customEventMappings
         case selectedMatchId, isLiveMode
+        case selectedMatch, selectedMatches, processedEventIds
+        case saveId, currentSaveName, hasBeenSaved
     }
-    
+
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
-        
+
         try container.encode(id, forKey: .id)
         try container.encode(participants, forKey: .participants)
         try container.encode(bets, forKey: .bets)
@@ -72,17 +74,25 @@ class GameSession: ObservableObject, Codable {
         try container.encode(selectedPlayers, forKey: .selectedPlayers)
         try container.encode(substitutions, forKey: .substitutions)
         try container.encode(isLiveMode, forKey: .isLiveMode)
-        
+
         // Encode custom event mappings
         let customMappingsArray = customEventMappings.map { (key, value) in
             ["id": key.uuidString, "name": value]
         }
         try container.encode(customMappingsArray, forKey: .customEventMappings)
-        
-        // Store selected match ID if available
-        if let selectedMatch = selectedMatch {
-            try container.encode(selectedMatch.id, forKey: .selectedMatchId)
-        }
+
+        // Full match objects, not just IDs — a restored session has no match list
+        // to look an ID up in, so an ID alone can't rebuild the live game.
+        try container.encodeIfPresent(selectedMatch, forKey: .selectedMatch)
+        try container.encode(selectedMatches, forKey: .selectedMatches)
+
+        // The live-event dedup set. Without it a resumed game re-processes every
+        // event the API still reports and pays every bet out a second time.
+        try container.encode(processedEventIds, forKey: .processedEventIds)
+
+        try container.encodeIfPresent(saveId, forKey: .saveId)
+        try container.encodeIfPresent(currentSaveName, forKey: .currentSaveName)
+        try container.encode(hasBeenSaved, forKey: .hasBeenSaved)
     }
 
     required init(from decoder: Decoder) throws {
@@ -127,7 +137,24 @@ class GameSession: ObservableObject, Codable {
         } else {
             customBetNames = [:]
         }
-        
+
+        // Matches. Older saves only carry `selectedMatchId`, which there is no way
+        // to resolve offline — those decode to no match, same as before this change.
+        selectedMatch = try container.decodeIfPresent(Match.self, forKey: .selectedMatch)
+        selectedMatches = try container.decodeIfPresent([Match].self, forKey: .selectedMatches) ?? []
+        if selectedMatch == nil, let first = selectedMatches.first {
+            selectedMatch = first
+        }
+        if selectedMatches.isEmpty, let selectedMatch = selectedMatch {
+            selectedMatches = [selectedMatch]
+        }
+
+        processedEventIds = try container.decodeIfPresent(Set<String>.self, forKey: .processedEventIds) ?? []
+
+        saveId = try container.decodeIfPresent(UUID.self, forKey: .saveId)
+        currentSaveName = try container.decodeIfPresent(String.self, forKey: .currentSaveName)
+        hasBeenSaved = try container.decodeIfPresent(Bool.self, forKey: .hasBeenSaved) ?? false
+
         // Load match service if in live mode
         if isLiveMode {
             self.matchService = ServiceProvider.shared.getMatchService()
@@ -437,13 +464,24 @@ class GameSession: ObservableObject, Codable {
             print("⚠️ Not in live mode, skipping event-driven setup")
             return
         }
-        
+
         print("🎯 Setting up REAL event-driven mode for game \(id)")
-        
+
         // Track usage for free users
         AppConfig.recordLiveMatchUsage()
-        
+
         // Start real monitoring
+        EventDrivenManager.shared.startMonitoring(for: self)
+    }
+
+    /// Restart monitoring for a game recovered after the app was terminated.
+    /// Same as `startRealEventDrivenMode()` minus the usage charge — this match
+    /// was already counted against the daily limit when the game first started,
+    /// and a crash shouldn't cost the player a second one.
+    @MainActor func resumeEventDrivenMode() {
+        guard isLiveMode else { return }
+
+        print("♻️ Resuming event-driven mode for recovered game \(id)")
         EventDrivenManager.shared.startMonitoring(for: self)
     }
     

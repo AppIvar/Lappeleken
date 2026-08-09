@@ -12,7 +12,8 @@ import UserNotifications
 @main
 struct LuckyFootballSlipApp: App {
     @StateObject private var notificationDelegate = NotificationDelegate()
-    
+    @Environment(\.scenePhase) private var scenePhase
+
     init() {
         // Initialize manual mode manager
         ManualModeManager.shared.initialize()
@@ -36,6 +37,13 @@ struct LuckyFootballSlipApp: App {
                 .onAppear {
                     setupNotifications()
                 }
+                .task {
+                    // Show the ATT prompt shortly after launch (app is active),
+                    // before ads personalize. Safe to call repeatedly — only
+                    // prompts when status is still undetermined.
+                    try? await Task.sleep(nanoseconds: 1_000_000_000)
+                    await AdManager.shared.requestTrackingAuthorizationIfNeeded()
+                }
                 .onChange(of: notificationDelegate.lastNotificationGameId) { gameId in
                     if let gameId = gameId {
                         handleNotificationNavigation(gameId: gameId)
@@ -44,12 +52,28 @@ struct LuckyFootballSlipApp: App {
                 .onReceive(NotificationCenter.default.publisher(for: UIApplication.willEnterForegroundNotification)) { _ in
                     // Clear badge when app comes to foreground
                     UIApplication.shared.applicationIconBadgeNumber = 0
-                    
+
                     // Refresh subscription status when app comes to foreground
                     Task {
                         await AppPurchaseManager.shared.updateEntitlements()
                     }
                 }
+                .onReceive(NotificationCenter.default.publisher(for: UIApplication.willTerminateNotification)) { _ in
+                    ActiveGameStore.shared.saveNow()
+                }
+        }
+        .onChange(of: scenePhase) { phase in
+            // Backgrounding is the last guaranteed callback before iOS may kill
+            // the app to reclaim memory — no notification arrives at that point,
+            // so the snapshot has to already be on disk.
+            switch phase {
+            case .background, .inactive:
+                ActiveGameStore.shared.saveNow()
+            case .active:
+                break
+            @unknown default:
+                break
+            }
         }
     }
     

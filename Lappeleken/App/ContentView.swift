@@ -24,6 +24,8 @@ struct ContentView: View {
     @State private var isContinuingSavedGame = false
     @State private var notificationGameId: String?
     @State private var showNotificationGame = false
+    @State private var recoverableGame: ActiveGameStore.Snapshot?
+    @State private var showRecoveryPrompt = false
 
     var body: some View {
         NavigationView {
@@ -162,19 +164,104 @@ struct ContentView: View {
         }
         .alert("Save Game", isPresented: $showSaveGameSheet) {
             TextField("Game name", text: $gameName)
-            
+
             Button("Save") {
                 let finalName = gameName.isEmpty ? "Game \(Date())" : gameName
                 gameSession.saveGame(name: finalName)
                 gameName = ""
             }
-            
+
             Button("Cancel", role: .cancel) {
                 gameName = ""
             }
         } message: {
             Text("Enter a name for this game session")
         }
+        .alert("Resume Your Game?", isPresented: $showRecoveryPrompt) {
+            Button("Resume") { resumeRecoveredGame() }
+            Button("Discard", role: .destructive) {
+                ActiveGameStore.shared.clear()
+                recoverableGame = nil
+            }
+        } message: {
+            Text(recoveryPromptMessage)
+        }
+        .onAppear {
+            checkForRecoverableGame()
+        }
+        .onChange(of: activeGame) { isActive in
+            // Autosave only runs while a game is actually being played. Ending a
+            // game clears the snapshot so the next launch doesn't offer it back.
+            if isActive {
+                ActiveGameStore.shared.beginTracking(gameSession, gameName: gameSession.currentSaveName)
+            } else {
+                ActiveGameStore.shared.endTracking()
+            }
+        }
+    }
+
+    // MARK: - Crash / termination recovery
+
+    private var recoveryPromptMessage: String {
+        guard let snapshot = recoverableGame else { return "" }
+
+        let names = snapshot.participantNames
+        let who = names.count <= 3
+            ? names.joined(separator: ", ")
+            : "\(names.prefix(2).joined(separator: ", ")) and \(names.count - 2) others"
+
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .full
+        let when = formatter.localizedString(for: snapshot.savedAt, relativeTo: Date())
+
+        let events = snapshot.eventCount == 1 ? "1 event" : "\(snapshot.eventCount) events"
+        return "We found a game that didn't finish — \(who), \(events), last updated \(when)."
+    }
+
+    private func checkForRecoverableGame() {
+        // Don't interrupt a game already in progress in this launch.
+        guard !activeGame, recoverableGame == nil else { return }
+        guard let snapshot = ActiveGameStore.shared.loadSnapshot() else { return }
+
+        recoverableGame = snapshot
+        showRecoveryPrompt = true
+    }
+
+    private func resumeRecoveredGame() {
+        guard let snapshot = recoverableGame else { return }
+        let restored = snapshot.session
+
+        gameSession.id = restored.id
+        gameSession.participants = restored.participants
+        gameSession.events = restored.events
+        gameSession.selectedPlayers = restored.selectedPlayers
+        gameSession.availablePlayers = restored.availablePlayers
+        gameSession.bets = restored.bets
+        gameSession.substitutions = restored.substitutions
+        gameSession.customEventMappings = restored.customEventMappings
+        gameSession.isLiveMode = restored.isLiveMode
+        gameSession.selectedMatch = restored.selectedMatch
+        gameSession.selectedMatches = restored.selectedMatches
+        // Carried over so resumed live monitoring doesn't re-apply — and re-pay —
+        // events this game already processed.
+        gameSession.processedEventIds = restored.processedEventIds
+        gameSession.saveId = restored.saveId
+        gameSession.currentSaveName = restored.currentSaveName
+        gameSession.hasBeenSaved = restored.hasBeenSaved
+        gameSession.canUndoLastEvent = false
+
+        recoverableGame = nil
+        isContinuingSavedGame = true
+        activeGame = true
+
+        // Re-arm live monitoring for a game that was watching a match. This does
+        // not count against the daily free-match limit — the match was already
+        // paid for when the game first started.
+        if gameSession.isLiveMode {
+            gameSession.resumeEventDrivenMode()
+        }
+
+        print("♻️ Resumed game \(gameSession.id) with \(gameSession.participants.count) participants and \(gameSession.events.count) events")
     }
     
     private func handleNotificationNavigation(notification: Notification) {
