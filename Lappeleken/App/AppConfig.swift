@@ -37,8 +37,10 @@ struct AppConfig {
     
     /// Purchase system configuration
     struct PurchaseConfig {
-        /// Master toggle for all purchases (for testing without payments)
-        static let purchasesEnabled = false  // Set to true when ready to enable purchases
+        /// Master toggle for all purchases.
+        /// LIVE. When false, `hasAccess(to:)` grants everything and every league
+        /// unlocks — that is a testing bypass, not a shipping state.
+        static let purchasesEnabled = true
     }
     
     /// League configuration
@@ -446,9 +448,13 @@ static func toggleDataManagerForTesting() {
 
 // MARK: - Production Control (No Server Required)
 extension AppConfig {
-    /// Set this to true when you want to enable free testing for everyone
-    /// Change this value and release an app update to control the feature
-    private static let PRODUCTION_FREE_TESTING_ENABLED = true // â† Change this to true/false
+    /// Give every production user unlimited live matches and multi-match
+    /// selection, free. Ship this as `false` unless you are deliberately running
+    /// a promotional period: while it is true the daily limit and multi-match
+    /// selection are handed out to everyone, so most of what Premium sells is
+    /// free regardless of `purchasesEnabled`.
+    /// Change this value and release an app update to control the feature.
+    private static let PRODUCTION_FREE_TESTING_ENABLED = false
     
     /// Production version of free testing check
     @MainActor
