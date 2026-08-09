@@ -882,6 +882,12 @@ struct GameDetailSheet: View {
         }
     }
     
+    /// First occurrence of each player id, order preserved.
+    private func dedupedById(_ players: [Player]) -> [Player] {
+        var seen = Set<UUID>()
+        return players.filter { seen.insert($0.id).inserted }
+    }
+
     private func loadAndContinueGame() {
         let gameHistoryManager = GameHistoryManager.shared
         let freshGames = gameHistoryManager.getSavedGameSessions()
@@ -893,8 +899,14 @@ struct GameDetailSheet: View {
         let restoredGameSession = GameSession()
         
         restoredGameSession.selectedPlayers = freshGame.selectedPlayers
-        restoredGameSession.availablePlayers = freshGame.selectedPlayers
-        
+        restoredGameSession.availablePlayers = freshGame.availablePlayers
+        restoredGameSession.substitutions = freshGame.substitutions
+        restoredGameSession.isLiveMode = freshGame.isLiveMode
+        restoredGameSession.selectedMatch = freshGame.selectedMatch
+        restoredGameSession.selectedMatches = freshGame.selectedMatches
+        // Carried over so a resumed live game doesn't re-apply events it already paid out.
+        restoredGameSession.processedEventIds = freshGame.processedEventIds
+
         restoredGameSession.participants.removeAll()
         for savedParticipant in freshGame.participants {
             let freshParticipant = Participant(
@@ -906,21 +918,29 @@ struct GameDetailSheet: View {
             restoredGameSession.participants.append(freshParticipant)
         }
         
-        var allUniquePlayersFromParticipants: [Player] = []
+        // Players currently in play — deliberately excludes substitutedPlayers, so a
+        // player who went off before the game was saved stays off.
+        var activePlayersFromParticipants: [Player] = []
         for participant in restoredGameSession.participants {
-            allUniquePlayersFromParticipants.append(contentsOf: participant.selectedPlayers)
-            allUniquePlayersFromParticipants.append(contentsOf: participant.substitutedPlayers)
+            activePlayersFromParticipants.append(contentsOf: participant.selectedPlayers)
         }
-        
-        let uniquePlayers = Array(Set(allUniquePlayersFromParticipants.map { $0.id })).compactMap { playerId in
-            allUniquePlayersFromParticipants.first { $0.id == playerId }
+
+        if !activePlayersFromParticipants.isEmpty {
+            restoredGameSession.selectedPlayers = dedupedById(activePlayersFromParticipants)
         }
-        
-        if !uniquePlayers.isEmpty {
-            restoredGameSession.availablePlayers = uniquePlayers
-            restoredGameSession.selectedPlayers = uniquePlayers
+
+        // The available pool is a union, never a replacement: it has to keep the
+        // bench from the save so a substitute coming on later can still be found,
+        // while also covering anyone the participants hold.
+        var pool = restoredGameSession.availablePlayers
+        for participant in restoredGameSession.participants {
+            pool.append(contentsOf: participant.selectedPlayers)
+            pool.append(contentsOf: participant.substitutedPlayers)
         }
-        
+        if !pool.isEmpty {
+            restoredGameSession.availablePlayers = dedupedById(pool)
+        }
+
         if !freshGame.bets.isEmpty {
             restoredGameSession.bets = freshGame.bets
         } else {

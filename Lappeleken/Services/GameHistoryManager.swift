@@ -222,7 +222,30 @@ struct SavedGameSession: Identifiable, Codable {
     let bets: [Bet]
     let timestamp: Date
     let isLiveMode: Bool
-    
+
+    // MARK: Fields added after the first release
+    //
+    // Every one of these is decoded with `decodeIfPresent` in the custom decoder
+    // below. That is not optional politeness: `getSavedGameSessions()` deletes the
+    // whole saved-games blob when decoding throws, so a required new field would
+    // silently wipe every game a user had already saved.
+
+    /// The real substitution records. Previously not stored at all, and
+    /// `toGameSession()` invented replacements with the same player on both sides.
+    let substitutions: [Substitution]
+
+    /// The full player pool, not just the ones in play. A live game restored with
+    /// only `selectedPlayers` cannot resolve a substitute coming on, because a
+    /// player on the bench is in `availablePlayers` and nowhere else.
+    let availablePlayers: [Player]
+
+    /// Live-event dedup keys, so a restored live game doesn't re-apply — and
+    /// re-pay — events it already processed before it was saved.
+    let processedEventIds: Set<String>
+
+    let selectedMatch: Match?
+    let selectedMatches: [Match]
+
     init(from gameSession: GameSession, name: String) {
         self.id = UUID()
         self.name = name
@@ -233,26 +256,58 @@ struct SavedGameSession: Identifiable, Codable {
         self.bets = gameSession.bets
         self.timestamp = Date()
         self.isLiveMode = gameSession.isLiveMode
+        self.substitutions = gameSession.substitutions
+        self.availablePlayers = gameSession.availablePlayers
+        self.processedEventIds = gameSession.processedEventIds
+        self.selectedMatch = gameSession.selectedMatch
+        self.selectedMatches = gameSession.selectedMatches
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        dateSaved = try container.decode(Date.self, forKey: .dateSaved)
+        participants = try container.decode([Participant].self, forKey: .participants)
+        events = try container.decode([GameEvent].self, forKey: .events)
+        selectedPlayers = try container.decode([Player].self, forKey: .selectedPlayers)
+        bets = try container.decode([Bet].self, forKey: .bets)
+        timestamp = try container.decode(Date.self, forKey: .timestamp)
+        isLiveMode = try container.decode(Bool.self, forKey: .isLiveMode)
+
+        // Absent in saves written by older builds — default rather than throw.
+        substitutions = try container.decodeIfPresent([Substitution].self, forKey: .substitutions) ?? []
+        processedEventIds = try container.decodeIfPresent(Set<String>.self, forKey: .processedEventIds) ?? []
+        selectedMatch = try container.decodeIfPresent(Match.self, forKey: .selectedMatch)
+        selectedMatches = try container.decodeIfPresent([Match].self, forKey: .selectedMatches) ?? []
+
+        // An old save has no bench, so fall back to the players in play. That's
+        // what the previous code did unconditionally; now it's only the fallback.
+        availablePlayers = try container.decodeIfPresent([Player].self, forKey: .availablePlayers) ?? selectedPlayers
     }
     
     // Add this method to convert back to GameSession
     func toGameSession() -> GameSession? {
         let gameSession = GameSession()
-        
+
         // Restore core properties
         gameSession.id = self.id
         gameSession.participants = self.participants
         gameSession.events = self.events
         gameSession.selectedPlayers = self.selectedPlayers
-        gameSession.availablePlayers = self.selectedPlayers // Use selected as available since we don't store all
+        gameSession.availablePlayers = self.availablePlayers
         gameSession.bets = self.bets
         gameSession.isLiveMode = self.isLiveMode
-        
+        gameSession.selectedMatch = self.selectedMatch
+        gameSession.selectedMatches = self.selectedMatches
+        gameSession.processedEventIds = self.processedEventIds
+
         // Set save tracking
         gameSession.saveId = self.id
         gameSession.currentSaveName = self.name
         gameSession.hasBeenSaved = true
-        
+
         // Rebuild custom event mappings if needed
         for bet in self.bets where bet.eventType == .custom {
             // Try to recover custom event names from events
@@ -262,22 +317,14 @@ struct SavedGameSession: Identifiable, Codable {
                 gameSession.customEventMappings[bet.id] = firstCustomEvent.customEventName ?? "Custom Event"
             }
         }
-        
-        // Rebuild substitutions from events if available
-        gameSession.substitutions = self.events.compactMap { event in
-            guard let customName = event.customEventName,
-                  customName.contains("Substitution:") else { return nil }
-            
-            // This is a simplified reconstruction - you may need more detail
-            return Substitution(
-                from: event.player,
-                to: event.player, // This would need proper reconstruction
-                timestamp: event.timestamp,
-                team: event.player.team,
-                minute: event.minute
-            )
-        }
-        
+
+        // Substitutions are restored as recorded. They are NOT rebuilt from the
+        // timeline: an event only names the player who went off, so reconstructing
+        // one means inventing the player who came on. The old code did exactly
+        // that — it wrote the same player into both sides of the swap — which
+        // produced substitution records that never happened.
+        gameSession.substitutions = self.substitutions
+
         return gameSession
     }
 }
