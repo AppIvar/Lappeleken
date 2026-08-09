@@ -21,7 +21,6 @@ struct PlayerDrawingView: View {
     @State private var drawnSlips: Set<Int> = []
     @State private var enlargedSlips: Set<Int> = []
     @State private var disappearingSlips: Set<Int> = []
-    @State private var currentParticipantIndex = 0
     @State private var showingAssignments = false
     @State private var isDrawingComplete = false
     @State private var slipPositions: [CGPoint] = []
@@ -29,11 +28,26 @@ struct PlayerDrawingView: View {
     @State private var showPickAllButton = true
     @State private var isDrawingInProgress = false
 
-    // Shuffled once on appear so the face-down slips don't reveal players in
-    // selection order (which is grouped by team). slip index -> drawPool[index]
-    // is the single source of randomness for both manual draws and "Pick All".
+    // MARK: Randomness (all fixed once, in setupDraw)
+    //
+    // Three independent things get randomized, and all three are shared by the
+    // manual tap flow and "Pick All" so the two can never disagree:
+    //
+    //  1. drawPool     - which player is behind slip i. Shuffled so the slips
+    //                    don't reveal players in selection order (grouped by team).
+    //  2. slipLayout   - which grid cell slip i sits in, plus a per-slip tilt, so
+    //                    the slips read as a scattered pile instead of a lattice.
+    //  3. turnQueue    - who draws slip i. A fresh shuffle of the participants per
+    //                    round, so nobody is permanently first and an uneven
+    //                    remainder lands on random people instead of always the
+    //                    first names in the list.
     @State private var drawPool: [Player] = []
-    
+    @State private var slipLayoutOrder: [Int] = []
+    @State private var slipRotations: [Double] = []
+    @State private var turnQueue: [Int] = []
+    @State private var turnCursor = 0
+    @State private var didSetupDraw = false
+
     // NEW: Toast state for showing assignment feedback
     @State private var toastMessage: String = ""
     @State private var showToast = false
@@ -70,8 +84,8 @@ struct PlayerDrawingView: View {
                     }
                 }
                 .onAppear {
+                    setupDraw()
                     setupSlipPositions(in: geometry.size)
-                    setupInitialAssignments()
                 }
                 .onChange(of: geometry.size) { size in
                     if screenSize != size {
@@ -113,7 +127,7 @@ struct PlayerDrawingView: View {
     
     private var headerView: some View {
         VStack(spacing: 10) {
-            if !isDrawingComplete {
+            if !isDrawingComplete, let currentParticipant = currentParticipant {
                 // FIXED: Always show who is drawing, even with Pick All button visible
                 VStack(spacing: 6) {
                     HStack(spacing: 8) {
@@ -121,21 +135,21 @@ struct PlayerDrawingView: View {
                             Circle()
                                 .fill(AppDesignSystem.Colors.grassGreen.opacity(0.15))
                                 .frame(width: 36, height: 36)
-                            Text(String(participants[currentParticipantIndex].name.prefix(1).uppercased()))
+                            Text(String(currentParticipant.name.prefix(1).uppercased()))
                                 .font(.system(size: 16, weight: .bold))
                                 .foregroundColor(AppDesignSystem.Colors.grassGreen)
                         }
-                        
+
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Drawing for")
                                 .font(.system(size: 12))
                                 .foregroundColor(AppDesignSystem.Colors.secondaryText)
-                            Text(participants[currentParticipantIndex].name)
+                            Text(currentParticipant.name)
                                 .font(.system(size: 18, weight: .bold, design: .rounded))
                                 .foregroundColor(AppDesignSystem.Colors.primaryText)
                         }
                     }
-                    
+
                     Text(showPickAllButton ? "Tap a slip or use Pick All below" : "Tap a slip to reveal their player!")
                         .font(.system(size: 13))
                         .foregroundColor(AppDesignSystem.Colors.secondaryText)
@@ -233,6 +247,9 @@ struct PlayerDrawingView: View {
                             }
                         }
                     )
+                    // Face-down slips sit at a random angle so the pile doesn't
+                    // read as a grid; a revealed slip straightens up to be legible.
+                    .rotationEffect(.degrees(drawnSlips.contains(index) ? 0 : rotation(for: index)))
                     .position(slipPositions[index])
                     .zIndex(enlargedSlips.contains(index) ? 2 : 1)
                 }
@@ -308,78 +325,122 @@ struct PlayerDrawingView: View {
     
     // MARK: - Helper Methods
     
-    private func setupSlipPositions(in size: CGSize) {
-        screenSize = size
-        let drawingArea = CGRect(x: 20, y: 20, width: size.width - 40, height: size.height - 300)
-        
-        var positions: [CGPoint] = []
-        let spacing: CGFloat = slipSize + 15
-        let columns = max(1, Int((drawingArea.width) / spacing))
-        let rows = max(1, Int(ceil(Double(selectedPlayers.count) / Double(columns))))
-        
-        let actualGridWidth = CGFloat(columns - 1) * spacing + slipSize
-        let actualGridHeight = CGFloat(rows - 1) * spacing + slipSize
-        let startX = drawingArea.minX + (drawingArea.width - actualGridWidth) / 2
-        let startY = drawingArea.minY + (drawingArea.height - actualGridHeight) / 2
-        
-        for i in 0..<selectedPlayers.count {
-            let row = i / columns
-            let col = i % columns
-            
-            let baseX = startX + CGFloat(col) * spacing + slipSize/2
-            let baseY = startY + CGFloat(row) * spacing + slipSize/2
-            
-            let randomOffsetX = CGFloat.random(in: -8...8)
-            let randomOffsetY = CGFloat.random(in: -8...8)
-            
-            let position = CGPoint(
-                x: max(drawingArea.minX + slipSize/2, min(drawingArea.maxX - slipSize/2, baseX + randomOffsetX)),
-                y: max(drawingArea.minY + slipSize/2, min(drawingArea.maxY - slipSize/2, baseY + randomOffsetY))
-            )
-            positions.append(position)
-        }
-        slipPositions = positions
-    }
-    
-    private func setupInitialAssignments() {
+    /// Fixes everything random about this draw, exactly once.
+    private func setupDraw() {
+        guard !didSetupDraw else { return }
+        didSetupDraw = true
+
+        let slipCount = selectedPlayers.count
+
         drawPool = selectedPlayers.shuffled()
+        slipLayoutOrder = Array(0..<slipCount).shuffled()
+        slipRotations = (0..<slipCount).map { _ in Double.random(in: -11...11) }
+        turnQueue = buildTurnQueue(slipCount: slipCount)
+        turnCursor = 0
+
         for participant in participants {
             assignments[participant] = []
         }
     }
-    
+
+    /// Who draws each slip, in order. One fresh shuffle of the participants per
+    /// full round: every round stays balanced (nobody gets two before everyone
+    /// has had one), but the order within a round — and therefore who picks up
+    /// the extra players when the count doesn't divide evenly — is random.
+    private func buildTurnQueue(slipCount: Int) -> [Int] {
+        guard !participants.isEmpty else { return [] }
+
+        var queue: [Int] = []
+        while queue.count < slipCount {
+            queue.append(contentsOf: Array(participants.indices).shuffled())
+        }
+        return Array(queue.prefix(slipCount))
+    }
+
+    /// The participant whose turn it is, or nil once every slip has been drawn.
+    private var currentParticipant: Participant? {
+        guard turnCursor < turnQueue.count else { return nil }
+        return participants[turnQueue[turnCursor]]
+    }
+
+    private func rotation(for index: Int) -> Double {
+        index < slipRotations.count ? slipRotations[index] : 0
+    }
+
+    private func setupSlipPositions(in size: CGSize) {
+        screenSize = size
+        let drawingArea = CGRect(x: 20, y: 20, width: size.width - 40, height: size.height - 300)
+
+        let spacing: CGFloat = slipSize + 15
+        let columns = max(1, Int((drawingArea.width) / spacing))
+        let rows = max(1, Int(ceil(Double(selectedPlayers.count) / Double(columns))))
+
+        let actualGridWidth = CGFloat(columns - 1) * spacing + slipSize
+        let actualGridHeight = CGFloat(rows - 1) * spacing + slipSize
+        let startX = drawingArea.minX + (drawingArea.width - actualGridWidth) / 2
+        let startY = drawingArea.minY + (drawingArea.height - actualGridHeight) / 2
+
+        // Build the grid cells first, then hand them out in shuffled order, so a
+        // slip's place in the pile says nothing about where it sits in drawPool.
+        var cells: [CGPoint] = []
+        for i in 0..<selectedPlayers.count {
+            let row = i / columns
+            let col = i % columns
+
+            let baseX = startX + CGFloat(col) * spacing + slipSize/2
+            let baseY = startY + CGFloat(row) * spacing + slipSize/2
+
+            let randomOffsetX = CGFloat.random(in: -10...10)
+            let randomOffsetY = CGFloat.random(in: -10...10)
+
+            let position = CGPoint(
+                x: max(drawingArea.minX + slipSize/2, min(drawingArea.maxX - slipSize/2, baseX + randomOffsetX)),
+                y: max(drawingArea.minY + slipSize/2, min(drawingArea.maxY - slipSize/2, baseY + randomOffsetY))
+            )
+            cells.append(position)
+        }
+
+        // On a rotation/resize the layout order is already fixed, so the slips
+        // keep their relative places instead of jumping around.
+        if slipLayoutOrder.count != cells.count {
+            slipLayoutOrder = Array(0..<cells.count).shuffled()
+        }
+        slipPositions = slipLayoutOrder.map { cells[$0] }
+    }
+
     private func drawSlip(at index: Int) {
-        guard !drawnSlips.contains(index) && !isDrawingInProgress else { return }
-        
+        guard !drawnSlips.contains(index),
+              !isDrawingInProgress,
+              index < drawPool.count,
+              let drawingParticipant = currentParticipant else { return }
+
         isDrawingInProgress = true
-        
-        // Capture current participant BEFORE any state changes
-        let currentParticipant = participants[currentParticipantIndex]
+
         let player = drawPool[index]
-        
+
         // Show toast with assignment
-        showAssignmentToast(participant: currentParticipant, player: player)
-        
+        showAssignmentToast(participant: drawingParticipant, player: player)
+
         withAnimation(.easeInOut(duration: 0.5)) {
             drawnSlips.insert(index)
             enlargedSlips.insert(index)
         }
-        
-        if assignments[currentParticipant] == nil {
-            assignments[currentParticipant] = []
+
+        if assignments[drawingParticipant] == nil {
+            assignments[drawingParticipant] = []
         }
-        assignments[currentParticipant]?.append(player)
-        
+        assignments[drawingParticipant]?.append(player)
+
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        
+
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
             withAnimation(.easeOut(duration: 0.5)) {
                 enlargedSlips.remove(index)
                 disappearingSlips.insert(index)
             }
-            
+
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                advanceToNextParticipant()
+                advanceTurn()
                 isDrawingInProgress = false
             }
         }
@@ -395,42 +456,41 @@ struct PlayerDrawingView: View {
     }
     
     private func pickAllSlips() {
+        guard !participants.isEmpty else { return }
         showPickAllButton = false
-        
-        var participantIndex = 0
 
         for participant in participants {
             assignments[participant] = []
         }
 
-        // Use the already-shuffled drawPool so the bulk assignment matches the
-        // order the face-down slips are laid out in.
-        for (index, player) in drawPool.enumerated() {
-            let participant = participants[participantIndex % participants.count]
+        // Same drawPool and same turnQueue the manual flow would have used, so
+        // "Pick All" is exactly the draw the player would have tapped out by hand.
+        for (index, player) in drawPool.enumerated() where index < turnQueue.count {
+            let participant = participants[turnQueue[index]]
             assignments[participant]?.append(player)
-            participantIndex += 1
-            
+
             DispatchQueue.main.asyncAfter(deadline: .now() + Double(index) * 0.1) {
                 withAnimation(.easeInOut(duration: 0.3)) {
                     _ = drawnSlips.insert(index)
                 }
             }
         }
-        
+
         DispatchQueue.main.asyncAfter(deadline: .now() + Double(selectedPlayers.count) * 0.1 + 0.5) {
+            turnCursor = turnQueue.count
             withAnimation(.easeInOut(duration: 0.3)) {
                 isDrawingComplete = true
             }
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         }
     }
-    
-    private func advanceToNextParticipant() {
+
+    private func advanceTurn() {
+        turnCursor += 1
+
         if drawnSlips.count >= selectedPlayers.count {
             isDrawingComplete = true
             UINotificationFeedbackGenerator().notificationOccurred(.success)
-        } else {
-            currentParticipantIndex = (currentParticipantIndex + 1) % participants.count
         }
     }
 }
