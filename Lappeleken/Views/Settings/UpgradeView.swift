@@ -48,7 +48,11 @@ struct UpgradeView: View {
                     
                     // Restore Purchases
                     restorePurchasesButton
-                    
+
+                    // Subscription disclosure + legal links (required by App Store
+                    // guideline 3.1.2 for auto-renewable subscriptions).
+                    legalFooter
+
                     Spacer(minLength: 40)
                 }
                 .padding(20)
@@ -139,13 +143,12 @@ struct UpgradeView: View {
                 productID: .premium,
                 title: "Premium All-Access",
                 subtitle: "Everything included",
-                price: "$19.99/year",
+                price: priceText(for: .premium, fallback: "$19.99/year"),
                 features: [
                     "All leagues & competitions",
                     "Unlimited live matches daily",
                     "Multiple match selection",
-                    "No advertisements",
-                    "World Cup 2026 included"
+                    "No advertisements"
                 ],
                 isPurchased: purchaseManager.hasPremium,
                 isHighlighted: true,
@@ -170,7 +173,7 @@ struct UpgradeView: View {
                     productID: .leaguePL,
                     leagueName: "Premier League",
                     leagueCode: "PL",
-                    price: "$6.99/year",
+                    price: priceText(for: .leaguePL, fallback: "$6.99/year"),
                     isPurchased: purchaseManager.hasAccess(to: .leaguePL),
                     freeMatchesRemaining: leagueManager.getRemainingFreeMatches(for: "PL"),
                     onPurchase: { purchaseProduct(.leaguePL) }
@@ -180,7 +183,7 @@ struct UpgradeView: View {
                     productID: .leagueLaLiga,
                     leagueName: "La Liga",
                     leagueCode: "PD",
-                    price: "$6.99/year",
+                    price: priceText(for: .leagueLaLiga, fallback: "$6.99/year"),
                     isPurchased: purchaseManager.hasAccess(to: .leagueLaLiga),
                     freeMatchesRemaining: leagueManager.getRemainingFreeMatches(for: "PD"),
                     onPurchase: { purchaseProduct(.leagueLaLiga) }
@@ -190,7 +193,7 @@ struct UpgradeView: View {
                     productID: .leagueBundesliga,
                     leagueName: "Bundesliga",
                     leagueCode: "BL1",
-                    price: "$6.99/year",
+                    price: priceText(for: .leagueBundesliga, fallback: "$6.99/year"),
                     isPurchased: purchaseManager.hasAccess(to: .leagueBundesliga),
                     freeMatchesRemaining: leagueManager.getRemainingFreeMatches(for: "BL1"),
                     onPurchase: { purchaseProduct(.leagueBundesliga) }
@@ -200,7 +203,7 @@ struct UpgradeView: View {
                     productID: .leagueSerieA,
                     leagueName: "Serie A",
                     leagueCode: "SA",
-                    price: "$6.99/year",
+                    price: priceText(for: .leagueSerieA, fallback: "$6.99/year"),
                     isPurchased: purchaseManager.hasAccess(to: .leagueSerieA),
                     freeMatchesRemaining: leagueManager.getRemainingFreeMatches(for: "SA"),
                     onPurchase: { purchaseProduct(.leagueSerieA) }
@@ -214,7 +217,7 @@ struct UpgradeView: View {
                 productID: .leagueCL,
                 leagueName: "Champions League",
                 leagueCode: "CL",
-                price: "$4.99/year",
+                price: priceText(for: .leagueCL, fallback: "$4.99/year"),
                 isPurchased: purchaseManager.hasAccess(to: .leagueCL),
                 freeMatchesRemaining: 0, // CL has no free matches
                 isLocked: true,
@@ -234,7 +237,7 @@ struct UpgradeView: View {
                 productID: .removeAds,
                 title: "Remove Ads",
                 subtitle: "One-time purchase",
-                price: "$2.99",
+                price: priceText(for: .removeAds, fallback: "$2.99"),
                 features: [
                     "Remove all banner ads",
                     "Remove interstitial ads",
@@ -243,22 +246,6 @@ struct UpgradeView: View {
                 isPurchased: purchaseManager.hasRemovedAds,
                 isHighlighted: false,
                 onPurchase: { purchaseProduct(.removeAds) }
-            )
-            
-            // World Cup 2026
-            PurchaseCard(
-                productID: .worldCup2026,
-                title: "World Cup 2026",
-                subtitle: "Valid until August 2026",
-                price: "$4.99",
-                features: [
-                    "All World Cup matches",
-                    "June - July 2026",
-                    "One-time purchase"
-                ],
-                isPurchased: purchaseManager.hasWorldCup2026,
-                isHighlighted: false,
-                onPurchase: { purchaseProduct(.worldCup2026) }
             )
         }
     }
@@ -299,8 +286,7 @@ struct UpgradeView: View {
                 icon: "crown.fill",
                 color: .yellow,
                 items: [
-                    ("Champions League", purchaseManager.hasAccess(to: .leagueCL) ? "Subscribed" : "Locked", purchaseManager.hasAccess(to: .leagueCL)),
-                    ("World Cup 2026", purchaseManager.hasWorldCup2026 ? "Purchased" : "Locked", purchaseManager.hasWorldCup2026)
+                    ("Champions League", purchaseManager.hasAccess(to: .leagueCL) ? "Subscribed" : "Locked", purchaseManager.hasAccess(to: .leagueCL))
                 ]
             )
             
@@ -318,6 +304,16 @@ struct UpgradeView: View {
         }
     }
     
+    /// Localized price from StoreKit (correct currency per storefront), falling
+    /// back to the hardcoded string until products finish loading.
+    private func priceText(for productID: AppPurchaseManager.ProductID, fallback: String) -> String {
+        guard let product = purchaseManager.availableProducts.first(where: { $0.id == productID.rawValue }) else {
+            return fallback
+        }
+        // All our subscriptions are yearly; show the period alongside the price.
+        return productID.isSubscription ? "\(product.displayPrice)/year" : product.displayPrice
+    }
+
     private func bigLeagueStatus(for code: String) -> String {
         let productID: AppPurchaseManager.ProductID
         switch code {
@@ -388,6 +384,25 @@ struct UpgradeView: View {
         .font(.subheadline)
         .foregroundColor(AppDesignSystem.Colors.primary)
         .padding(.top, 8)
+    }
+
+    private var legalFooter: some View {
+        VStack(spacing: 10) {
+            Text("Subscriptions are charged to your Apple ID and automatically renew unless cancelled at least 24 hours before the end of the current period. Manage or cancel anytime in your Apple ID account settings. One-time purchases are non-recurring.")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+
+            HStack(spacing: 16) {
+                Link("Terms of Use (EULA)", destination: URL(string: "https://lucky-football-slip.netlify.app/#terms")!)
+                Text("•").foregroundColor(.secondary)
+                Link("Privacy Policy", destination: URL(string: "https://lucky-football-slip.netlify.app/#privacy")!)
+            }
+            .font(.caption2)
+            .foregroundColor(AppDesignSystem.Colors.primary)
+        }
+        .padding(.top, 12)
+        .padding(.horizontal, 8)
     }
     
     // MARK: - Actions

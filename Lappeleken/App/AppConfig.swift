@@ -38,12 +38,7 @@ struct AppConfig {
     /// Purchase system configuration
     struct PurchaseConfig {
         /// Master toggle for all purchases (for testing without payments)
-        static let purchasesEnabled = true  // Set to true when ready to enable purchases
-        
-        /// World Cup 2026 expiry date (August 1, 2026)
-        static let worldCup2026ExpiryDate: Date = {
-            Calendar.current.date(from: DateComponents(year: 2026, month: 8, day: 1)) ?? Date()
-        }()
+        static let purchasesEnabled = false  // Set to true when ready to enable purchases
     }
     
     /// League configuration
@@ -51,8 +46,7 @@ struct AppConfig {
         static let freeLeagues: Set<String> = ["DED", "PPL", "ELC", "EL"]
         static let bigLeagues: Set<String> = ["PL", "PD", "BL1", "SA"]
         static let championsLeague: Set<String> = ["CL"]
-        static let worldCup: Set<String> = ["WC"]
-        
+
         /// Free matches allowed per big league before requiring subscription
         static let freeMatchesPerBigLeague = 3
     }
@@ -181,13 +175,15 @@ static func toggleDataManagerForTesting() {
     
     /// Configuration for server-side caching to reduce football-data.org API load
     struct CacheServer {
-        /// Enable routing API calls through your cache server
+        /// Enable routing API calls through your cache server.
+        /// Production defaults ON (all devices share the Cloudflare edge cache so the
+        /// shared football-data.org key doesn't hit its rate limit) unless explicitly
+        /// disabled. Debug stays opt-in so local testing hits the API directly.
         static var enabled: Bool {
             #if DEBUG
             return UserDefaults.standard.bool(forKey: "cacheServer_enabled")
             #else
-            // Enable in production once server is deployed
-            return UserDefaults.standard.bool(forKey: "cacheServer_enabled")
+            return UserDefaults.standard.object(forKey: "cacheServer_enabled") as? Bool ?? true
             #endif
         }
         
@@ -348,7 +344,6 @@ static func toggleDataManagerForTesting() {
     static var premiumCompetitions: [String: String] {
         return [
             "CL": "Champions League",
-            "WC": "World Cup",
             "EC": "Euro Championship",
             "NC": "Nations Cup"
         ]

@@ -378,7 +378,7 @@ extension SubstitutionManager {
     /// Check if more substitutions are allowed (typically 3-5 per team)
     func canMakeMoreSubstitutions(for team: Team, in gameSession: GameSession) -> Bool {
         let teamSubstitutions = gameSession.substitutions.filter { $0.team.id == team.id }
-        return teamSubstitutions.count < 5 // FIFA allows up to 5 substitutions
+        return teamSubstitutions.count < 5 // Most competitions allow up to 5 substitutions
     }
     
     /// Get remaining substitutions for a team

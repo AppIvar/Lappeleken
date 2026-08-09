@@ -707,7 +707,7 @@ struct LiveGameSetupView: View {
     }
     
     private var leagueGroups: [LeagueGroup] {
-        let leagueOrder = ["TIP", "WC", "CL", "PL", "BL1", "DED", "BSA", "PD", "FL1", "ELC", "PPL", "EC", "SA"]
+        let leagueOrder = ["TIP", "CL", "PL", "BL1", "DED", "BSA", "PD", "FL1", "ELC", "PPL", "EC", "SA"]
         
         return matchesByLeague.keys
             .sorted { (leagueOrder.firstIndex(of: $0) ?? 999) < (leagueOrder.firstIndex(of: $1) ?? 999) }
@@ -791,7 +791,7 @@ struct LiveGameSetupView: View {
             switch reason {
             case .freeLeague, .testingMode, .freeMatch:
                 return nil
-            case .premium, .leagueSubscription, .worldCupPurchase:
+            case .premium, .leagueSubscription:
                 return leagueAccess.getAccessStatus(for: leagueCode).displayMessage
             }
         }

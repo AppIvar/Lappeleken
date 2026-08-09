@@ -28,21 +28,6 @@
       "productID" : "Lucky.Football.Slip.remove_ads",
       "referenceName" : "Remove Ads",
       "type" : "NonConsumable"
-    },
-    {
-      "displayPrice" : "4.99",
-      "familyShareable" : false,
-      "internalID" : "6746333402",
-      "localizations" : [
-        {
-          "description" : "Access World Cup 2026 matches (June-July 2026)",
-          "displayName" : "World Cup 2026",
-          "locale" : "en_US"
-        }
-      ],
-      "productID" : "Lucky.Football.Slip.worldcup_2026",
-      "referenceName" : "World Cup 2026",
-      "type" : "NonConsumable"
     }
   ],
   "settings" : {

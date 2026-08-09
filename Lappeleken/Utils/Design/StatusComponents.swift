@@ -248,9 +248,6 @@ struct AccessBadge: View {
                
         case .freeMatch:
             StatusBadge("FREE", color: .green, style: .soft)
-               
-        case .worldCupPurchase:
-            StatusBadge("PURCHASED", color: .green, style: .soft)
         }
     }
 }

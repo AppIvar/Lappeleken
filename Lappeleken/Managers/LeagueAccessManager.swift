@@ -17,7 +17,6 @@ class LeagueAccessManager: ObservableObject {
         case free           // Unlimited with ads, 1 match/day
         case bigLeague      // 3 free matches, then subscription
         case championsLeague // Subscription only
-        case worldCup       // One-time purchase
     }
     
     // MARK: - League Definitions
@@ -25,8 +24,7 @@ class LeagueAccessManager: ObservableObject {
     static let freeLeagues: Set<String> = ["DED", "PPL", "ELC", "EL"]  // Eredivisie, Primeira, Championship, Eliteserien
     static let bigLeagues: Set<String> = ["PL", "PD", "BL1", "SA"]     // Premier League, La Liga, Bundesliga, Serie A
     static let championsLeague: Set<String> = ["CL"]
-    static let worldCup: Set<String> = ["WC"]
-    
+
     // Big league to product mapping
     static let leagueToProductID: [String: AppPurchaseManager.ProductID] = [
         "PL": .leaguePL,
@@ -65,8 +63,6 @@ class LeagueAccessManager: ObservableObject {
             return .bigLeague
         } else if Self.championsLeague.contains(leagueCode) {
             return .championsLeague
-        } else if Self.worldCup.contains(leagueCode) {
-            return .worldCup
         }
         // Default unknown leagues to free
         return .free
@@ -102,9 +98,6 @@ class LeagueAccessManager: ObservableObject {
             
         case .championsLeague:
             return AppPurchaseManager.shared.hasAccess(to: .leagueCL)
-            
-        case .worldCup:
-            return AppPurchaseManager.shared.hasAccess(to: .worldCup2026)
         }
     }
     
@@ -141,12 +134,6 @@ class LeagueAccessManager: ObservableObject {
                 return .unlocked(reason: .leagueSubscription)
             }
             return .locked(requiredPurchase: .leagueCL)
-            
-        case .worldCup:
-            if AppPurchaseManager.shared.hasAccess(to: .worldCup2026) {
-                return .unlocked(reason: .worldCupPurchase)
-            }
-            return .locked(requiredPurchase: .worldCup2026)
         }
     }
     
@@ -159,7 +146,6 @@ class LeagueAccessManager: ObservableObject {
         case "BL1": return "Bundesliga"
         case "SA": return "Serie A"
         case "CL": return "Champions League"
-        case "WC": return "World Cup"
         case "DED": return "Eredivisie"
         case "PPL": return "Primeira Liga"
         case "ELC": return "Championship"
@@ -173,7 +159,6 @@ class LeagueAccessManager: ObservableObject {
         case .free: return "Free League"
         case .bigLeague: return "Big League"
         case .championsLeague: return "Champions League"
-        case .worldCup: return "World Cup"
         }
     }
     
@@ -208,7 +193,6 @@ class LeagueAccessManager: ObservableObject {
         status["purchasesEnabled"] = AppConfig.PurchaseConfig.purchasesEnabled
         status["hasPremium"] = AppPurchaseManager.shared.hasPremium
         status["hasRemovedAds"] = AppPurchaseManager.shared.hasRemovedAds
-        status["hasWorldCup2026"] = AppPurchaseManager.shared.hasWorldCup2026
         status["isAdFree"] = AppPurchaseManager.shared.isAdFree
         
         var leagueStatus: [String: String] = [:]
@@ -251,7 +235,6 @@ enum LeagueAccessStatus {
     enum UnlockReason {
         case premium
         case leagueSubscription
-        case worldCupPurchase
         case freeLeague
         case testingMode
         case freeMatch
@@ -272,7 +255,6 @@ enum LeagueAccessStatus {
             switch reason {
             case .premium: return "Premium Access"
             case .leagueSubscription: return "Subscribed"
-            case .worldCupPurchase: return "Purchased"
             case .freeLeague: return "Free"
             case .testingMode: return "Testing Mode"
             case .freeMatch: return "Free"

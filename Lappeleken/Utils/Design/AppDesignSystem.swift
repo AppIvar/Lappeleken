@@ -70,7 +70,6 @@ struct AppDesignSystem {
             case "FL1": return Color(red: 0.0, green: 0.24, blue: 0.44)  // Ligue 1 dark blue
             case "CL": return Color(red: 0.0, green: 0.13, blue: 0.42)   // Champions League navy
             case "TIP": return Color(red: 0.73, green: 0.0, blue: 0.15)  // Eliteserien red
-            case "WC": return Color(red: 0.55, green: 0.0, blue: 0.35)   // World Cup maroon
             case "BSA": return Color(red: 0.0, green: 0.60, blue: 0.32)  // Brasileirão green
             default: return primary
             }
@@ -213,7 +212,6 @@ struct AppDesignSystem {
             case "FL1": return "🇫🇷"
             case "CL": return "🏆"
             case "TIP": return "🇳🇴"
-            case "WC": return "🌍"
             case "BSA": return "🇧🇷"
             case "ELC": return "🏴󠁧󠁢󠁥󠁮󠁧󠁿"
             case "DED": return "🇳🇱"
@@ -231,7 +229,6 @@ struct AppDesignSystem {
             case "FL1": return "Ligue 1"
             case "CL": return "Champions League"
             case "TIP": return "Eliteserien"
-            case "WC": return "World Cup"
             case "BSA": return "Brasileirão"
             default: return code
             }

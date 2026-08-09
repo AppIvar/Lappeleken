@@ -152,9 +152,6 @@ struct SettingsView: View {
                 if purchaseManager.isAdFree {
                     StatusBadge( "Ad-Free", color: .green)
                 }
-                if purchaseManager.hasWorldCup2026 {
-                    StatusBadge( "WC 2026", color: .blue)
-                }
             }
         }
         .padding()

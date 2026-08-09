@@ -44,8 +44,7 @@ class AppPurchaseManager: ObservableObject {
                     "All leagues & competitions",
                     "Unlimited live matches daily",
                     "Multiple match selection",
-                    "Completely ad-free experience",
-                    "World Cup 2026 included"
+                    "Completely ad-free experience"
                 ]
             }
         }
@@ -61,8 +60,7 @@ class AppPurchaseManager: ObservableObject {
     enum ProductID: String, CaseIterable {
         // One-time purchases
         case removeAds = "Lucky.Football.Slip.remove_ads"
-        case worldCup2026 = "Lucky.Football.Slip.worldcup_2026"
-        
+
         // Yearly subscriptions - Individual leagues
         case leaguePL = "Lucky.Football.Slip.league_pl"
         case leagueLaLiga = "Lucky.Football.Slip.league_laliga"
@@ -76,7 +74,6 @@ class AppPurchaseManager: ObservableObject {
         var displayName: String {
             switch self {
             case .removeAds: return "Remove Ads"
-            case .worldCup2026: return "World Cup 2026"
             case .leaguePL: return "Premier League"
             case .leagueLaLiga: return "La Liga"
             case .leagueBundesliga: return "Bundesliga"
@@ -89,7 +86,6 @@ class AppPurchaseManager: ObservableObject {
         var description: String {
             switch self {
             case .removeAds: return "Remove all banner and interstitial ads forever"
-            case .worldCup2026: return "Access World Cup 2026 matches (June-July 2026)"
             case .leaguePL: return "Unlimited Premier League matches"
             case .leagueLaLiga: return "Unlimited La Liga matches"
             case .leagueBundesliga: return "Unlimited Bundesliga matches"
@@ -102,7 +98,6 @@ class AppPurchaseManager: ObservableObject {
         var price: String {
             switch self {
             case .removeAds: return "$2.99"
-            case .worldCup2026: return "$4.99"
             case .leaguePL, .leagueLaLiga, .leagueBundesliga, .leagueSerieA: return "$6.99/year"
             case .leagueCL: return "$4.99/year"
             case .premium: return "$19.99/year"
@@ -111,7 +106,7 @@ class AppPurchaseManager: ObservableObject {
         
         var isSubscription: Bool {
             switch self {
-            case .removeAds, .worldCup2026:
+            case .removeAds:
                 return false
             case .leaguePL, .leagueLaLiga, .leagueBundesliga, .leagueSerieA, .leagueCL, .premium:
                 return true
@@ -140,19 +135,6 @@ class AppPurchaseManager: ObservableObject {
         get { UserDefaults.standard.bool(forKey: "purchase_removeAds") }
         set {
             UserDefaults.standard.set(newValue, forKey: "purchase_removeAds")
-            objectWillChange.send()
-        }
-    }
-    
-    var hasWorldCup2026: Bool {
-        get {
-            // Check if purchased and not expired (Aug 1, 2026)
-            guard UserDefaults.standard.bool(forKey: "purchase_worldCup2026") else { return false }
-            let expiryDate = Calendar.current.date(from: DateComponents(year: 2026, month: 8, day: 1)) ?? Date()
-            return Date() < expiryDate
-        }
-        set {
-            UserDefaults.standard.set(newValue, forKey: "purchase_worldCup2026")
             objectWillChange.send()
         }
     }
@@ -424,10 +406,7 @@ class AppPurchaseManager: ObservableObject {
             
         case .removeAds:
             return hasRemovedAds
-            
-        case .worldCup2026:
-            return hasWorldCup2026
-            
+
         case .leaguePL, .leagueLaLiga, .leagueBundesliga, .leagueSerieA, .leagueCL:
             return activeSubscriptions.contains(productID.rawValue)
         }
@@ -529,10 +508,7 @@ class AppPurchaseManager: ObservableObject {
                 if productIDString == ProductID.removeAds.rawValue {
                     await MainActor.run { self.hasRemovedAds = true }
                 }
-                if productIDString == ProductID.worldCup2026.rawValue {
-                    await MainActor.run { self.hasWorldCup2026 = true }
-                }
-                
+
             } catch {
                 print("Failed to verify transaction: \(error)")
             }
@@ -561,10 +537,7 @@ class AppPurchaseManager: ObservableObject {
         if productIDString == ProductID.removeAds.rawValue {
             hasRemovedAds = true
         }
-        if productIDString == ProductID.worldCup2026.rawValue {
-            hasWorldCup2026 = true
-        }
-        
+
         // Handle league subscriptions
         if let product = ProductID(rawValue: productIDString), product.isLeagueSubscription {
             activeSubscriptions.insert(productIDString)
@@ -630,7 +603,6 @@ class AppPurchaseManager: ObservableObject {
         currentTier = .free
         activeSubscriptions.removeAll()
         hasRemovedAds = false
-        hasWorldCup2026 = false
         savePurchaseState()
         print("🧪 User set to free for testing")
         objectWillChange.send()
@@ -650,13 +622,6 @@ class AppPurchaseManager: ObservableObject {
     func simulateRemoveAdsPurchase() {
         hasRemovedAds = true
         print("🧪 Simulated Remove Ads purchase")
-        objectWillChange.send()
-    }
-    
-    /// Simulates purchasing World Cup 2026
-    func simulateWorldCupPurchase() {
-        hasWorldCup2026 = true
-        print("🧪 Simulated World Cup 2026 purchase")
         objectWillChange.send()
     }
     
@@ -683,9 +648,7 @@ class AppPurchaseManager: ObservableObject {
         currentTier = .free
         activeSubscriptions.removeAll()
         hasRemovedAds = false
-        hasWorldCup2026 = false
         UserDefaults.standard.removeObject(forKey: "purchase_removeAds")
-        UserDefaults.standard.removeObject(forKey: "purchase_worldCup2026")
         savePurchaseState()
         print("🧪 All simulated purchases reset")
         objectWillChange.send()
@@ -698,7 +661,6 @@ class AppPurchaseManager: ObservableObject {
         status["currentTier"] = currentTier.displayName
         status["hasPremium"] = hasPremium
         status["hasRemovedAds"] = hasRemovedAds
-        status["hasWorldCup2026"] = hasWorldCup2026
         status["isAdFree"] = isAdFree
         status["activeSubscriptions"] = Array(activeSubscriptions)
         
