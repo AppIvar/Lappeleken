@@ -1,0 +1,31 @@
+# Secrets — never commit. Provide a Secrets.xcconfig locally (see SETUP notes).
+Secrets.xcconfig
+*.secret
+
+# Xcode
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout
+DerivedData/
+build/
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Swift Package Manager
+.build/
+.swiftpm/
+
+# CocoaPods / Carthage (if ever used)
+Pods/
+Carthage/Build/
+
+# macOS
+.DS_Store
+
+# Cloudflare Worker (node)
+cloudflare-worker/node_modules/
+cloudflare-worker/.wrangler/

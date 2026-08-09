@@ -8,6 +8,7 @@
 import Foundation
 import GoogleMobileAds
 import UIKit
+import AppTrackingTransparency
 
 @MainActor
 class AdManager: NSObject, ObservableObject {
@@ -32,8 +33,14 @@ class AdManager: NSObject, ObservableObject {
         static let rewardedProd = "ca-app-pub-5153687741487701/5916027268"
         static let bannerProd = "ca-app-pub-5153687741487701/5033356288"
         
+        // Test ads in development, real ads in shipping builds. Never serve
+        // production ads from a debug build (risks AdMob invalid-traffic flags).
+        #if DEBUG
         static let useProductionAds = false
-        
+        #else
+        static let useProductionAds = true
+        #endif
+
         static var interstitial: String { useProductionAds ? interstitialProd : interstitialTest }
         static var rewarded: String { useProductionAds ? rewardedProd : rewardedTest }
         static var banner: String { useProductionAds ? bannerProd : bannerTest }
@@ -73,6 +80,15 @@ class AdManager: NSObject, ObservableObject {
         Task { await initializeAds() }
     }
     
+    /// Shows Apple's App Tracking Transparency prompt once (if undetermined).
+    /// Google Mobile Ads reads the resulting status per request to decide
+    /// personalized vs. non-personalized ads. Must be called while the app is active.
+    func requestTrackingAuthorizationIfNeeded() async {
+        guard ATTrackingManager.trackingAuthorizationStatus == .notDetermined else { return }
+        let status = await ATTrackingManager.requestTrackingAuthorization()
+        print("📋 ATT status: \(status.rawValue)")
+    }
+
     func initializeAds() async {
         #if DEBUG
         MobileAds.shared.requestConfiguration.testDeviceIdentifiers = ["YOUR_TEST_DEVICE_ID"]

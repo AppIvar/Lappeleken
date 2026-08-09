@@ -47,6 +47,35 @@ function ttlFor(pathSegments: string[], isLive: boolean): number {
   return TTL.match;
 }
 
+/** Web origins allowed to use this proxy from a browser (a browser can't send the secret). */
+const ALLOWED_ORIGINS = [
+  "http://localhost:5173", // Vite dev server
+  "http://localhost:4173", // Vite preview
+  // Add the deployed web app's origin here when it goes live, e.g.
+  // "https://luckyfootballslip.app"
+];
+
+/** CORS headers for a request; echoes the Origin only if it's allowlisted. */
+function corsHeadersFor(origin: string | null): Record<string, string> {
+  const headers: Record<string, string> = {
+    "Access-Control-Allow-Methods": "GET, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, X-Client-Secret, X-Client-ID",
+    "Access-Control-Max-Age": "86400",
+  };
+  if (origin && ALLOWED_ORIGINS.includes(origin)) {
+    headers["Access-Control-Allow-Origin"] = origin;
+    headers["Vary"] = "Origin";
+  }
+  return headers;
+}
+
+/** Copies CORS headers onto a response (mutates its headers). */
+function applyCors(response: Response, corsHeaders: Record<string, string>): void {
+  for (const [key, value] of Object.entries(corsHeaders)) {
+    response.headers.set(key, value);
+  }
+}
+
 function fetchFromOrigin(upstreamURL: string, env: Env): Promise<Response> {
   return fetch(upstreamURL, {
     headers: {
@@ -101,15 +130,27 @@ async function refreshAndStore(
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
+    const origin = request.headers.get("Origin");
+    const corsHeaders = corsHeadersFor(origin);
 
+    // Preflight: browsers may send OPTIONS before the real GET.
+    if (request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: corsHeaders });
+    }
     if (request.method !== "GET") {
-      return new Response("Method not allowed", { status: 405 });
+      return new Response("Method not allowed", { status: 405, headers: corsHeaders });
     }
     if (!url.pathname.startsWith(PROXY_PREFIX)) {
-      return new Response("Not found", { status: 404 });
+      return new Response("Not found", { status: 404, headers: corsHeaders });
     }
-    if (env.CLIENT_SHARED_SECRET && request.headers.get("X-Client-Secret") !== env.CLIENT_SHARED_SECRET) {
-      return new Response("Unauthorized", { status: 401 });
+
+    // Auth: accept a valid shared secret (iOS) OR an allowlisted browser Origin (web).
+    const hasValidSecret =
+      !!env.CLIENT_SHARED_SECRET &&
+      request.headers.get("X-Client-Secret") === env.CLIENT_SHARED_SECRET;
+    const isAllowedOrigin = origin !== null && ALLOWED_ORIGINS.includes(origin);
+    if (env.CLIENT_SHARED_SECRET && !hasValidSecret && !isAllowedOrigin) {
+      return new Response("Unauthorized", { status: 401, headers: corsHeaders });
     }
 
     const pathSegments = url.pathname.slice(PROXY_PREFIX.length).split("/").filter(Boolean);
@@ -138,19 +179,24 @@ export default {
       if (ageSeconds <= ttl) {
         const fresh = new Response(cached.body, cached);
         fresh.headers.set("X-Cache", "HIT");
+        applyCors(fresh, corsHeaders);
         return fresh;
       }
       if (ageSeconds <= ttl * 2) {
         // Stale-while-revalidate: serve the stale copy now, refresh in the background.
         const stale = new Response(cached.body, cached);
         stale.headers.set("X-Cache", "STALE");
+        applyCors(stale, corsHeaders);
         ctx.waitUntil(refreshAndStore(upstreamURL, cacheKey, ttl, env, cache, false));
         return stale;
       }
       // Older than 2x TTL — fall through and refetch synchronously.
     }
 
-    const response = await refreshAndStore(upstreamURL, cacheKey, ttl, env, cache, true);
-    return response ?? new Response("Upstream error", { status: 502 });
+    const response =
+      (await refreshAndStore(upstreamURL, cacheKey, ttl, env, cache, true)) ??
+      new Response("Upstream error", { status: 502 });
+    applyCors(response, corsHeaders);
+    return response;
   },
 };
