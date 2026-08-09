@@ -206,6 +206,39 @@ class EventDrivenManager: ObservableObject {
         }
     }
     
+    /// Force an immediate poll of every match this game is watching, for
+    /// pull-to-refresh. Returns the outcome so the caller can tell the user
+    /// whether anything was actually fetched.
+    @discardableResult
+    func refreshNow(for gameSession: GameSession) async -> RefreshOutcome {
+        let monitors = activeGames
+            .filter { $0.key.starts(with: gameSession.id.uuidString) }
+            .map { $0.value }
+
+        guard !monitors.isEmpty else {
+            print("🔄 Manual refresh: no active monitors for this game")
+            return .notMonitoring
+        }
+
+        var refreshed = 0
+        for monitor in monitors {
+            if await monitor.pollOnce() { refreshed += 1 }
+        }
+
+        if refreshed == 0 {
+            return .rateLimited(retryAfter: APIRateLimiter.shared.timeUntilNextCall())
+        }
+        return .refreshed(matchCount: refreshed)
+    }
+
+    enum RefreshOutcome {
+        case refreshed(matchCount: Int)
+        /// Every match was turned down by the rate limiter.
+        case rateLimited(retryAfter: TimeInterval)
+        /// Not a live game, or monitoring isn't running.
+        case notMonitoring
+    }
+
     func getActiveGamesCount() -> Int {
         return activeGames.count
     }
@@ -256,8 +289,6 @@ class GameEventMonitor {
     }
     
     private func performMonitoringCycle() async {
-        pollCount += 1
-
         do {
             guard APIRateLimiter.shared.canMakeCall() else {
                 let waitTime = APIRateLimiter.shared.timeUntilNextCall()
@@ -266,26 +297,7 @@ class GameEventMonitor {
                 return
             }
 
-            // ONE call returns both the fresh match (status/score) and its events.
-            let snapshot = try await footballService.fetchMatchSnapshot(matchId: match.id, isLive: match.status.isLive)
-            let liveEvents = snapshot.events.compactMap { convertAPIEventToLiveEvent($0) }
-            let newEvents = filterNewEvents(liveEvents)
-
-            let statusChanged = snapshot.match.status != match.status
-            self.match = snapshot.match   // keep status/score fresh for interval + next compare
-
-            if !newEvents.isEmpty || statusChanged {
-                let update = LiveMatchUpdate(
-                    match: snapshot.match,
-                    newEvents: newEvents,
-                    statusChanged: statusChanged
-                )
-                onUpdate(update)
-                if !newEvents.isEmpty {
-                    lastEventTime = Date()
-                    print("🎯 Found \(newEvents.count) new event(s) for \(match.homeTeam.shortName) vs \(match.awayTeam.shortName)")
-                }
-            }
+            try await fetchAndPublish()
 
             let interval = calculatePollingInterval()
             if AppConfig.enableDetailedLogging { print("⏰ Poll \(pollCount): next check in \(Int(interval))s") }
@@ -294,6 +306,55 @@ class GameEventMonitor {
         } catch {
             print("❌ Error in monitoring cycle: \(error)")
             try? await Task.sleep(nanoseconds: 300_000_000_000)
+        }
+    }
+
+    /// One immediate fetch, for a user-initiated pull-to-refresh. Shares the
+    /// scheduled loop's fetch path, so dedup and payout behave identically —
+    /// refreshing only changes *when* a poll happens, never what a poll does.
+    ///
+    /// Returns false when the rate limiter turns it down, so the UI can say the
+    /// refresh didn't actually happen instead of silently pretending it did.
+    @discardableResult
+    func pollOnce() async -> Bool {
+        guard APIRateLimiter.shared.canMakeCall() else {
+            print("⏳ Manual refresh declined by rate limiter")
+            return false
+        }
+
+        do {
+            try await fetchAndPublish()
+            return true
+        } catch {
+            print("❌ Manual refresh failed: \(error)")
+            return false
+        }
+    }
+
+    /// The actual fetch-compare-publish step, shared by the scheduled loop and
+    /// manual refresh. Callers are responsible for the rate-limiter check.
+    private func fetchAndPublish() async throws {
+        pollCount += 1
+
+        // ONE call returns both the fresh match (status/score) and its events.
+        let snapshot = try await footballService.fetchMatchSnapshot(matchId: match.id, isLive: match.status.isLive)
+        let liveEvents = snapshot.events.compactMap { convertAPIEventToLiveEvent($0) }
+        let newEvents = filterNewEvents(liveEvents)
+
+        let statusChanged = snapshot.match.status != match.status
+        self.match = snapshot.match   // keep status/score fresh for interval + next compare
+
+        if !newEvents.isEmpty || statusChanged {
+            let update = LiveMatchUpdate(
+                match: snapshot.match,
+                newEvents: newEvents,
+                statusChanged: statusChanged
+            )
+            onUpdate(update)
+            if !newEvents.isEmpty {
+                lastEventTime = Date()
+                print("🎯 Found \(newEvents.count) new event(s) for \(match.homeTeam.shortName) vs \(match.awayTeam.shortName)")
+            }
         }
     }
     

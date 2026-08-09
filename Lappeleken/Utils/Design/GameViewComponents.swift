@@ -7,6 +7,107 @@
 
 import SwiftUI
 
+// MARK: - Pull To Refresh (Live Mode)
+
+/// Swipe-down on a live game to force an immediate poll instead of waiting out
+/// the 30s scheduled interval.
+///
+/// Only attaches in live mode — a manual game has no server to ask, and a refresh
+/// control that always spins but never does anything is worse than none.
+struct LiveRefreshModifier: ViewModifier {
+    @ObservedObject var gameSession: GameSession
+
+    @State private var status: String?
+    @State private var statusIsError = false
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if gameSession.isLiveMode {
+            content
+                .refreshable { await refresh() }
+                .overlay(alignment: .top) {
+                    if let status = status {
+                        refreshToast(status)
+                    }
+                }
+        } else {
+            content
+        }
+    }
+
+    private func refreshToast(_ message: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: statusIsError ? "exclamationmark.circle.fill" : "checkmark.circle.fill")
+                .font(.system(size: 14))
+            Text(message)
+                .font(.system(size: 13, weight: .semibold))
+                .lineLimit(2)
+        }
+        .foregroundColor(.white)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(
+            Capsule()
+                .fill(statusIsError ? AppDesignSystem.Colors.warning : AppDesignSystem.Colors.grassGreen)
+                .shadow(color: Color.black.opacity(0.2), radius: 6, x: 0, y: 3)
+        )
+        .padding(.top, 8)
+        .transition(.move(edge: .top).combined(with: .opacity))
+    }
+
+    private func refresh() async {
+        let eventsBefore = gameSession.events.count
+        let outcome = await EventDrivenManager.shared.refreshNow(for: gameSession)
+
+        let message: String
+        var isError = false
+
+        switch outcome {
+        case .refreshed:
+            let added = gameSession.events.count - eventsBefore
+            // Report what actually landed. "Up to date" is the honest answer when
+            // the fetch succeeded but the match simply hasn't produced anything —
+            // the alternative, always claiming "Updated", tells the user nothing.
+            if added > 0 {
+                message = added == 1 ? "1 new event" : "\(added) new events"
+            } else {
+                message = "Up to date"
+            }
+
+        case .rateLimited(let retryAfter):
+            let seconds = max(1, Int(retryAfter.rounded()))
+            message = "Too many requests — try again in \(seconds)s"
+            isError = true
+
+        case .notMonitoring:
+            message = "This match isn't being tracked"
+            isError = true
+        }
+
+        await MainActor.run {
+            statusIsError = isError
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                status = message
+            }
+        }
+
+        try? await Task.sleep(nanoseconds: 2_500_000_000)
+
+        await MainActor.run {
+            withAnimation(.easeOut(duration: 0.3)) {
+                status = nil
+            }
+        }
+    }
+}
+
+extension View {
+    /// Pull-to-refresh that force-polls the live match. No-op outside live mode.
+    func liveRefreshable(_ gameSession: GameSession) -> some View {
+        modifier(LiveRefreshModifier(gameSession: gameSession))
+    }
+}
+
 // MARK: - Record Event Sheet (Extracted)
 
 struct RecordEventSheet: View {
@@ -24,17 +125,21 @@ struct RecordEventSheet: View {
                         emptyStateView
                     } else {
                         playerSelectionSection
-                        
+
                         if selectedPlayer != nil {
                             eventTypeSelectionSection
                         }
-                        
-                        recordButtonSection
                     }
                 }
                 .padding(24)
             }
             .background(GameViewBackground())
+            // The record button is pinned to the bottom rather than sitting at the
+            // end of the scroll content, so it's reachable the moment a player and
+            // event type are picked — no scrolling past every event type to find it.
+            .safeAreaInset(edge: .bottom) {
+                recordButtonSection
+            }
             .navigationTitle("Record Event")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -162,9 +267,11 @@ struct RecordEventSheet: View {
                     HStack(spacing: 10) {
                         Image(systemName: "checkmark.circle.fill")
                             .font(.system(size: 20))
-                        
+
                         Text("Record \(eventDisplayName) for \(player.name)")
                             .font(.system(size: 15, weight: .bold, design: .rounded))
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.85)
                     }
                     .foregroundColor(.white)
                     .padding(.vertical, 16)
@@ -173,9 +280,15 @@ struct RecordEventSheet: View {
                     .cornerRadius(12)
                     .shadow(color: AppDesignSystem.Colors.grassGreen.opacity(0.4), radius: 8, x: 0, y: 4)
                 }
-                .padding(.top, 8)
+                .padding(.horizontal, 24)
+                .padding(.top, 12)
+                .padding(.bottom, 12)
+                .background(.ultraThinMaterial)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: canRecord)
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: selectedPlayer)
     }
     
     // MARK: - Helpers

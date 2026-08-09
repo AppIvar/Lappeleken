@@ -35,6 +35,7 @@ struct MatchScoreView: View {
                 .padding(.horizontal, 20)
                 .padding(.top, 16)
             }
+            .liveRefreshable(gameSession)
         }
         .onAppear {
             startAutoRefresh()

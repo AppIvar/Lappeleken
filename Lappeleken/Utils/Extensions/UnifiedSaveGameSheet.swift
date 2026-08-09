@@ -150,30 +150,14 @@ struct UnifiedSaveGameSheet: View {
                         }
                     }
                     
-                    Spacer(minLength: 20)
-                    
-                    // Save button
-                    Button(action: {
-                        handleSave()
-                    }) {
-                        HStack {
-                            Image(systemName: saveButtonIcon)
-                            Text(saveButtonText)
-                                .font(.system(size: 16, weight: .bold))
-                        }
-                        .foregroundColor(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding()
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(
-                                    canSave ? saveButtonColor : AppDesignSystem.Colors.secondaryText
-                                )
-                        )
-                    }
-                    .disabled(!canSave)
                 }
                 .padding(24)
+            }
+            // Pinned to the bottom instead of trailing the scroll content: with a
+            // long list of existing saves, the button was below the fold and the
+            // user had to scroll past every save to confirm the one they'd picked.
+            .safeAreaInset(edge: .bottom) {
+                saveButtonBar
             }
             .navigationTitle("Save Game")
             .navigationBarTitleDisplayMode(.inline)
@@ -200,8 +184,53 @@ struct UnifiedSaveGameSheet: View {
         }
     }
     
+    // MARK: - Save Button Bar
+
+    private var saveButtonBar: some View {
+        VStack(spacing: 8) {
+            // Name the chosen save so the pinned button still says what it will do
+            // when the selected row has been scrolled out of sight.
+            if saveMode == .overwriteExisting, let selected = selectedExistingSave {
+                HStack(spacing: 6) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 13))
+                        .foregroundColor(AppDesignSystem.Colors.warning)
+                    Text("Replacing \"\(selected.name)\"")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(AppDesignSystem.Colors.secondaryText)
+                        .lineLimit(1)
+                }
+            }
+
+            Button(action: {
+                handleSave()
+            }) {
+                HStack {
+                    Image(systemName: saveButtonIcon)
+                    Text(saveButtonText)
+                        .font(.system(size: 16, weight: .bold))
+                }
+                .foregroundColor(.white)
+                .frame(maxWidth: .infinity)
+                .padding()
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(
+                            canSave ? saveButtonColor : AppDesignSystem.Colors.secondaryText
+                        )
+                )
+            }
+            .disabled(!canSave)
+        }
+        .padding(.horizontal, 24)
+        .padding(.top, 12)
+        .padding(.bottom, 12)
+        .background(.ultraThinMaterial)
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: selectedExistingSave?.id)
+    }
+
     // MARK: - Computed Properties
-    
+
     private var canSave: Bool {
         let hasValidName = !gameName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         

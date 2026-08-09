@@ -257,8 +257,9 @@ struct GameView: View {
             .padding(.top, 20)
         }
         .background(GameViewBackground())
+        .liveRefreshable(gameSession)
     }
-    
+
     // MARK: - Game Stats Overview
     
     private var gameStatsOverview: some View {
@@ -545,8 +546,9 @@ struct GameView: View {
             .padding(.top, 20)
         }
         .background(GameViewBackground())
+        .liveRefreshable(gameSession)
     }
-    
+
     // MARK: - Helper Properties
     
     private var currencySymbol: String {
@@ -598,6 +600,11 @@ struct GameView: View {
         if gameSession.isLiveMode {
             gameSession.cleanupEventDrivenMode()
         }
+
+        // Retire the crash-recovery snapshot the moment the game ends, not when
+        // the summary sheet is finally dismissed — otherwise quitting the app on
+        // the summary screen would offer to resume a game the player just ended.
+        ActiveGameStore.shared.endTracking()
     }
     
     private func endGameWithoutSaving() {
